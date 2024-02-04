@@ -106,7 +106,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
 import { hello } from './xxx.js';
 
@@ -228,8 +228,8 @@ const drawCanvas = () => {
 
   transReal2ScaledInfo(imgScaledLTCoor, sourceLTCoor); // 使点位置与图片像素贴合
   transReal2ScaledInfo(imgScaledRBCoor, {
-    x: sourceRBCoor.x + 1,
-    y: sourceRBCoor.y + 1,
+    x: sourceRBCoor.x + 2,
+    y: sourceRBCoor.y + 2,
   }); //得到目标范围外的右下一点，用以后续计算dw dh
 
   const sw = Math.abs(sourceLTCoor.x - sourceRBCoor.x) + 1;
@@ -240,13 +240,19 @@ const drawCanvas = () => {
   transScaled2CanvasInfo(canvasLTCoor, imgScaledLTCoor);
   transScaled2CanvasInfo(canvasRBCoor, imgScaledRBCoor);
 
-  //console.log('canvasLTCoor: ' + canvasLTCoor.x + ', ' + canvasLTCoor.y);
-  //console.log('dwdh: ' + dw + ', ' + dh);
   //Draw
   initCanvasSettings();
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
-  if (scale.value >= 1) {
-    ctx.value.drawImage(
+  // console.log([imageObj.value.src,
+  //     sourceLTCoor.x,
+  //     sourceLTCoor.y,
+  //     sw,
+  //     sh,
+  //     canvasLTCoor.x,
+  //     canvasLTCoor.y,
+  //     dw,
+  //     dh]);
+  ctx.value.drawImage(
       imageObj.value,
       sourceLTCoor.x,
       sourceLTCoor.y,
@@ -257,12 +263,24 @@ const drawCanvas = () => {
       dw,
       dh
     );
-  } else {
-    ctx.value.save();
-    ctx.value.scale(scale.value, scale.value);
-    ctx.value.drawImage(imageObj.value, canvasLTCoor.x, canvasLTCoor.y);
-    ctx.value.restore();
-  }
+  // if (scale.value >= 1) {
+  //   ctx.value.drawImage(
+  //     imageObj.value,
+  //     sourceLTCoor.x,
+  //     sourceLTCoor.y,
+  //     sw,
+  //     sh,
+  //     canvasLTCoor.x,
+  //     canvasLTCoor.y,
+  //     dw,
+  //     dh
+  //   );
+  // } else {
+  //   ctx.value.save();
+  //   ctx.value.scale(scale.value, scale.value);
+  //   ctx.value.drawImage(imageObj.value, canvasLTCoor.x, canvasLTCoor.y);
+  //   ctx.value.restore();
+  // }
 };
 
 const drawZoomAnddots = () => {
@@ -298,6 +316,7 @@ const drawDotInZoom = (newRealCoor) => {
 function updateViewPortDraw() {
   if (imageSrc === null || imageSrc.value === '') return;
   drawCanvas();
+
   updateDotsScaledCoor();
 }
 
@@ -317,21 +336,14 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
     if (!(imageSrc === null || imageSrc.value === '')) {
       if (Math.abs(newX) < Math.abs(oldX)) {
         if (Math.abs(offsetX.value) < autoAdaptBorderDis) offsetX.value = 0;
-      } else {
-        if (
-          Math.abs(
-            offsetX.value +
-              initImgWidth.value * scale.value -
-              viewportWidth.value
-          ) < autoAdaptBorderDis
-        )
-          offsetX.value =
-            viewportWidth.value - initImgWidth.value * scale.value;
+      } else if (Math.abs(newX) > Math.abs(oldX)){
+        if (Math.abs(offsetX.value + initImgWidth.value * scale.value -  viewportWidth.value) < autoAdaptBorderDis)
+          offsetX.value = viewportWidth.value - initImgWidth.value * scale.value;
       }
 
       if (Math.abs(newY) < Math.abs(oldY)) {
         if (Math.abs(offsetY.value) < autoAdaptBorderDis) offsetY.value = 0;
-      } else {
+      } else if (Math.abs(newY) > Math.abs(oldY)) {
         if (
           Math.abs(
             offsetY.value +
@@ -587,10 +599,11 @@ function updateRectanglePosition(left, top) {
   rectangle.style.top = top + 'px';
 }
 
-function updateViewSize() {
+async function updateViewSize() {
   if (divRef.value) {
     viewportWidth.value = divRef.value.offsetWidth - 4; // - 4(border 2 * 2)
     viewportHeight.value = divRef.value.offsetHeight - 4;
+    await nextTick()
     console.log('updateViewSize');
     //Reset ctx.value when update canvasSize
     initCanvasSettings();
@@ -622,6 +635,9 @@ function initZoomSettings() {
 </script>
 
 <style scoped>
+*{
+  user-select: none;
+}
 .container {
   box-sizing: border-box;
   display: flex;
