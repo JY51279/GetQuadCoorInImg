@@ -2,16 +2,16 @@
 
 <template>
   <div style="width: 100%; height: 100%">
-    <ImageUploader />
+    <WindowProcess />
   </div>
 </template>
 
 <script>
-import ImageUploader from './ImageUploader.vue';
+import WindowProcess from './WindowProcess.vue';
 
 export default {
   components: {
-    ImageUploader,
+    WindowProcess,
   },
 };
 </script>

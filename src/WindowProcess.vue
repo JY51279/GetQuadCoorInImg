@@ -108,7 +108,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
-import { hello } from './xxx.js';
+import {  } from './JsonProcess.js';
 
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
@@ -316,7 +316,6 @@ const drawDotInZoom = (newRealCoor) => {
 function updateViewPortDraw() {
   if (imageSrc === null || imageSrc.value === '') return;
   drawCanvas();
-
   updateDotsScaledCoor();
 }
 
@@ -344,15 +343,8 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
       if (Math.abs(newY) < Math.abs(oldY)) {
         if (Math.abs(offsetY.value) < autoAdaptBorderDis) offsetY.value = 0;
       } else if (Math.abs(newY) > Math.abs(oldY)) {
-        if (
-          Math.abs(
-            offsetY.value +
-              initImgHeight.value * scale.value -
-              viewportHeight.value
-          ) < autoAdaptBorderDis
-        )
-          offsetY.value =
-            viewportHeight.value - initImgHeight.value * scale.value;
+        if (Math.abs(offsetY.value + initImgHeight.value * scale.value - viewportHeight.value) < autoAdaptBorderDis)
+          offsetY.value = viewportHeight.value - initImgHeight.value * scale.value;
       }
     }
     updateViewPortDraw();
@@ -519,9 +511,13 @@ const onWheel = (event) => {
   if (event.deltaY < 0) {
     if (scale.value < 0.9) scale.value += 0.1;
     else scale.value = Math.floor(scale.value + 1);
-  } else if (scale.value > 0.1) {
-    if (scale.value <= 1) scale.value -= 0.1;
-    else scale.value = Math.ceil(scale.value - 1);
+  } else{
+    if (scale.value > 0.2) {
+      if (scale.value <= 1) scale.value -= 0.1;
+      else scale.value = Math.ceil(scale.value - 1);
+    }
+    else
+      scale.value = 0.1;
   }
 };
 
