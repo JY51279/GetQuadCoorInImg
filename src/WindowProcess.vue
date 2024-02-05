@@ -24,8 +24,6 @@
         :style="`transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px);
                 transform-origin: 0% 0%;`"
       ></canvas>
-      <!-- :style="`transform: translate(${offsetX}px, ${offsetY}px); 
-         transform-origin: 0% 0%;`" -->
       <div
         @click="deleteDot"
         v-for="dot in dotsCanvasCoor"
@@ -242,8 +240,8 @@ const drawCanvas = () => {
     y: sourceRBCoor.y + 2,
   }); //得到目标范围外的右下一点，用以后续计算dw dh
 
-  const sw = Math.abs(sourceLTCoor.x - sourceRBCoor.x) + 1;
-  const sh = Math.abs(sourceLTCoor.y - sourceRBCoor.y) + 1;
+  const sw = Math.abs(sourceLTCoor.x - sourceRBCoor.x) + 2;
+  const sh = Math.abs(sourceLTCoor.y - sourceRBCoor.y) + 2;
   const dw = Math.abs(imgScaledRBCoor.x - imgScaledLTCoor.x);
   const dh = Math.abs(imgScaledRBCoor.y - imgScaledLTCoor.y);
 
@@ -253,15 +251,6 @@ const drawCanvas = () => {
   //Draw
   initCanvasSettings();
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
-  // console.log([imageObj.value.src,
-  //     sourceLTCoor.x,
-  //     sourceLTCoor.y,
-  //     sw,
-  //     sh,
-  //     canvasLTCoor.x,
-  //     canvasLTCoor.y,
-  //     dw,
-  //     dh]);
   ctx.value.drawImage(
       imageObj.value,
       sourceLTCoor.x,
@@ -510,7 +499,7 @@ const chooseJsonFile = () => {
 let imgFileName = ref(null);
 const loadImgFile = (event) => {
   const file = event.target.files[0];
-  imgFileName = file.name;
+  imgFileName.value = file.name;
   const reader = new FileReader();
   reader.onload = (e) => {
     imageSrc.value = e.target.result;
@@ -574,8 +563,9 @@ function updateZoomView(event) {
     x: event.clientX,
     y: event.clientY,
   };
+  console.log("clinet: " + event.clientX + ", " + event.clientY)
   transCanvas2RealInfo(realDot2GetZoom.value, canvasCoor);
-
+  console.log(realDot2GetZoom.value)
   // Make the mouse in the middle of the zoomRect
   realDot2GetZoom.value.x = Math.max(realDot2GetZoom.value.x - 3, 0);
   realDot2GetZoom.value.y = Math.max(realDot2GetZoom.value.y - 3, 0);
@@ -585,9 +575,10 @@ function updateZoomView(event) {
     x: realDot2GetZoom.value.x - 1,
     y: realDot2GetZoom.value.y - 1,
   };
+  console.log(rectCoor)
   transReal2CanvasInfo(canvasCoor, rectCoor);
   updateRectanglePosition(canvasCoor.x, canvasCoor.y);
-
+  console.log("canvasCoor: " + canvasCoor.x + ", " + canvasCoor.y);
   // Draw zoom
   drawZoomAnddots();
 }
@@ -620,15 +611,12 @@ function transCanvas2ScaledInfo(targetCoor, canvasCoor) {
 function transReal2CanvasInfo(targetCoor, realCoor) {
   targetCoor.x = realCoor.x * scale.value + offsetX.value + offsetCanvasLeft;
   targetCoor.y = realCoor.y * scale.value + offsetY.value + offsetCanvasTop;
+  console.log( realCoor.x + ", " + scale.value + ", " + offsetX.value + ", " + offsetCanvasLeft);
 }
 
 function transCanvas2RealInfo(targetCoor, canvasCoor) {
-  targetCoor.x = Math.floor(
-    (canvasCoor.x - offsetX.value - offsetCanvasLeft) / scale.value
-  );
-  targetCoor.y = Math.floor(
-    (canvasCoor.y - offsetY.value - offsetCanvasTop) / scale.value
-  );
+  targetCoor.x = Math.floor((canvasCoor.x - offsetX.value - offsetCanvasLeft) / scale.value);
+  targetCoor.y = Math.floor((canvasCoor.y - offsetY.value - offsetCanvasTop) / scale.value);
 }
 
 function updateRectanglePosition(left, top) {
