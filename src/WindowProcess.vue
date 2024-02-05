@@ -1,9 +1,16 @@
 <template>
   <input
-    @change="loadFile"
+    @change="loadImgFile"
     type="file"
-    ref="fileInput"
+    ref="imgFileInput"
     accept="image/*"
+    style="display: none"
+  />
+  <input
+    @change="loadJsonFile"
+    type="file"
+    ref="jsonFileInput"
+    accept=".json"
     style="display: none"
   />
   <div class="container">
@@ -81,7 +88,7 @@
             height="120"
           ></canvas>
         </div>
-        <div class="fileInfo-style">图片: {{ fileName }}</div>
+        <div class="fileInfo-style">图片: {{ imgFileName }}</div>
         <div
           class="coorInfo-style"
           v-for="(item, index) in dotsRealCoor"
@@ -94,7 +101,9 @@
         </div>
       </div>
       <div class="button-group">
-        <button @click="chooseFile" class="button-style">Get Picture</button>
+        <button @click="chooseJsonFile" class="button-style">Get JsonFile</button>
+        <button @click="chooseImgFile" class="button-style">Get Picture</button>
+        <!-- <button @click="saveJsonFile" class="button-style">Save CoorInfo</button> -->
         <button @click="clearDots" class="button-style">Clear Dots</button>
         <button @click="resetPosition" class="button-style">
           Reset Position
@@ -108,12 +117,13 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
-import {  } from './JsonProcess.js';
+import { resetJsonProcess, getDefultQuadIndex } from './JsonProcess.js';
 
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
 
-const fileInput = ref(null);
+const imgFileInput = ref(null);
+const jsonFileInput = ref(null);
 const divRef = ref(null);
 const viewportWidth = ref(0);
 const viewportHeight = ref(0);
@@ -485,14 +495,17 @@ const clearDots = () => {
   console.log('cleardots Successfully.');
 };
 
-const chooseFile = () => {
-  fileInput.value.click();
+const chooseImgFile = () => {
+  imgFileInput.value.click();
+};
+const chooseJsonFile = () => {
+  jsonFileInput.value.click();
 };
 
-let fileName = ref(null);
-const loadFile = (event) => {
+let imgFileName = ref(null);
+const loadImgFile = (event) => {
   const file = event.target.files[0];
-  fileName = file.name;
+  imgFileName = file.name;
   const reader = new FileReader();
   reader.onload = (e) => {
     imageSrc.value = e.target.result;
@@ -501,11 +514,37 @@ const loadFile = (event) => {
     offsetX.value = 0;
     offsetY.value = 0;
     clearDots();
-
+    resetJsonProcess();
     imageObj.value.src = e.target.result;
   };
   reader.readAsDataURL(file);
 };
+
+let jsonFileName = ref(null);
+let json = {};
+function loadJsonFile(event) {
+  const file = event.target.files[0];
+  jsonFileName.value = file.name;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    json = JSON.parse(e.target.result);
+    //setJsonInfos(json);
+  };
+  reader.readAsText(file);
+};
+
+// // 保存JSON文件到本地文件系统
+// function saveJsonFile(filename, json) {
+//   const jsonString = JSON.stringify(json);
+//   const blob = new Blob([jsonString], { type: 'application/json' });
+//   const url = URL.createObjectURL(blob);
+//   const a = document.createElement('a');
+//   a.href = url;
+//   a.download = filename;
+//   document.body.appendChild(a);
+//   a.click();
+//   document.body.removeChild(a);
+// };
 
 const onWheel = (event) => {
   if (event.deltaY < 0) {
