@@ -140,7 +140,7 @@ const imageSrc = ref('');
 const imageBoxRef = ref(null);
 
 const { pressed } = useMousePressed({ target: divRef });
-const { x, y } = useMouse({ resetOnTouchEnds: true });
+const { x, y } = useMouse();
 
 //
 
