@@ -88,16 +88,17 @@
             height="120"
           ></canvas>
         </div>
+        <input :value="classStr" @input="classInput" placeholder="Type class here">
+        <p>{{ classStr }}</p>
         <div class="fileInfo-style">图片: {{ imgFileName }}</div>
+        <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
         <div
           class="coorInfo-style"
           v-for="(item, index) in dotsRealCoor"
           :key="index"
         >
           <span>({{ item.x }}, {{ item.y }})</span>
-          <button @click="clearMessage(index)" class="button-delete-style">
-            x
-          </button>
+          <button @click="clearMessage(index)" class="button-delete-style">x</button>
         </div>
       </div>
       <div class="button-group">
@@ -109,7 +110,6 @@
           Reset Position
         </button>
       </div>
-      <!-- 按钮功能之后完成 -->
     </div>
   </div>
 </template>
@@ -495,6 +495,11 @@ const clearDots = () => {
   console.log('cleardots Successfully.');
 };
 
+const classStr = ref('')
+function classInput(e) {
+  classStr.value = e.target.value
+}
+
 const chooseImgFile = () => {
   imgFileInput.value.click();
 };
@@ -514,20 +519,21 @@ const loadImgFile = (event) => {
     offsetX.value = 0;
     offsetY.value = 0;
     clearDots();
-    resetJsonProcess();
+    console.log("imgFileName.value: " + imgFileName.value);
+    resetJsonProcess(jsonStr, classStr.value, imgFileName.value);
     imageObj.value.src = e.target.result;
   };
   reader.readAsDataURL(file);
 };
 
 let jsonFileName = ref(null);
-let json = {};
+let jsonStr = {};
 function loadJsonFile(event) {
   const file = event.target.files[0];
   jsonFileName.value = file.name;
   const reader = new FileReader();
   reader.onload = (e) => {
-    json = JSON.parse(e.target.result);
+    jsonStr = e.target.result;
     //setJsonInfos(json);
   };
   reader.readAsText(file);
