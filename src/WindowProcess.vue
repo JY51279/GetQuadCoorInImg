@@ -156,7 +156,7 @@ const { x, y } = useMouse();
 //
 
 // Basic delete
-const deletePt = (ptIndex) => {
+function deletePt(ptIndex){
   if (ptIndex !== -1 && ptIndex < dotsCanvasCoor.value.length) {
     dotsCanvasCoor.value.splice(ptIndex, 1);
     dotsRealCoor.value.splice(ptIndex, 1);
@@ -167,14 +167,14 @@ const deletePt = (ptIndex) => {
 };
 
 // Delete Dot in canvas
-const deleteDot = (e) => {
+function deleteDot(e){
   const { existingDotIndex } = getDotInfo(e);
   if (!deletePt(existingDotIndex)) {
     console.log('Error delete the pt in canvas!');
   }
 };
 
-const getDotInfo = (e) => {
+function getDotInfo(e){
   let canvasCoor = {
     x: e.clientX,
     y: e.clientY,
@@ -333,7 +333,7 @@ function drawImgInGrid(sourceLTCoor, sourceWidth, sourceHeight)
 }
 
 
-const drawZoomAnddots = () => {
+function drawZoomAnddots(){
   if (realDot2GetZoom.value.x === -1) return;
   const zoomctx = zoomView.value.getContext('2d');
   zoomctx.drawImage(
@@ -353,7 +353,7 @@ const drawZoomAnddots = () => {
   }
 };
 
-const drawDotInZoom = (newRealCoor) => {
+function drawDotInZoom(newRealCoor){
   if (realDot2GetZoom.value.x === -1) return;
   const zoomctx = zoomView.value.getContext('2d');
   let transX = newRealCoor.x - realDot2GetZoom.value.x;
@@ -499,12 +499,12 @@ function checkClass(e){
 }
 
 // Click button to del dot
-const clearMessage = (index) => {
+function clearMessage(index){
   deletePt(index);
 };
 
 // Click canvas to get dot
-const toggleDot = (e) => {
+function toggleDot(e){
   if (imageSrc == null || imageSrc.value == '' || !isNotLongPress) {
     return;
   }
@@ -543,21 +543,21 @@ function resetPosition() {
   updateViewPortDraw();
 }
 
-const clearDots = () => {
+function clearDots(){
   dotsCanvasCoor.value = [];
   dotsRealCoor.value = [];
   console.log('cleardots Successfully.');
 };
 
-const chooseImgFile = () => {
+function chooseImgFile(){
   imgFileInput.value.click();
 };
-const chooseJsonFile = () => {
+function chooseJsonFile(){
   jsonFileInput.value.click();
 };
 
 let imgFileName = ref(null);
-const loadImgFile = (event) => {
+function loadImgFile(event){
   const file = event.target.files[0];
   imgFileName.value = file.name;
   const reader = new FileReader();
