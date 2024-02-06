@@ -38,6 +38,7 @@
             `"
       ></div>
       <div
+        v-if="scale < gridLimit"
         class="rectangle"
         :style="`
               transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px) scale(${scale});
@@ -94,7 +95,6 @@
         <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
         <div class="fileInfo-style">图片: {{ imgFileName }}</div>
         <div
-          class="coorInfo-style"
           v-for="(item, index) in dotsRealCoor"
           :key="index"
         >
@@ -230,6 +230,7 @@ function updataImgData()
 // Only draw the part of img inside the viewport
 const canvasLTCoor = { x: 0, y: 0 };
 const canvasRBCoor = { x: 0, y: 0 };
+const gridLimit = 10;
 function drawCanvas(){
   if (canvas === null || canvas.value === null) {
     console.log('drawCanvas canvas Error.');
@@ -283,7 +284,7 @@ function drawCanvas(){
   //Draw
   initCanvasSettings();
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
-  if(scale.value < 10)
+  if(scale.value < gridLimit)
   {
     ctx.value.drawImage(
         imageObj.value,
@@ -707,6 +708,7 @@ function transCanvas2RealInfo(targetCoor, canvasCoor) {
 }
 
 function updateRectanglePosition(left, top) {
+  if(scale.value >= gridLimit) return;
   // 获取 .rectangle 元素
   let rectangle = document.querySelector('.rectangle');
 
@@ -787,9 +789,6 @@ function initZoomSettings() {
   font-size: 16px;
   margin-bottom: 20px;
   word-wrap: break-word;
-}
-
-.coorInfo-style {
 }
 
 .button-style {
