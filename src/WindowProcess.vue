@@ -58,7 +58,7 @@
         <input
           type="number"
           min="0.1"
-          max="50"
+          :max="scaleRange"
           step="0.1"
           v-model.number="scale"
           v-if="imageSrc"
@@ -67,7 +67,7 @@
         <input
           type="range"
           min="1"
-          max="50"
+          :max="scaleRange"
           step="1"
           v-model.number="scale"
           v-if="imageSrc"
@@ -575,11 +575,11 @@ function loadJsonFile(event) {
 //   a.click();
 //   document.body.removeChild(a);
 // };
-
+const scaleRange = 60;
 const onWheel = (event) => {
   if (event.deltaY < 0) {
     if (scale.value < 0.9) scale.value += 0.1;
-    else scale.value = Math.floor(scale.value + 1);
+    else if (scale.value < scaleRange)scale.value = Math.floor(scale.value + 1);
   } else{
     if (scale.value > 0.2) {
       if (scale.value <= 1) scale.value -= 0.1;
