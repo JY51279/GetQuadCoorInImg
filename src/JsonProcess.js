@@ -60,8 +60,6 @@ function resetImgIndex(imgStr)
   {
     if (json[rootKey][i][imgKey].search(imgStr) !== -1)
     {
-      // console.log(json[rootKey][i][imgKey]);
-      // console.log(imgStr);
       imgIndex = i;
     }
   }

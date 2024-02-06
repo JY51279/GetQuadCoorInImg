@@ -86,10 +86,13 @@
             height="120"
           ></canvas>
         </div>
-        <input :value="classStr" @input="classInput" placeholder="Type class here">
-        <p>{{ classStr }}</p>
-        <div class="fileInfo-style">图片: {{ imgFileName }}</div>
+        <div>
+          <input type="checkbox" v-model="selectedOption" @click="checkClass" value="DBR">DBR<br>
+          <input type="checkbox" v-model="selectedOption" @click="checkClass" value="DDN">DDN<br>
+          <input type="checkbox" v-model="selectedOption" @click="checkClass" value="DLR">DLR<br>
+        </div>
         <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
+        <div class="fileInfo-style">图片: {{ imgFileName }}</div>
         <div
           class="coorInfo-style"
           v-for="(item, index) in dotsRealCoor"
@@ -352,7 +355,7 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
 
 // Scale
 watch(scale, (newScale) => {
-  console.log('scale:', newScale);
+  //console.log('scale:', newScale);
   updateViewPortDraw();
 });
 
@@ -433,6 +436,20 @@ onUnmounted(() => {
 });
 
 /******click */
+// Click checkbox to check the class
+const selectedOption = ref(["DBR"]);
+const classTotalStr = ["DBR", "DDN", "DLR"];
+function checkClass(e){
+	setTimeout(function(){
+		if(selectedOption.value.length===0){
+		selectedOption.value.push(classTotalStr[0]);
+    }
+		if(selectedOption.value.length > 1){
+		selectedOption.value.splice(0, 1);
+    }
+	}, 1);
+}
+
 // Click button to del dot
 const clearMessage = (index) => {
   deletePt(index);
@@ -467,7 +484,7 @@ const toggleDot = (e) => {
     dotsCanvasCoor.value.push({ x: canvasCoor.x, y: canvasCoor.y });
     dotsRealCoor.value.push({ x: realCoor.x, y: realCoor.y });
     drawDotInZoom(realCoor);
-    console.log('dotsCanvasCoor.value: ', dotsCanvasCoor.value);
+    //console.log('dotsCanvasCoor.value: ', dotsCanvasCoor.value);
     console.log('dotsRealCoor.value: ', dotsRealCoor.value);
   }
 };
@@ -483,11 +500,6 @@ const clearDots = () => {
   dotsRealCoor.value = [];
   console.log('cleardots Successfully.');
 };
-
-const classStr = ref('')
-function classInput(e) {
-  classStr.value = e.target.value
-}
 
 const chooseImgFile = () => {
   imgFileInput.value.click();
@@ -508,8 +520,7 @@ const loadImgFile = (event) => {
     offsetX.value = 0;
     offsetY.value = 0;
     clearDots();
-    console.log("imgFileName.value: " + imgFileName.value);
-    resetJsonProcess(jsonStr, classStr.value, imgFileName.value);
+    resetJsonProcess(jsonStr, selectedOption.value[0], imgFileName.value);
     imageObj.value.src = e.target.result;
   };
   reader.readAsDataURL(file);
@@ -563,9 +574,7 @@ function updateZoomView(event) {
     x: event.clientX,
     y: event.clientY,
   };
-  console.log("clinet: " + event.clientX + ", " + event.clientY)
   transCanvas2RealInfo(realDot2GetZoom.value, canvasCoor);
-  console.log(realDot2GetZoom.value)
   // Make the mouse in the middle of the zoomRect
   realDot2GetZoom.value.x = Math.max(realDot2GetZoom.value.x - 3, 0);
   realDot2GetZoom.value.y = Math.max(realDot2GetZoom.value.y - 3, 0);
@@ -575,10 +584,10 @@ function updateZoomView(event) {
     x: realDot2GetZoom.value.x - 1,
     y: realDot2GetZoom.value.y - 1,
   };
-  console.log(rectCoor)
+
   transReal2CanvasInfo(canvasCoor, rectCoor);
   updateRectanglePosition(canvasCoor.x, canvasCoor.y);
-  console.log("canvasCoor: " + canvasCoor.x + ", " + canvasCoor.y);
+
   // Draw zoom
   drawZoomAnddots();
 }
@@ -611,7 +620,7 @@ function transCanvas2ScaledInfo(targetCoor, canvasCoor) {
 function transReal2CanvasInfo(targetCoor, realCoor) {
   targetCoor.x = realCoor.x * scale.value + offsetX.value + offsetCanvasLeft;
   targetCoor.y = realCoor.y * scale.value + offsetY.value + offsetCanvasTop;
-  console.log( realCoor.x + ", " + scale.value + ", " + offsetX.value + ", " + offsetCanvasLeft);
+  //console.log( realCoor.x + ", " + scale.value + ", " + offsetX.value + ", " + offsetCanvasLeft);
 }
 
 function transCanvas2RealInfo(targetCoor, canvasCoor) {
@@ -633,7 +642,7 @@ async function updateViewSize() {
     viewportWidth.value = divRef.value.offsetWidth - 4; // - 4(border 2 * 2)
     viewportHeight.value = divRef.value.offsetHeight - 4;
     await nextTick()
-    console.log('updateViewSize');
+    //console.log('updateViewSize');
     //Reset ctx.value when update canvasSize
     initCanvasSettings();
     updateViewPortDraw();
