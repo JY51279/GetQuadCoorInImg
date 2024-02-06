@@ -178,23 +178,21 @@ function getDotInfo(e){
     x: e.clientX,
     y: e.clientY,
   };
-  let scaledCoor = { x: 0, y: 0 };
   let realCoor = { x: 0, y: 0 };
 
   transCanvas2RealInfo(realCoor, canvasCoor); // 得到原始图片对应坐标
-  transReal2ScaledInfo(scaledCoor, realCoor); // 使点位置与图片像素贴合
-  transScaled2CanvasInfo(canvasCoor, scaledCoor); // 得到贴合后画布确切坐标
+  transReal2CanvasInfo(canvasCoor, realCoor); // 得到贴合后画布确切坐标
 
   const existingDotIndex = dotsRealCoor.value.findIndex(
     (realDot) =>
       Math.abs(realDot.x - realCoor.x) < 2 &&
       Math.abs(realDot.y - realCoor.y) < 2
   );
-  //console.log('***********getDotInfo');
-  //console.log('e.client: (' + e.clientX + ', ' + e.clientY + ')');
-  //console.log('canvasCoor: (' + canvasCoor.x + ', ' + canvasCoor.y + ')');
-  //console.log('realCoor: (' + realCoor.x + ', ' + realCoor.y + ')');
-  return { canvasCoor, scaledCoor, realCoor, existingDotIndex };
+  // console.log('***********getDotInfo');
+  // console.log('e.client: (' + e.clientX + ', ' + e.clientY + ')');
+  // console.log('canvasCoor: (' + canvasCoor.x + ', ' + canvasCoor.y + ')');
+  // console.log('realCoor: (' + realCoor.x + ', ' + realCoor.y + ')');
+  return { canvasCoor, realCoor, existingDotIndex };
 };
 
 const imgPixelData2D = [];
@@ -282,10 +280,10 @@ function drawCanvas(){
   transScaled2CanvasInfo(canvasRBCoor, imgScaledRBCoor);
 
   //Draw
-  initCanvasSettings();
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
   if(scale.value < gridLimit)
   {
+    initCanvasSettings();
     ctx.value.drawImage(
         imageObj.value,
         sourceLTCoor.x,
@@ -398,7 +396,7 @@ function drawDotInZoom(newRealCoor){
 function updateViewPortDraw() {
   if (imageSrc === null || imageSrc.value === '') return;
   drawCanvas();
-  updateDotsScaledCoor();
+  updateDotsCanvasCoor();
 }
 
 // Move
@@ -560,11 +558,11 @@ function toggleDot(e){
     console.log('Already set 4 pts.');
   } else {
     // 否则，添加一个新的红点
-    dotsCanvasCoor.value.push({ x: canvasCoor.x, y: canvasCoor.y });
     dotsRealCoor.value.push({ x: realCoor.x, y: realCoor.y });
+    updateDotsCanvasCoor();
     drawDotInZoom(realCoor);
     //console.log('dotsCanvasCoor.value: ', dotsCanvasCoor.value);
-    console.log('dotsRealCoor.value: ', dotsRealCoor.value);
+    //console.log('dotsRealCoor.value: ', dotsRealCoor.value);
   }
 };
 
@@ -671,10 +669,33 @@ function updateZoomView(event) {
   drawZoomAnddots();
 }
 
-function updateDotsScaledCoor() {
-  for (let i = 0; i < dotsCanvasCoor.value.length; ++i) {
-    transReal2CanvasInfo(dotsCanvasCoor.value[i], dotsRealCoor.value[i]);
+function updateDotsCanvasCoor() {
+  // 新增一个红点
+  const realDotsNum = dotsRealCoor.value.length;
+  if (dotsCanvasCoor.value.length !== realDotsNum)
+  {
+    dotsCanvasCoor.value.push({ x: 0, y: 0 });
+    transReal2CanvasInfo(dotsCanvasCoor.value[realDotsNum - 1], dotsRealCoor.value[realDotsNum - 1]);
+    if (scale.value >= 10)
+    {
+      dotsCanvasCoor.value[realDotsNum - 1].x += 1;
+      dotsCanvasCoor.value[realDotsNum - 1].y += 1;
+    }
   }
+
+  // 更新所有点的坐标
+  else
+  {
+    for (let i = 0; i < realDotsNum; ++i) {
+      transReal2CanvasInfo(dotsCanvasCoor.value[i], dotsRealCoor.value[i]);
+      if (scale.value >= 10)
+      {
+        dotsCanvasCoor.value[i].x += 1;
+        dotsCanvasCoor.value[i].y += 1;
+      }
+    }
+  }
+  
 }
 
 function transScaled2RealInfo(targetCoor, scaledCoor) {
@@ -707,13 +728,11 @@ function transScaled2CanvasInfo(targetCoor, scaledCoor) {
 function transReal2CanvasInfo(targetCoor, realCoor) {
   let xOffsetGrid = 0, yOffsetGrid = 0;
   if (scale.value >= gridLimit) {
-    xOffsetGrid = (realCoor.x - sourceLTCoor.x) + 1;
-    yOffsetGrid = (realCoor.y - sourceLTCoor.y) + 1;
+    xOffsetGrid = (realCoor.x - sourceLTCoor.x);
+    yOffsetGrid = (realCoor.y - sourceLTCoor.y);
   }
   targetCoor.x = realCoor.x * scale.value + xOffsetGrid + offsetX.value + offsetCanvasLeft;
   targetCoor.y = realCoor.y * scale.value + yOffsetGrid + offsetY.value + offsetCanvasTop;
-  console.log("transReal2CanvasInfo");
-  console.log(targetCoor.x + ", " + targetCoor.y);
 }
 
 function transCanvas2RealInfo(targetCoor, canvasCoor) {
