@@ -201,7 +201,7 @@ const getDotInfo = (e) => {
 // Only draw the part of img inside the viewport
 const canvasLTCoor = { x: 0, y: 0 };
 const canvasRBCoor = { x: 0, y: 0 };
-const drawCanvas = () => {
+function drawCanvas(){
   if (canvas === null || canvas.value === null) {
     console.log('drawCanvas canvas Error.');
     return;
@@ -254,36 +254,60 @@ const drawCanvas = () => {
   //Draw
   initCanvasSettings();
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
-  ctx.value.drawImage(
-      imageObj.value,
-      sourceLTCoor.x,
-      sourceLTCoor.y,
-      sw,
-      sh,
-      canvasLTCoor.x,
-      canvasLTCoor.y,
-      dw,
-      dh
-    );
-  // if (scale.value >= 1) {
-  //   ctx.value.drawImage(
-  //     imageObj.value,
-  //     sourceLTCoor.x,
-  //     sourceLTCoor.y,
-  //     sw,
-  //     sh,
-  //     canvasLTCoor.x,
-  //     canvasLTCoor.y,
-  //     dw,
-  //     dh
-  //   );
-  // } else {
-  //   ctx.value.save();
-  //   ctx.value.scale(scale.value, scale.value);
-  //   ctx.value.drawImage(imageObj.value, canvasLTCoor.x, canvasLTCoor.y);
-  //   ctx.value.restore();
-  // }
+  if(scale.value < 10)
+  {
+    ctx.value.drawImage(
+        imageObj.value,
+        sourceLTCoor.x,
+        sourceLTCoor.y,
+        sw,
+        sh,
+        canvasLTCoor.x,
+        canvasLTCoor.y,
+        dw,
+        dh
+      );
+  }
+  else
+  {
+    drawGrid(canvasLTCoor, canvasRBCoor);
+    //drawImgInGrid();
+  }
+
 };
+
+// Area: [canvasLTCoor, canvasRBCoor)
+function drawGrid(canvasLTCoor, canvasRBCoor){
+    // 设置间隔
+    const space = scale.value + 1;
+    // 区域的左上和右下
+    const areaX1 = canvasLTCoor.x, areaX2 = Math.min(canvasRBCoor.x, canvas.value.width) - 1;
+    const areaY1 = canvasLTCoor.y, areaY2 = Math.min(canvasRBCoor.y, canvas.value.height) - 1;
+    // 设置虚线
+    ctx.value.setLineDash([]);
+
+    // 绘制水平方向的网格线
+    for(let y = areaY1; y <= areaY2; y += space){
+
+        ctx.value.beginPath();
+        ctx.value.moveTo(areaX1, y);
+        ctx.value.lineTo(areaX2, y);
+        ctx.value.stroke();
+    }
+
+    // 绘制垂直方向的网格线
+    for(let x = areaX1; x <= areaX2; x += space){
+        ctx.value.beginPath();
+        ctx.value.moveTo(x, areaY1);
+        ctx.value.lineTo(x, areaY2);
+        ctx.value.stroke();
+    }
+}
+function drawImgInGrid()
+{
+
+}
+
 
 const drawZoomAnddots = () => {
   if (realDot2GetZoom.value.x === -1) return;
