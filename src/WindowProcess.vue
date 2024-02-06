@@ -230,6 +230,7 @@ function updataImgData()
 // Only draw the part of img inside the viewport
 const canvasLTCoor = { x: 0, y: 0 };
 const canvasRBCoor = { x: 0, y: 0 };
+const sourceLTCoor = { x: 0, y: 0 };
 const gridLimit = 10;
 function drawCanvas(){
   if (canvas === null || canvas.value === null) {
@@ -261,7 +262,6 @@ function drawCanvas(){
   let imgScaledRBCoor = { x: x2 - offsetX.value, y: y2 - offsetY.value };
 
   //Calc letf-top and right-bottom pts in canvas
-  let sourceLTCoor = { x: 0, y: 0 };
   let sourceRBCoor = { x: 0, y: 0 };
 
   transScaled2RealInfo(sourceLTCoor, imgScaledLTCoor);
@@ -301,7 +301,7 @@ function drawCanvas(){
   else
   {
     drawGrid();
-    drawImgInGrid(sourceLTCoor, sw, sh);
+    drawImgInGrid(sw, sh);
   }
 
 };
@@ -333,7 +333,7 @@ function drawGrid(){
   }
 }
 
-function drawImgInGrid(sourceLTCoor, sourceWidth, sourceHeight)
+function drawImgInGrid(sourceWidth, sourceHeight)
 {
   const space = scale.value + 1;
   const dw = scale.value, dh = scale.value;
@@ -678,8 +678,8 @@ function updateDotsScaledCoor() {
 }
 
 function transScaled2RealInfo(targetCoor, scaledCoor) {
-  targetCoor.x = Math.floor(scaledCoor.x / scale.value);
-  targetCoor.y = Math.floor(scaledCoor.y / scale.value);
+    targetCoor.x = Math.floor(scaledCoor.x / scale.value);
+    targetCoor.y = Math.floor(scaledCoor.y / scale.value);   
 }
 
 function transReal2ScaledInfo(targetCoor, realCoor) {
@@ -688,23 +688,46 @@ function transReal2ScaledInfo(targetCoor, realCoor) {
 }
 
 function transScaled2CanvasInfo(targetCoor, scaledCoor) {
-  targetCoor.x = scaledCoor.x + offsetX.value + offsetCanvasLeft;
-  targetCoor.y = scaledCoor.y + offsetY.value + offsetCanvasTop;
+  if (scale.value >= gridLimit) {
+    let realCoor = { x: 0, y: 0 };
+    transScaled2RealInfo(realCoor, scaledCoor);
+    transReal2CanvasInfo(targetCoor, realCoor);
+  }
+  else
+  {
+    targetCoor.x = scaledCoor.x + offsetX.value + offsetCanvasLeft;
+    targetCoor.y = scaledCoor.y + offsetY.value + offsetCanvasTop;
+  }
 }
 
-function transCanvas2ScaledInfo(targetCoor, canvasCoor) {
-  targetCoor.x = canvasCoor.x - offsetX.value - offsetCanvasLeft;
-  targetCoor.y = canvasCoor.y - offsetY.value - offsetCanvasTop;
-}
+// function transCanvas2ScaledInfo(targetCoor, canvasCoor) {
+//   targetCoor.x = canvasCoor.x - offsetX.value - offsetCanvasLeft;
+//   targetCoor.y = canvasCoor.y - offsetY.value - offsetCanvasTop;
+// }
 function transReal2CanvasInfo(targetCoor, realCoor) {
-  targetCoor.x = realCoor.x * scale.value + offsetX.value + offsetCanvasLeft;
-  targetCoor.y = realCoor.y * scale.value + offsetY.value + offsetCanvasTop;
-  //console.log( realCoor.x + ", " + scale.value + ", " + offsetX.value + ", " + offsetCanvasLeft);
+  let xOffsetGrid = 0, yOffsetGrid = 0;
+  if (scale.value >= gridLimit) {
+    xOffsetGrid = (realCoor.x - sourceLTCoor.x) + 1;
+    yOffsetGrid = (realCoor.y - sourceLTCoor.y) + 1;
+  }
+  targetCoor.x = realCoor.x * scale.value + xOffsetGrid + offsetX.value + offsetCanvasLeft;
+  targetCoor.y = realCoor.y * scale.value + yOffsetGrid + offsetY.value + offsetCanvasTop;
+  console.log("transReal2CanvasInfo");
+  console.log(targetCoor.x + ", " + targetCoor.y);
 }
 
 function transCanvas2RealInfo(targetCoor, canvasCoor) {
-  targetCoor.x = Math.floor((canvasCoor.x - offsetX.value - offsetCanvasLeft) / scale.value);
-  targetCoor.y = Math.floor((canvasCoor.y - offsetY.value - offsetCanvasTop) / scale.value);
+  let xOffsetGrid = 0, yOffsetGrid = 0;
+  if (scale.value >= gridLimit) {
+    const xResult = (canvasCoor.x - canvasLTCoor.x) / (scale.value + 1);
+    const yResult = (canvasCoor.y - canvasLTCoor.y) / (scale.value + 1);
+    xOffsetGrid = Number.isInteger(xResult) ? xResult : Math.floor(xResult) + 1;
+    yOffsetGrid = Number.isInteger(yResult) ? yResult : Math.floor(yResult) + 1;
+  }
+
+  targetCoor.x = Math.floor((canvasCoor.x - xOffsetGrid - offsetX.value -offsetCanvasLeft) / scale.value);
+  targetCoor.y = Math.floor((canvasCoor.y - yOffsetGrid - offsetY.value -offsetCanvasTop) / scale.value);
+
 }
 
 function updateRectanglePosition(left, top) {
