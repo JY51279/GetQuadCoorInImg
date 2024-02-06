@@ -270,42 +270,66 @@ function drawCanvas(){
   }
   else
   {
-    drawGrid(canvasLTCoor, canvasRBCoor);
-    //drawImgInGrid();
+    drawGrid();
+    drawImgInGrid(sourceLTCoor, sw, sh);
   }
 
 };
 
 // Area: [canvasLTCoor, canvasRBCoor)
-function drawGrid(canvasLTCoor, canvasRBCoor){
-    // 设置间隔
-    const space = scale.value + 1;
-    // 区域的左上和右下
-    const areaX1 = canvasLTCoor.x, areaX2 = Math.min(canvasRBCoor.x, canvas.value.width) - 1;
-    const areaY1 = canvasLTCoor.y, areaY2 = Math.min(canvasRBCoor.y, canvas.value.height) - 1;
-    // 设置虚线
-    ctx.value.setLineDash([]);
+function drawGrid(){
+  // 设置间隔
+  const space = scale.value + 1;
+  // 区域的左上和右下
+  const areaX1 = canvasLTCoor.x, areaX2 = Math.min(canvasRBCoor.x, canvas.value.width) - 1;
+  const areaY1 = canvasLTCoor.y, areaY2 = Math.min(canvasRBCoor.y, canvas.value.height) - 1;
+  // 设置虚线
+  ctx.value.setLineDash([]);
 
-    // 绘制水平方向的网格线
-    for(let y = areaY1; y <= areaY2; y += space){
+  // 绘制水平方向的网格线
+  for(let y = areaY1; y <= areaY2; y += space){
+      ctx.value.beginPath();
+      ctx.value.moveTo(areaX1, y);
+      ctx.value.lineTo(areaX2, y);
+      ctx.value.stroke();
+  }
 
-        ctx.value.beginPath();
-        ctx.value.moveTo(areaX1, y);
-        ctx.value.lineTo(areaX2, y);
-        ctx.value.stroke();
-    }
-
-    // 绘制垂直方向的网格线
-    for(let x = areaX1; x <= areaX2; x += space){
-        ctx.value.beginPath();
-        ctx.value.moveTo(x, areaY1);
-        ctx.value.lineTo(x, areaY2);
-        ctx.value.stroke();
-    }
+  // 绘制垂直方向的网格线
+  for(let x = areaX1; x <= areaX2; x += space){
+      ctx.value.beginPath();
+      ctx.value.moveTo(x, areaY1);
+      ctx.value.lineTo(x, areaY2);
+      ctx.value.stroke();
+  }
 }
-function drawImgInGrid()
-{
 
+function drawImgInGrid(sourceLTCoor, sourceWidth, sourceHeight)
+{
+  const space = scale.value + 1;
+  const dw = scale.value, dh = scale.value;
+  const startX = canvasLTCoor.x + 1, startY = canvasLTCoor.y + 1; // 包括最左/上侧网格线
+
+  for (let shOffset = 0; shOffset < sourceHeight; ++shOffset)
+  {
+    const canvasY = startY + shOffset * space;
+    const sourceY = sourceLTCoor.y + shOffset;
+    for (let swOffset = 0; swOffset < sourceWidth; ++swOffset)
+    {
+      const canvasX = startX + swOffset * space;
+      const sourceX = sourceLTCoor.x + swOffset;
+      ctx.value.drawImage(
+        imageObj.value,
+        sourceX,
+        sourceY,
+        1,
+        1,
+        canvasX,
+        canvasY,
+        dw,
+        dh
+      );
+    }
+  }
 }
 
 
