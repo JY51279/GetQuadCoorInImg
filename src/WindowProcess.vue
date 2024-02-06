@@ -148,7 +148,6 @@ const offsetY = ref(0);
 const scale = ref(0);
 const imageObj = ref(null);
 const imageSrc = ref('');
-const imageBoxRef = ref(null);
 
 const { pressed } = useMousePressed({ target: divRef });
 const { x, y } = useMouse();
@@ -197,6 +196,36 @@ function getDotInfo(e){
   //console.log('realCoor: (' + realCoor.x + ', ' + realCoor.y + ')');
   return { canvasCoor, scaledCoor, realCoor, existingDotIndex };
 };
+
+const imgPixelData2D = [];
+function updataImgData()
+{
+   // 创建一个Canvas对象
+   let canvasTmp = document.createElement('canvas');
+   canvasTmp.width = initImgWidth.value;
+   canvasTmp.height = initImgHeight.value;
+
+  // 将图像绘制到Canvas上
+  var ctxTmp = canvasTmp.getContext('2d');
+  ctxTmp.drawImage(imageObj.value, 0, 0);
+
+  // 获取图像像素的颜色矩阵
+  const imgPixelData = ctxTmp.getImageData(0, 0, canvasTmp.width, canvasTmp.height).data;
+
+  for (let x = 0; x < canvasTmp.width; ++x) {
+    imgPixelData2D[x] = [];
+    for (let y = 0; y < canvasTmp.height; ++y) {
+      const i = (y * canvasTmp.width + x) * 4;
+      const r = imgPixelData[i];
+      const g = imgPixelData[i + 1];
+      const b = imgPixelData[i + 2];
+      const a = imgPixelData[i + 3];
+      const cssColor = `rgba(${r}, ${g}, ${b}, ${a})`;
+      imgPixelData2D[x][y] = cssColor;
+    }
+    //console.log(imgPixelData2D);
+  }
+}
 
 // Only draw the part of img inside the viewport
 const canvasLTCoor = { x: 0, y: 0 };
@@ -317,17 +346,19 @@ function drawImgInGrid(sourceLTCoor, sourceWidth, sourceHeight)
     {
       const canvasX = startX + swOffset * space;
       const sourceX = sourceLTCoor.x + swOffset;
-      ctx.value.drawImage(
-        imageObj.value,
-        sourceX,
-        sourceY,
-        1,
-        1,
-        canvasX,
-        canvasY,
-        dw,
-        dh
-      );
+      ctx.value.fillStyle = imgPixelData2D[sourceX][sourceY];
+      ctx.value.fillRect(canvasX, canvasY, dw, dh);
+      // ctx.value.drawImage(
+      //   imageObj.value,
+      //   sourceX,
+      //   sourceY,
+      //   1,
+      //   1,
+      //   canvasX,
+      //   canvasY,
+      //   dw,
+      //   dh
+      // );
     }
   }
 }
@@ -412,12 +443,11 @@ watch(imageSrc, (newImageSrc) => {
   if (newImageSrc) {
     const img = new Image();
     img.src = newImageSrc;
-    imageBoxRef.value = img;
     img.onload = () => {
       // Update imgInfo
       initImgWidth.value = img.width;
       initImgHeight.value = img.height;
-
+      updataImgData();
       // Update ctx
       if (ctx !== null && ctx.value !== null) {
         ctx.value.clearRect(
