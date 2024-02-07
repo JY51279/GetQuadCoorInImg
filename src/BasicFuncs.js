@@ -5,7 +5,7 @@ export function swap(arr, index1, index2) {
 // 以左上点为0号点顺时针排序
 export function setQuadDots2ClockWise(dotsArray)
 {
-    const leftUpId = calcLeftUpPtIndex();
+    const leftUpId = calcLeftUpPtIndex(dotsArray);
     if (leftUpId === -1) return false;
     if (leftUpId !== 0)
         swap(dotsArray, 0, leftUpId);
@@ -35,7 +35,7 @@ export function setQuadDots2ClockWise(dotsArray)
 
 function calcLeftUpPtIndex(dotsArray)
 {
-  let xySumTmp = 0, xySumMin = Number.MAX_VALUE, targetId = -1;
+  let xySumTmp = 0, xySumMin = Infinity, targetId = -1;
   for (let i = 0; i < dotsArray.length; ++i)
   {
     xySumTmp = dotsArray[i].x + dotsArray[i].y;
@@ -72,4 +72,20 @@ export function parsePointString(str, separator) {
     }
 
     return points;
+}
+
+export function getClosestPtIndexInArray(oriPoint, pointArray) {
+    let minDistance = Infinity;
+    let closestIndex = -1;
+
+    for (let i = 0; i < pointArray.length; i++) {
+        const point = pointArray[i];
+        const distance = Math.sqrt(Math.pow(oriPoint.x - point.x, 2) + Math.pow(oriPoint.y - point.y, 2));
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestIndex = i;
+        }
+    }
+
+    return closestIndex;
 }

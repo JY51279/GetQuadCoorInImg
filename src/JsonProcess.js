@@ -1,22 +1,20 @@
-import { setQuadDots2ClockWise, getQuadCenterPoint, parsePointString } from './BasicFuncs.js';
-
-export function getDefultQuadIndex(dotsRealCoor) {
-  return defaultQuadIndex;
-}
+import { setQuadDots2ClockWise, getQuadCenterPoint, parsePointString, getClosestPtIndexInArray } from './BasicFuncs.js';
 
 export function resetJsonProcess(jsonStr, classStr, imgStr)
 {
-  defaultQuadIndex = -1;
+  quadIndex = -1;
   try {
     resetJson(jsonStr);
     resetClassKeys(classStr.toUpperCase());
+    console.log("000");
     resetPicJson(imgStr);
+    console.log("111");
     resetCenterPtList();
+    console.log("222")
   }
   catch(err) {
     window.alert("Failed to reset JSON data. Please check the input and try again.");
   }
-  
 }
 
 const rootKey = "Picture";
@@ -59,16 +57,18 @@ function resetImgIndex(imgStr)
   for (let i = 0; i < json[rootKey].length; ++i)
   {
     if (json[rootKey][i][imgKey].search(imgStr) !== -1)
+    {
       imgIndex = i;
+      return imgIndex;
+    }
   }
-  //console.log("imgIndex: " + imgIndex);
   return imgIndex;
 }
 
 let jsonPerPicArray = [];
 function resetPicJson(imgStr)
 {
-  resetImgIndex(imgStr);
+  const imgIndex = resetImgIndex(imgStr);
   if(imgIndex === -1)
   {
     window.alert("Unable to retrieve the image from the JSON file.");
@@ -100,7 +100,8 @@ function resetCenterPtList()
 let quadDots = [];
 let quadDotsStr = '';
 let centerPt = { x: 0, y: 0 };
-function setQuadInfo(realDots)
+let quadIndex = -1;
+export function setQuadInfo(realDots, quadNumber)
 {
   if (realDots.length !== 4) {
     window.alert("Not enough dots to get the quadInfo.");
@@ -110,7 +111,10 @@ function setQuadInfo(realDots)
   setQuadDots2ClockWise(quadDots);
   //quadDotsStr = array.join(separator); // 将数组转换为以separator分隔的字符串
   centerPt = getQuadCenterPoint(quadDots);
+  quadIndex = getClosestPtIndexInArray(centerPt, centerPtList);
+  quadNumber.value = quadIndex + 1;
+  console.log("quadIndex: " + quadIndex);
 }
 
 
-let defaultQuadIndex = -1;
+

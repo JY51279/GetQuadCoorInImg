@@ -101,6 +101,7 @@
           <span>({{ item.x }}, {{ item.y }})</span>
           <button @click="clearMessage(index)" class="button-delete-style">x</button>
         </div>
+        <div class="fileInfo-style">矩形对应次序: {{ quadNumber }}</div>
       </div>
       <div class="button-group">
         <button @click="chooseJsonFile" class="button-style">Get JsonFile</button>
@@ -118,7 +119,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
-import { resetJsonProcess, setQuadInfo, getDefultQuadIndex } from './JsonProcess.js';
+import { resetJsonProcess, setQuadInfo } from './JsonProcess.js';
 
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
@@ -157,6 +158,7 @@ function deletePt(ptIndex){
   if (ptIndex !== -1 && ptIndex < dotsCanvasCoor.value.length) {
     dotsCanvasCoor.value.splice(ptIndex, 1);
     dotsRealCoor.value.splice(ptIndex, 1);
+    quadNumber.value = -1;
     drawZoomAnddots();
     return true;
   }
@@ -531,6 +533,7 @@ function clearMessage(index){
 };
 
 // Click canvas to get dot
+const quadNumber = ref(-1);
 function toggleDot(e){
   if (imageSrc == null || imageSrc.value == '' || !isNotLongPress) {
     return;
@@ -559,8 +562,13 @@ function toggleDot(e){
     dotsRealCoor.value.push({ x: realCoor.x, y: realCoor.y });
     updateDotsCanvasCoor();
     drawDotInZoom(realCoor);
-    if (dotsRealCoor.value.length === 4)
-      setQuadInfo(dotsRealCoor.value);
+    if (dotsRealCoor.value.length === 4) {
+      setQuadInfo(dotsRealCoor.value, quadNumber);
+      console.log("quadNumber: " + quadNumber.value);
+    }
+    else {
+      quadNumber.value = -1;
+    }
     //console.log('dotsCanvasCoor.value: ', dotsCanvasCoor.value);
     //console.log('dotsRealCoor.value: ', dotsRealCoor.value);
   }
