@@ -62,3 +62,14 @@ function getCenterPt(targetPt, point1, point2)
     targetPt.x = (point1.x + point2.x) / 2;
     targetPt.y = (point1.y + point2.y) / 2;
 }
+
+export function parsePointString(str, separator) {
+    const points = [];
+    const coords = str.split(separator).map(Number);
+
+    for (let i = 0; i < coords.length; i += 2) {
+        points.push({ x: coords[i], y: coords[i + 1] });
+    }
+
+    return points;
+}

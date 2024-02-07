@@ -1,4 +1,4 @@
-import { setQuadDots2ClockWise, getQuadCenterPoint } from './BasicFuncs.js';
+import { setQuadDots2ClockWise, getQuadCenterPoint, parsePointString } from './BasicFuncs.js';
 
 export function getDefultQuadIndex(dotsRealCoor) {
   return defaultQuadIndex;
@@ -11,6 +11,7 @@ export function resetJsonProcess(jsonStr, classStr, imgStr)
     resetJson(jsonStr);
     resetClassKeys(classStr.toUpperCase());
     resetPicJson(imgStr);
+    resetCenterPtList();
   }
   catch(err) {
     window.alert("Failed to reset JSON data. Please check the input and try again.");
@@ -83,16 +84,22 @@ function resetJson(jsonStr)
 }
 
 let centerPtList = [];
+const separator = ' ';
 function resetCenterPtList()
 {
-  for (let i = 0; i < )
+  centerPtList = [];
+  for (let i = 0; i < jsonPerPicArray.length; ++i)
+  {
+    const quadPts = parsePointString(jsonPerPicArray[i][classKeys.key2], separator);
+    const quadCenter = getQuadCenterPoint(quadPts);
+    centerPtList.push(quadCenter);
+  }
 }
 
 
 let quadDots = [];
 let quadDotsStr = '';
 let centerPt = { x: 0, y: 0 };
-const separator = ' ';
 function setQuadInfo(realDots)
 {
   if (realDots.length !== 4) {
