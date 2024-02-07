@@ -7,19 +7,15 @@ export function getDefultQuadIndex(dotsRealCoor) {
 export function resetJsonProcess(jsonStr, classStr, imgStr)
 {
   defaultQuadIndex = -1;
-  imgIndex = -1;
   try {
     resetJson(jsonStr);
     resetClassKeys(classStr.toUpperCase());
-    resetImgIndex(imgStr);
+    resetPicJson(imgStr);
   }
   catch(err) {
     window.alert("Failed to reset JSON data. Please check the input and try again.");
   }
-  if(imgIndex === -1)
-  {
-    window.alert("Unable to retrieve the image from the JSON file.");
-  }
+  
 }
 
 const rootKey = "Picture";
@@ -55,19 +51,28 @@ function resetClassKeys(classStr)
   }
 }
 
-let imgIndex = -1;
-let jsonPerPicArray = [];
+
 function resetImgIndex(imgStr)
 {
+  let imgIndex = -1;
   for (let i = 0; i < json[rootKey].length; ++i)
   {
     if (json[rootKey][i][imgKey].search(imgStr) !== -1)
-    {
       imgIndex = i;
-      jsonPerPicArray = json[rootKey][i][classKeys.key1];
-    }
   }
-  console.log("imgIndex: " + imgIndex);
+  //console.log("imgIndex: " + imgIndex);
+  return imgIndex;
+}
+
+let jsonPerPicArray = [];
+function resetPicJson(imgStr)
+{
+  resetImgIndex(imgStr);
+  if(imgIndex === -1)
+  {
+    window.alert("Unable to retrieve the image from the JSON file.");
+  }
+  jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
 }
 
 let json = {};
@@ -76,6 +81,13 @@ function resetJson(jsonStr)
   json = JSON.parse(jsonStr);
   //console.log(json);
 }
+
+let centerPtList = [];
+function resetCenterPtList()
+{
+  for (let i = 0; i < )
+}
+
 
 let quadDots = [];
 let quadDotsStr = '';
