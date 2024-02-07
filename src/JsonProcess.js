@@ -1,5 +1,4 @@
 import { setQuadDots2ClockWise, getQuadCenterPoint, parsePointString, getClosestPtIndexInArray } from './BasicFuncs.js';
-
 export function resetJsonProcess(jsonStr, classStr, imgStr)
 {
   quadIndex = -1;
@@ -104,7 +103,7 @@ let quadIndex = -1;
 export function setQuadInfo(realDots, quadNumber)
 {
   if (realDots.length !== 4) {
-    window.alert("Not enough dots to get the quadInfo.");
+    window.alert("Not enough dots to obtain the quadInfo.");
     return;
   }
   quadDots = realDots.slice();

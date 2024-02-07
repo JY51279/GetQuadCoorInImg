@@ -99,18 +99,25 @@
           :key="index"
         >
           <span>({{ item.x }}, {{ item.y }})</span>
-          <button @click="clearMessage(index)" class="button-delete-style">x</button>
+          <button @click="clearOneDot(index)" class="button-delete-style">x</button>
         </div>
         <div class="fileInfo-style">矩形对应次序: {{ quadNumber }}</div>
       </div>
+      <div>
+      <!-- 输出区域 -->
+      <div ref="output" class="output" style="overflow-y: scroll; height: 200px;">
+        <div v-for="(message, index) in outputMessages" :key="index">{{ message }}</div>
+      </div>
+      </div>
       <div class="button-group">
         <button @click="chooseJsonFile" class="button-style">Get JsonFile</button>
-        <button @click="chooseImgFile" class="button-style">Get Picture</button>
+        <button @click="chooseImgFile" class="button-style">Get PicFile</button>
         <button @click="saveDots" class="button-style">Save Dots</button>
         <button @click="clearDots" class="button-style">Clear Dots</button>
         <button @click="resetPosition" class="button-style">
           Reset Position
         </button>
+        <button @click="clearMessage" class="button-style">Clear Msgs</button>
       </div>
     </div>
   </div>
@@ -169,7 +176,7 @@ function deletePt(ptIndex){
 function deleteDot(e){
   const { existingDotIndex } = getDotInfo(e);
   if (!deletePt(existingDotIndex)) {
-    console.log('Error delete the pt in canvas!');
+    outputMessage('Error delete the pt in canvas!');
   }
 };
 
@@ -209,7 +216,7 @@ function updataImgData()
 
   // 获取图像像素的颜色矩阵
   const imgPixelData = ctxTmp.getImageData(0, 0, canvasTmp.width, canvasTmp.height).data;
-
+  imgPixelData2D.splice(0, imgPixelData2D.length);
   for (let x = 0; x < canvasTmp.width; ++x) {
     imgPixelData2D[x] = [];
     for (let y = 0; y < canvasTmp.height; ++y) {
@@ -232,7 +239,7 @@ const sourceLTCoor = { x: 0, y: 0 };
 const gridLimit = 10;
 function drawCanvas(){
   if (canvas === null || canvas.value === null) {
-    console.log('drawCanvas canvas Error.');
+    outputMessage('drawCanvas canvas Error.');
     return;
   }
   if (
@@ -241,7 +248,7 @@ function drawCanvas(){
     offsetX.value <= -initImgWidth.value * scale.value ||
     offsetY <= -initImgHeight.value * scale.value
   ) {
-    console.log('drawCanvas offset Error.');
+    outputMessage('drawCanvas offset Error.');
     return;
   }
 
@@ -465,7 +472,6 @@ watch(imageSrc, (newImageSrc) => {
       );
       scale.value = scaleValue; //scale.value修改，自动调用watch scale
 
-      console.log('...Load Pic....................................');
       console.log('scale:', scale);
       console.log('viewportWidth.value:', viewportWidth.value);
       console.log('viewportHeight .value:', viewportHeight.value);
@@ -494,6 +500,8 @@ watch(pressed, (newVal) => {
   }
 });
 
+
+const output = ref(null);
 onMounted(() => {
   console.log('onMounted...');
   initZoomSettings();
@@ -502,6 +510,9 @@ onMounted(() => {
   window.addEventListener('mousemove', () => {
     mouseMoved = true;
   });
+
+  const outputDiv = output.value;
+  outputDiv.scrollTop = outputDiv.scrollHeight;
 });
 
 onUnmounted(() => {
@@ -511,6 +522,16 @@ onUnmounted(() => {
     mouseMoved = true;
   });
 });
+
+// 输出信息到输出区域
+const outputMessages = ref([]);
+async function outputMessage(message) {
+  outputMessages.value.push(message);
+  // 滚动到最底部
+  await nextTick();
+  const outputDiv = output.value;
+  outputDiv.scrollTop = outputDiv.scrollHeight;
+}
 
 /******click */
 // Click checkbox to check the class
@@ -528,7 +549,7 @@ function checkClass(e){
 }
 
 // Click button to del dot
-function clearMessage(index){
+function clearOneDot(index){
   deletePt(index);
 };
 
@@ -545,18 +566,18 @@ function toggleDot(e){
     e.clientY < canvasLTCoor.y ||
     e.clientY >= canvasRBCoor.y
   ) {
-    console.log('The pt is not in the pic.');
+    outputMessage('The pt is not in the pic.');
     return;
   }
-  console.log('****************************toggleDot');
+
   const { canvasCoor, realCoor, existingDotIndex } = getDotInfo(e);
   if (existingDotIndex !== -1) {
     // 如果已经存在红点，删除它
     deletePt(existingDotIndex);
-    console.log('Delete the pt.');
+    outputMessage('Delete the pt.');
   } else if (dotsCanvasCoor.value.length >= 4) {
     // 如果已经有四个红点，输出“Already set 4 pts.”
-    console.log('Already set 4 pts.');
+    outputMessage('Already set 4 pts.');
   } else {
     // 否则，添加一个新的红点
     dotsRealCoor.value.push({ x: realCoor.x, y: realCoor.y });
@@ -564,13 +585,11 @@ function toggleDot(e){
     drawDotInZoom(realCoor);
     if (dotsRealCoor.value.length === 4) {
       setQuadInfo(dotsRealCoor.value, quadNumber);
-      console.log("quadNumber: " + quadNumber.value);
+      //console.log("quadNumber: " + quadNumber.value);
     }
     else {
       quadNumber.value = -1;
     }
-    //console.log('dotsCanvasCoor.value: ', dotsCanvasCoor.value);
-    //console.log('dotsRealCoor.value: ', dotsRealCoor.value);
   }
 };
 
@@ -583,8 +602,14 @@ function resetPosition() {
 function clearDots(){
   dotsCanvasCoor.value = [];
   dotsRealCoor.value = [];
-  console.log('cleardots Successfully.');
+  quadNumber.value = -1;
+  //outputMessage('cleardots Successfully.');
 };
+
+function clearMessage()
+{
+  outputMessages.value = [];
+}
 
 function chooseImgFile(){
   imgFileInput.value.click();
@@ -594,7 +619,8 @@ function chooseJsonFile(){
 };
 
 let imgFileName = ref(null);
-function loadImgFile(event){
+function loadImgFile(event) {
+  outputMessage('...Load Pic...........');
   const file = event.target.files[0];
   imgFileName.value = file.name;
   const reader = new FileReader();
@@ -649,6 +675,7 @@ const onWheel = (event) => {
     else
       scale.value = 0.1;
   }
+  console.log(scale.value);
 };
 
 const zoomView = ref(null);
@@ -772,7 +799,7 @@ async function updateViewSize() {
     viewportWidth.value = divRef.value.offsetWidth - 4; // - 4(border 2 * 2)
     viewportHeight.value = divRef.value.offsetHeight - 4;
     await nextTick()
-    //console.log('updateViewSize');
+
     //Reset ctx.value when update canvasSize
     initCanvasSettings();
     updateViewPortDraw();
