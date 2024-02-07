@@ -105,7 +105,7 @@
       <div class="button-group">
         <button @click="chooseJsonFile" class="button-style">Get JsonFile</button>
         <button @click="chooseImgFile" class="button-style">Get Picture</button>
-        <!-- <button @click="saveJsonFile" class="button-style">Save CoorInfo</button> -->
+        <button @click="saveDots" class="button-style">Save Dots</button>
         <button @click="clearDots" class="button-style">Clear Dots</button>
         <button @click="resetPosition" class="button-style">
           Reset Position
@@ -118,7 +118,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
-import { resetJsonProcess, getDefultQuadIndex } from './JsonProcess.js';
+import { resetJsonProcess, setQuadInfo, getDefultQuadIndex } from './JsonProcess.js';
 
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
@@ -545,7 +545,7 @@ function toggleDot(e){
     console.log('The pt is not in the pic.');
     return;
   }
-  console.log('*****************************************toggleDot');
+  console.log('****************************toggleDot');
   const { canvasCoor, realCoor, existingDotIndex } = getDotInfo(e);
   if (existingDotIndex !== -1) {
     // 如果已经存在红点，删除它
@@ -559,6 +559,8 @@ function toggleDot(e){
     dotsRealCoor.value.push({ x: realCoor.x, y: realCoor.y });
     updateDotsCanvasCoor();
     drawDotInZoom(realCoor);
+    if (dotsRealCoor.value.length === 4)
+      setQuadInfo(dotsRealCoor.value);
     //console.log('dotsCanvasCoor.value: ', dotsCanvasCoor.value);
     //console.log('dotsRealCoor.value: ', dotsRealCoor.value);
   }

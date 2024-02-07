@@ -1,3 +1,5 @@
+import { setQuadDots2ClockWise, getQuadCenterPoint } from './BasicFuncs.js';
+
 export function getDefultQuadIndex(dotsRealCoor) {
   return defaultQuadIndex;
 }
@@ -74,5 +76,22 @@ function resetJson(jsonStr)
   json = JSON.parse(jsonStr);
   //console.log(json);
 }
+
+let quadDots = [];
+let quadDotsStr = '';
+let centerPt = { x: 0, y: 0 };
+const separator = ' ';
+function setQuadInfo(realDots)
+{
+  if (realDots.length !== 4) {
+    window.alert("Not enough dots to get the quadInfo.");
+    return;
+  }
+  quadDots = realDots.slice();
+  setQuadDots2ClockWise(quadDots);
+  //quadDotsStr = array.join(separator); // 将数组转换为以separator分隔的字符串
+  centerPt = getQuadCenterPoint(quadDots);
+}
+
 
 let defaultQuadIndex = -1;
