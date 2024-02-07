@@ -12,11 +12,11 @@ export function resetJsonProcess(jsonStr, classStr, imgStr)
     resetImgIndex(imgStr);
   }
   catch(err) {
-    window.alert("Failed resetJsonProcess.");
+    window.alert("Failed to reset JSON data. Please check the input and try again.");
   }
   if(imgIndex === -1)
   {
-    window.alert("imgIndex === -1");
+    window.alert("Unable to retrieve the image from the JSON file.");
   }
 }
 
@@ -54,6 +54,7 @@ function resetClassKeys(classStr)
 }
 
 let imgIndex = -1;
+let jsonPerPicArray = [];
 function resetImgIndex(imgStr)
 {
   for (let i = 0; i < json[rootKey].length; ++i)
@@ -61,6 +62,7 @@ function resetImgIndex(imgStr)
     if (json[rootKey][i][imgKey].search(imgStr) !== -1)
     {
       imgIndex = i;
+      jsonPerPicArray = json[rootKey][i][classKeys.key1];
     }
   }
   console.log("imgIndex: " + imgIndex);
@@ -70,7 +72,7 @@ let json = {};
 function resetJson(jsonStr)
 {
   json = JSON.parse(jsonStr);
-  console.log(json);
+  //console.log(json);
 }
 
 let defaultQuadIndex = -1;

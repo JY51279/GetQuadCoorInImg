@@ -152,8 +152,6 @@ const imageSrc = ref('');
 const { pressed } = useMousePressed({ target: divRef });
 const { x, y } = useMouse();
 
-//
-
 // Basic delete
 function deletePt(ptIndex){
   if (ptIndex !== -1 && ptIndex < dotsCanvasCoor.value.length) {
