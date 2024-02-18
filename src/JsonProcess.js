@@ -112,7 +112,22 @@ export function setQuadInfo(realDots, quadNumberRef)
   centerPt = getQuadCenterPoint(quadDots);
   quadIndex = getClosestPtIndexInArray(centerPt, centerPtList);
   quadNumberRef.value = quadIndex + 1;
-  console.log("quadIndex: " + quadIndex);
+  //console.log("quadIndex: " + quadIndex);
+}
+
+export function updateQuadIndex(quadNum)
+{
+  quadIndex = quadNum - 1;
+}
+
+export function isTransQuadDots2Str(realDots)
+{
+  if (realDots.length !== 4) {
+    return false;
+  }
+  quadDotsStr = realDots.map(item => `${item.x} ${item.y}`).join(' ');
+  //console.log(quadDotsStr);
+  return true;
 }
 
 

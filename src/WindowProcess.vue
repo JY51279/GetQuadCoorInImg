@@ -125,9 +125,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick, proxyRefs } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
-import { resetJsonProcess, setQuadInfo } from './JsonProcess.js';
+import { resetJsonProcess, setQuadInfo, updateQuadIndex, getQuadDotsStr } from './JsonProcess.js';
 
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
@@ -525,7 +525,9 @@ const outputQuadNumber = ref(0);
 function updateQuadNum() {
   if (inputQuadNum.value === '') outputQuadNumber.value = calcQuadNum.value;
   else outputQuadNumber.value = inputQuadNum.value;
+  updateQuadIndex(outputQuadNumber.value);
 }
+
 function getInputQuadNum(e)
 {
   inputQuadNum.value = e.target.value;
@@ -604,6 +606,11 @@ function clearDots(){
   outputQuadNumber.value = 0;
   //outputMessage('cleardots Successfully.');
 };
+
+function saveDots()
+{
+  getQuadDotsStr(dotsRealCoor.value);
+}
 
 function clearMessage()
 {
