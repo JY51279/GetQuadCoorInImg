@@ -125,7 +125,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick, proxyRefs } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
 import { resetJsonProcess, setQuadInfo } from './JsonProcess.js';
 
@@ -138,8 +138,6 @@ const viewportHeight = ref(0);
 
 const canvas = ref(null);
 const ctx = ref(null);
-const initImgWidth = ref(0);
-const initImgHeight = ref(0);
 
 let mouseMoved = false;
 let timer = null;
@@ -193,7 +191,7 @@ function getDotInfo(e){
       Math.abs(realDot.y - realCoor.y) < 2
   );
   // console.log('***********getDotInfo');
-  // console.log('e.client: (' + e.clientX + ', ' + e.clientY + ')');
+   console.log('e.client: (' + e.clientX + ', ' + e.clientY + ')');
   // console.log('canvasCoor: (' + canvasCoor.x + ', ' + canvasCoor.y + ')');
   // console.log('realCoor: (' + realCoor.x + ', ' + realCoor.y + ')');
   return { canvasCoor, realCoor, existingDotIndex };
@@ -354,17 +352,6 @@ function drawImgInGrid(sourceWidth, sourceHeight)
       const sourceX = sourceLTCoor.x + swOffset;
       ctx.value.fillStyle = imgPixelData2D[sourceX][sourceY];
       ctx.value.fillRect(canvasX, canvasY, dw, dh);
-      // ctx.value.drawImage(
-      //   imageObj.value,
-      //   sourceX,
-      //   sourceY,
-      //   1,
-      //   1,
-      //   canvasX,
-      //   canvasY,
-      //   dw,
-      //   dh
-      // );
     }
   }
 }
@@ -439,9 +426,42 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
 });
 
 // Scale
-watch(scale, (newScale) => {
+function updateOffset(oldScale, newScale) {
+  if (oldScale < 1 || newScale < 1) return;
+
+  // Judge: Mouse in rendered area
+  console.log("Before: (" + offsetX.value + ', ' + offsetY.value + ')');
+  let canvasCoor = Object.assign({}, mouseCoor);;
+  let realCoor = { x: 0, y: 0 };
+  transCanvas2RealInfo(realCoor, canvasCoor, oldScale);
+  if (realCoor.x < sourceLTCoor.x || realCoor.x > sourceRBCoor.x ||
+    realCoor.y < sourceLTCoor.y || realCoor.y > sourceRBCoor.y)
+    return;
+
+  // purpose：Scale the image based on the mouseCoor
+  // Calc fineTuning
+  transReal2CanvasInfo(canvasCoor, realCoor, oldScale);
+  const offsetPixels = {
+    x: mouseCoor.x - canvasCoor.x,
+    y: mouseCoor.y - canvasCoor.y
+  }
+  const fineTuning = {
+    x: Math.floor(offsetPixels.x / oldScale * newScale),
+    y: Math.floor(offsetPixels.y / oldScale * newScale)
+  }
+
+  // Calc scaled canvasCoor without updating offset
+  transReal2CanvasInfo(canvasCoor, realCoor, newScale);
+
+  offsetX.value -= canvasCoor.x + fineTuning.x - mouseCoor.x;
+  offsetY.value -= canvasCoor.y + fineTuning.y - mouseCoor.y;
+}
+
+watch(scale, (newScale, oldScale) => {
   //console.log('scale:', newScale);
-  if (newScale !== 0) updateViewPortDraw();
+  if (newScale === 0) return;
+  else updateOffset(oldScale, newScale);
+  updateViewPortDraw();
 });
 
 // Judge click type
@@ -463,14 +483,16 @@ watch(pressed, (newVal) => {
   }
 });
 
-
+const mouseCoor = { x: 0, y: 0 };
 const output = ref(null);
 onMounted(() => {
   console.log('onMounted...');
   initZoomSettings();
   updateViewSize();
   window.addEventListener('resize', updateViewSize);
-  window.addEventListener('mousemove', () => {
+  window.addEventListener('mousemove', (e) => {
+    mouseCoor.x = e.clientX;
+    mouseCoor.y = e.clientY;
     mouseMoved = true;
   });
 
@@ -481,7 +503,9 @@ onMounted(() => {
 onUnmounted(() => {
   console.log('onUnmounted...');
   window.removeEventListener('resize', updateViewSize);
-  window.removeEventListener('mousemove', () => {
+  window.removeEventListener('mousemove', (e) => {
+    mouseCoor.x = e.clientX;
+    mouseCoor.y = e.clientY;
     mouseMoved = true;
   });
 });
@@ -600,6 +624,8 @@ function chooseJsonFile(){
 };
 
 // Load Img
+const initImgWidth = ref(0);
+const initImgHeight = ref(0);
 const imageObj = ref(null);
 const imageSrc = ref('');
 function initDrawImg() {
@@ -735,7 +761,7 @@ function updateDotsCanvasCoor() {
   {
     dotsCanvasCoor.value.push({ x: 0, y: 0 });
     transReal2CanvasInfo(dotsCanvasCoor.value[realDotsNum - 1], dotsRealCoor.value[realDotsNum - 1]);
-    if (scale.value >= 10)
+    if (scale.value >= gridLimit)
     {
       dotsCanvasCoor.value[realDotsNum - 1].x += 1;
       dotsCanvasCoor.value[realDotsNum - 1].y += 1;
@@ -747,7 +773,7 @@ function updateDotsCanvasCoor() {
   {
     for (let i = 0; i < realDotsNum; ++i) {
       transReal2CanvasInfo(dotsCanvasCoor.value[i], dotsRealCoor.value[i]);
-      if (scale.value >= 10)
+      if (scale.value >= gridLimit)
       {
         dotsCanvasCoor.value[i].x += 1;
         dotsCanvasCoor.value[i].y += 1;
@@ -784,27 +810,29 @@ function transScaled2CanvasInfo(targetCoor, scaledCoor) {
 //   targetCoor.x = canvasCoor.x - offsetX.value - offsetCanvasLeft;
 //   targetCoor.y = canvasCoor.y - offsetY.value - offsetCanvasTop;
 // }
-function transReal2CanvasInfo(targetCoor, realCoor) {
+function transReal2CanvasInfo(targetCoor, realCoor, setScale = 0) {
+  if (setScale === 0) setScale = scale.value;
   let xOffsetGrid = 0, yOffsetGrid = 0;
-  if (scale.value >= gridLimit) {
+  if (setScale >= gridLimit) {
     xOffsetGrid = (realCoor.x - sourceLTCoor.x);
     yOffsetGrid = (realCoor.y - sourceLTCoor.y);
   }
-  targetCoor.x = realCoor.x * scale.value + xOffsetGrid + offsetX.value + offsetCanvasLeft;
-  targetCoor.y = realCoor.y * scale.value + yOffsetGrid + offsetY.value + offsetCanvasTop;
+  targetCoor.x = realCoor.x * setScale + xOffsetGrid + offsetX.value + offsetCanvasLeft;
+  targetCoor.y = realCoor.y * setScale + yOffsetGrid + offsetY.value + offsetCanvasTop;
 }
 
-function transCanvas2RealInfo(targetCoor, canvasCoor) {
+function transCanvas2RealInfo(targetCoor, canvasCoor, setScale = 0) {
+  if (setScale === 0) setScale = scale.value;
   let xOffsetGrid = 0, yOffsetGrid = 0;
-  if (scale.value >= gridLimit) {
-    const xResult = (canvasCoor.x - canvasLTCoor.x) / (scale.value + 1);
-    const yResult = (canvasCoor.y - canvasLTCoor.y) / (scale.value + 1);
+  if (setScale >= gridLimit) {
+    const xResult = (canvasCoor.x - canvasLTCoor.x) / (setScale + 1);
+    const yResult = (canvasCoor.y - canvasLTCoor.y) / (setScale + 1);
     xOffsetGrid = Number.isInteger(xResult) ? xResult : Math.floor(xResult) + 1;
     yOffsetGrid = Number.isInteger(yResult) ? yResult : Math.floor(yResult) + 1;
   }
 
-  targetCoor.x = Math.floor((canvasCoor.x - xOffsetGrid - offsetX.value -offsetCanvasLeft) / scale.value);
-  targetCoor.y = Math.floor((canvasCoor.y - yOffsetGrid - offsetY.value -offsetCanvasTop) / scale.value);
+  targetCoor.x = Math.floor((canvasCoor.x - xOffsetGrid - offsetX.value -offsetCanvasLeft) / setScale);
+  targetCoor.y = Math.floor((canvasCoor.y - yOffsetGrid - offsetY.value -offsetCanvasTop) / setScale);
 
 }
 
