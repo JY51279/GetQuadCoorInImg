@@ -233,6 +233,7 @@ function updataImgData()
 const canvasLTCoor = { x: 0, y: 0 };
 const canvasRBCoor = { x: 0, y: 0 };
 const sourceLTCoor = { x: 0, y: 0 };
+const sourceRBCoor = { x: 0, y: 0 };
 const gridLimit = 10;
 function drawCanvas(){
   if (canvas === null || canvas.value === null) {
@@ -268,8 +269,6 @@ function drawCanvas(){
   let imgScaledRBCoor = { x: x2 - offsetX.value, y: y2 - offsetY.value };
 
   //Calc letf-top and right-bottom pts in canvas
-  let sourceRBCoor = { x: 0, y: 0 };
-
   transScaled2RealInfo(sourceLTCoor, imgScaledLTCoor);
   transScaled2RealInfo(sourceRBCoor, imgScaledRBCoor);
 
@@ -713,8 +712,8 @@ function updateZoomView(event) {
   };
   transCanvas2RealInfo(realDot2GetZoom.value, canvasCoor);
   // Make the mouse in the middle of the zoomRect
-  realDot2GetZoom.value.x = Math.max(realDot2GetZoom.value.x - 3, 0);
-  realDot2GetZoom.value.y = Math.max(realDot2GetZoom.value.y - 3, 0);
+  realDot2GetZoom.value.x = Math.min(Math.max(realDot2GetZoom.value.x - 3, sourceLTCoor.x), sourceRBCoor.x - 5);
+  realDot2GetZoom.value.y = Math.min(Math.max(realDot2GetZoom.value.y - 3, sourceLTCoor.y), sourceRBCoor.y - 5);
 
   // Draw scaled rect in canvas
   let rectCoor = {
