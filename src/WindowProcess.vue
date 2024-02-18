@@ -160,7 +160,7 @@ function deletePt(ptIndex){
   if (ptIndex !== -1 && ptIndex < dotsCanvasCoor.value.length) {
     dotsCanvasCoor.value.splice(ptIndex, 1);
     dotsRealCoor.value.splice(ptIndex, 1);
-    outputQuadNumber.value = -1;
+    outputQuadNumber.value = 0;
     drawZoomAnddots();
     return true;
   }
@@ -522,8 +522,8 @@ async function outputMessage(message) {
 
 // Input
 const inputQuadNum = ref('')
-const calcQuadNum = ref(-1);
-const outputQuadNumber = ref(-1);
+const calcQuadNum = ref(0);
+const outputQuadNumber = ref(0);
 function updateQuadNum() {
   if (inputQuadNum.value === '') outputQuadNumber.value = calcQuadNum.value;
   else outputQuadNumber.value = inputQuadNum.value;
@@ -588,7 +588,7 @@ function toggleDot(e){
       //console.log("outputQuadNumber: " + outputQuadNumber.value);
     }
     else {
-      calcQuadNum.value = -1;
+      calcQuadNum.value = 0;
     }
     updateQuadNum();
   }
@@ -603,7 +603,7 @@ function resetPosition() {
 function clearDots(){
   dotsCanvasCoor.value = [];
   dotsRealCoor.value = [];
-  outputQuadNumber.value = -1;
+  outputQuadNumber.value = 0;
   //outputMessage('cleardots Successfully.');
 };
 
