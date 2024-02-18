@@ -191,13 +191,13 @@ function getDotInfo(e){
       Math.abs(realDot.y - realCoor.y) < 2
   );
   // console.log('***********getDotInfo');
-   console.log('e.client: (' + e.clientX + ', ' + e.clientY + ')');
+  // console.log('e.client: (' + e.clientX + ', ' + e.clientY + ')');
   // console.log('canvasCoor: (' + canvasCoor.x + ', ' + canvasCoor.y + ')');
   // console.log('realCoor: (' + realCoor.x + ', ' + realCoor.y + ')');
   return { canvasCoor, realCoor, existingDotIndex };
 };
 
-const imgPixelData2D = [];
+let imgPixelData2D = [];
 function updataImgData()
 {
    // 创建一个Canvas对象
@@ -211,9 +211,9 @@ function updataImgData()
 
   // 获取图像像素的颜色矩阵
   const imgPixelData = ctxTmp.getImageData(0, 0, canvasTmp.width, canvasTmp.height).data;
-  imgPixelData2D.splice(0, imgPixelData2D.length);
+  const imgPixelData2DTmp = [];
   for (let x = 0; x < canvasTmp.width; ++x) {
-    imgPixelData2D[x] = [];
+    imgPixelData2DTmp[x] = [];
     for (let y = 0; y < canvasTmp.height; ++y) {
       const i = (y * canvasTmp.width + x) * 4;
       const r = imgPixelData[i];
@@ -221,10 +221,10 @@ function updataImgData()
       const b = imgPixelData[i + 2];
       const a = imgPixelData[i + 3];
       const cssColor = `rgba(${r}, ${g}, ${b}, ${a})`;
-      imgPixelData2D[x][y] = cssColor;
+      imgPixelData2DTmp[x][y] = cssColor;
     }
-    //console.log(imgPixelData2D);
   }
+  imgPixelData2D = imgPixelData2DTmp;
 }
 
 // Only draw the part of img inside the viewport
@@ -272,12 +272,12 @@ function drawCanvas(){
 
   transReal2ScaledInfo(imgScaledLTCoor, sourceLTCoor); // 使点位置与图片像素贴合
   transReal2ScaledInfo(imgScaledRBCoor, {
-    x: sourceRBCoor.x + 2,
-    y: sourceRBCoor.y + 2,
+    x: sourceRBCoor.x + 1,
+    y: sourceRBCoor.y + 1,
   }); //得到目标范围外的右下一点，用以后续计算dw dh
 
-  const sw = Math.abs(sourceLTCoor.x - sourceRBCoor.x) + 2;
-  const sh = Math.abs(sourceLTCoor.y - sourceRBCoor.y) + 2;
+  const sw = Math.abs(sourceLTCoor.x - sourceRBCoor.x) + 1;
+  const sh = Math.abs(sourceLTCoor.y - sourceRBCoor.y) + 1;
   const dw = Math.abs(imgScaledRBCoor.x - imgScaledLTCoor.x);
   const dh = Math.abs(imgScaledRBCoor.y - imgScaledLTCoor.y);
 
@@ -314,8 +314,8 @@ function drawGrid(){
   // 设置间隔
   const space = scale.value + 1;
   // 区域的左上和右下
-  const areaX1 = canvasLTCoor.x, areaX2 = Math.min(canvasRBCoor.x, canvas.value.width) - 1;
-  const areaY1 = canvasLTCoor.y, areaY2 = Math.min(canvasRBCoor.y, canvas.value.height) - 1;
+  const areaX1 = canvasLTCoor.x, areaX2 = Math.min(canvasRBCoor.x, canvas.value.width);
+  const areaY1 = canvasLTCoor.y, areaY2 = Math.min(canvasRBCoor.y, canvas.value.height);
   // 设置虚线
   ctx.value.setLineDash([]);
 
@@ -338,22 +338,21 @@ function drawGrid(){
 
 function drawImgInGrid(sourceWidth, sourceHeight)
 {
-  const space = scale.value + 1;
-  const dw = scale.value, dh = scale.value;
-  const startX = canvasLTCoor.x + 1, startY = canvasLTCoor.y + 1; // 包括最左/上侧网格线
+  
+    const space = scale.value + 1;
+    const dw = scale.value, dh = scale.value;
+    const startX = canvasLTCoor.x + 1, startY = canvasLTCoor.y + 1; // 包括最左/上侧网格线
+    for (let shOffset = 0; shOffset < sourceHeight; ++shOffset) {
+      const canvasY = startY + shOffset * space;
+      const sourceY = sourceLTCoor.y + shOffset;
+      for (let swOffset = 0; swOffset < sourceWidth; ++swOffset) {
+        const canvasX = startX + swOffset * space;
+        const sourceX = sourceLTCoor.x + swOffset;
 
-  for (let shOffset = 0; shOffset < sourceHeight; ++shOffset)
-  {
-    const canvasY = startY + shOffset * space;
-    const sourceY = sourceLTCoor.y + shOffset;
-    for (let swOffset = 0; swOffset < sourceWidth; ++swOffset)
-    {
-      const canvasX = startX + swOffset * space;
-      const sourceX = sourceLTCoor.x + swOffset;
-      ctx.value.fillStyle = imgPixelData2D[sourceX][sourceY];
-      ctx.value.fillRect(canvasX, canvasY, dw, dh);
+        ctx.value.fillStyle = imgPixelData2D[sourceX][sourceY];
+        ctx.value.fillRect(canvasX, canvasY, dw, dh);
+      }
     }
-  }
 }
 
 
@@ -430,7 +429,6 @@ function updateOffset(oldScale, newScale) {
   if (oldScale < 1 || newScale < 1) return;
 
   // Judge: Mouse in rendered area
-  console.log("Before: (" + offsetX.value + ', ' + offsetY.value + ')');
   let canvasCoor = Object.assign({}, mouseCoor);;
   let realCoor = { x: 0, y: 0 };
   transCanvas2RealInfo(realCoor, canvasCoor, oldScale);
