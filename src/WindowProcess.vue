@@ -101,7 +101,8 @@
           <span>({{ item.x }}, {{ item.y }})</span>
           <button @click="clearOneDot(index)" class="button-delete-style">x</button>
         </div>
-        <div class="fileInfo-style">矩形对应次序: {{ quadNumber }}</div>
+        <div class="fileInfo-style">矩形对应次序: {{ outputQuadNumber }}</div>
+        <input :value="inputQuadNum" @input="getInputQuadNum" placeholder="矩形次序修正">
       </div>
       <div>
       <!-- 输出区域 -->
@@ -114,10 +115,10 @@
         <button @click="chooseImgFile" class="button-style">Get PicFile</button>
         <button @click="saveDots" class="button-style">Save Dots</button>
         <button @click="clearDots" class="button-style">Clear Dots</button>
+        <button @click="clearMessage" class="button-style">Clear Msgs</button>
         <button @click="resetPosition" class="button-style">
           Reset Position
         </button>
-        <button @click="clearMessage" class="button-style">Clear Msgs</button>
       </div>
     </div>
   </div>
@@ -165,7 +166,7 @@ function deletePt(ptIndex){
   if (ptIndex !== -1 && ptIndex < dotsCanvasCoor.value.length) {
     dotsCanvasCoor.value.splice(ptIndex, 1);
     dotsRealCoor.value.splice(ptIndex, 1);
-    quadNumber.value = -1;
+    outputQuadNumber.value = -1;
     drawZoomAnddots();
     return true;
   }
@@ -533,6 +534,19 @@ async function outputMessage(message) {
   outputDiv.scrollTop = outputDiv.scrollHeight;
 }
 
+// Input
+const inputQuadNum = ref('')
+const calcQuadNum = ref(-1);
+const outputQuadNumber = ref(-1);
+function updateQuadNum() {
+  if (inputQuadNum.value === '') outputQuadNumber.value = calcQuadNum.value;
+  else outputQuadNumber.value = inputQuadNum.value;
+}
+function getInputQuadNum(e)
+{
+  inputQuadNum.value = e.target.value;
+  updateQuadNum();
+}
 /******click */
 // Click checkbox to check the class
 const selectedOption = ref(["DBR"]);
@@ -554,7 +568,6 @@ function clearOneDot(index){
 };
 
 // Click canvas to get dot
-const quadNumber = ref(-1);
 function toggleDot(e){
   if (imageSrc == null || imageSrc.value == '' || !isNotLongPress) {
     return;
@@ -584,12 +597,13 @@ function toggleDot(e){
     updateDotsCanvasCoor();
     drawDotInZoom(realCoor);
     if (dotsRealCoor.value.length === 4) {
-      setQuadInfo(dotsRealCoor.value, quadNumber);
-      //console.log("quadNumber: " + quadNumber.value);
+      setQuadInfo(dotsRealCoor.value, calcQuadNum);
+      //console.log("outputQuadNumber: " + outputQuadNumber.value);
     }
     else {
-      quadNumber.value = -1;
+      calcQuadNum.value = -1;
     }
+    updateQuadNum();
   }
 };
 
@@ -602,7 +616,7 @@ function resetPosition() {
 function clearDots(){
   dotsCanvasCoor.value = [];
   dotsRealCoor.value = [];
-  quadNumber.value = -1;
+  outputQuadNumber.value = -1;
   //outputMessage('cleardots Successfully.');
 };
 

@@ -100,7 +100,7 @@ let quadDots = [];
 let quadDotsStr = '';
 let centerPt = { x: 0, y: 0 };
 let quadIndex = -1;
-export function setQuadInfo(realDots, quadNumber)
+export function setQuadInfo(realDots, quadNumberRef)
 {
   if (realDots.length !== 4) {
     window.alert("Not enough dots to obtain the quadInfo.");
@@ -111,7 +111,7 @@ export function setQuadInfo(realDots, quadNumber)
   //quadDotsStr = array.join(separator); // 将数组转换为以separator分隔的字符串
   centerPt = getQuadCenterPoint(quadDots);
   quadIndex = getClosestPtIndexInArray(centerPt, centerPtList);
-  quadNumber.value = quadIndex + 1;
+  quadNumberRef.value = quadIndex + 1;
   console.log("quadIndex: " + quadIndex);
 }
 
