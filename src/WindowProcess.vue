@@ -132,8 +132,6 @@ import { resetJsonProcess, setQuadInfo } from './JsonProcess.js';
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
 
-const imgFileInput = ref(null);
-const jsonFileInput = ref(null);
 const divRef = ref(null);
 const viewportWidth = ref(0);
 const viewportHeight = ref(0);
@@ -154,9 +152,7 @@ const realDot2GetZoom = ref({ x: -1, y: -1 });
 
 const offsetX = ref(0);
 const offsetY = ref(0);
-const scale = ref(0);
-const imageObj = ref(null);
-const imageSrc = ref('');
+const scale = ref(1);
 
 const { pressed } = useMousePressed({ target: divRef });
 const { x, y } = useMouse();
@@ -249,6 +245,10 @@ function drawCanvas(){
     offsetX.value <= -initImgWidth.value * scale.value ||
     offsetY <= -initImgHeight.value * scale.value
   ) {
+    console.log("offset: (" + offsetX.value + ', ' + offsetY.value + ')');
+    console.log("maxOff: (" + viewportWidth.value + ', ' + viewportHeight.value + ')');
+    console.log("minOff: (" + -initImgWidth.value * scale.value + ', ' + -initImgHeight.value * scale.value + ')');
+    console.log('scale: ' + scale.value)
     outputMessage('drawCanvas offset Error.');
     return;
   }
@@ -442,44 +442,7 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
 // Scale
 watch(scale, (newScale) => {
   //console.log('scale:', newScale);
-  updateViewPortDraw();
-});
-
-// Load Img
-watch(imageSrc, (newImageSrc) => {
-  if (newImageSrc) {
-    const img = new Image();
-    img.src = newImageSrc;
-    img.onload = () => {
-      // Update imgInfo
-      initImgWidth.value = img.width;
-      initImgHeight.value = img.height;
-      updataImgData();
-      // Update ctx
-      if (ctx !== null && ctx.value !== null) {
-        ctx.value.clearRect(
-          0,
-          0,
-          ctx.value.canvas.width,
-          ctx.value.canvas.height
-        );
-      }
-      ctx.value = canvas.value.getContext('2d');
-
-      // 计算初始缩放比例
-      const scaleValue = Math.min(
-        viewportWidth.value / img.width,
-        viewportHeight.value / img.height
-      );
-      scale.value = scaleValue; //scale.value修改，自动调用watch scale
-
-      console.log('scale:', scale);
-      console.log('viewportWidth.value:', viewportWidth.value);
-      console.log('viewportHeight .value:', viewportHeight.value);
-      console.log('img.width:', img.width);
-      console.log('img.height:', img.height);
-    };
-  }
+  if (newScale !== 0) updateViewPortDraw();
 });
 
 // Judge click type
@@ -626,28 +589,75 @@ function clearMessage()
   outputMessages.value = [];
 }
 
-function chooseImgFile(){
+const imgFileInput = ref(null);
+function chooseImgFile() {
+  imgFileInput.value.value = null;
   imgFileInput.value.click();
 };
+
+const jsonFileInput = ref(null);
 function chooseJsonFile(){
   jsonFileInput.value.click();
 };
 
+// Load Img
+const imageObj = ref(null);
+const imageSrc = ref('');
+function initDrawImg() {
+  if (imageSrc === '' || imageSrc.value === null) {
+    outputMessage('initDrawImg Error.');
+    return;
+  }
+  scale.value = 0;
+  offsetX.value = 0;
+  offsetY.value = 0;
+  clearDots();
+  resetJsonProcess(jsonStr, selectedOption.value[0], imgFileName.value);
+  const img = new Image();
+  img.src = imageSrc.value;
+  img.onload = () => {
+    // Update imgInfo
+    initImgWidth.value = img.width;
+    initImgHeight.value = img.height;
+    updataImgData();
+    // Update ctx
+    if (ctx !== null && ctx.value !== null) {
+      ctx.value.clearRect(
+        0,
+        0,
+        ctx.value.canvas.width,
+        ctx.value.canvas.height
+      );
+    }
+    ctx.value = canvas.value.getContext('2d');
+
+    // 计算初始缩放比例
+    const scaleValue = Math.min(
+      viewportWidth.value / img.width,
+      viewportHeight.value / img.height
+    );
+    scale.value = scaleValue; //scale.value修改，自动调用watch scale
+
+    console.log('scale:', scale);
+    console.log('viewportWidth.value:', viewportWidth.value);
+    console.log('viewportHeight .value:', viewportHeight.value);
+    console.log('img.width:', img.width);
+    console.log('img.height:', img.height);
+  };
+}
+
 let imgFileName = ref(null);
 function loadImgFile(event) {
-  outputMessage('...Load Pic...........');
+  console.log(event.target);
+  outputMessage('Load Pic......');
   const file = event.target.files[0];
   imgFileName.value = file.name;
   const reader = new FileReader();
   reader.onload = (e) => {
     imageSrc.value = e.target.result;
     imageObj.value = new Image();
-    scale.value = 0;
-    offsetX.value = 0;
-    offsetY.value = 0;
-    clearDots();
-    resetJsonProcess(jsonStr, selectedOption.value[0], imgFileName.value);
     imageObj.value.src = e.target.result;
+    initDrawImg();
   };
   reader.readAsDataURL(file);
 };
