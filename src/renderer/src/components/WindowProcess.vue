@@ -1,6 +1,5 @@
 <template>
   <input ref="imgFileInput" type="file" accept="image/*" style="display: none" @change="loadImgFile" />
-  <input ref="jsonFileInput" type="file" accept=".json" style="display: none" @change="loadJsonFile" />
   <div class="container">
     <div ref="divRef" class="image-container" @wheel="onWheel">
       <canvas
@@ -97,6 +96,7 @@ import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
 import { resetJsonProcess, setQuadInfo, updateQuadIndex, isTransQuadDots2Str } from '../utils/JsonProcess.js';
 
+const ipcRenderer = window.electron.ipcRenderer;
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
 
@@ -553,18 +553,7 @@ function clearMessage() {
   outputMessages.value = [];
 }
 
-const imgFileInput = ref(null);
-function chooseImgFile() {
-  imgFileInput.value.value = null;
-  imgFileInput.value.click();
-}
-
-const jsonFileInput = ref(null);
-function chooseJsonFile() {
-  jsonFileInput.value.click();
-}
-
-// Load Img
+// Init Img
 const initImgWidth = ref(0);
 const initImgHeight = ref(0);
 const imageObj = ref(null);
@@ -604,7 +593,13 @@ function initDrawImg() {
   };
 }
 
+// Get files
+const imgFileInput = ref(null);
 let imgFileName = ref(null);
+function chooseImgFile() {
+  imgFileInput.value.value = null;
+  imgFileInput.value.click();
+}
 function loadImgFile(event) {
   console.log(event.target);
   outputMessage('Load Pic......');
@@ -620,31 +615,39 @@ function loadImgFile(event) {
   reader.readAsDataURL(file);
 }
 
+const jsonFileInput = ref(null);
 let jsonFileName = ref(null);
-let jsonStr = {};
-function loadJsonFile(event) {
-  const file = event.target.files[0];
-  jsonFileName.value = file.name;
-  const reader = new FileReader();
-  reader.onload = e => {
-    jsonStr = e.target.result;
-    //setJsonInfos(json);
-  };
-  reader.readAsText(file);
+let jsonStr = '';
+let jsonPath = '';
+function chooseJsonFile() {
+  console.log('chooseJsonFile...');
+  ipcRenderer.send('ping');
+  try {
+    ipcRenderer.send('open-json-file-dialog');
+  } catch (error) {
+    console.error('Error while sending IPC message:', error);
+  }
+
+  //jsonFileInput.value.click();
 }
 
-// // 保存JSON文件到本地文件系统
-// function saveJsonFile(filename, json) {
-//   const jsonString = JSON.stringify(json);
-//   const blob = new Blob([jsonString], { type: 'application/json' });
-//   const url = URL.createObjectURL(blob);
-//   const a = document.createElement('a');
-//   a.href = url;
-//   a.download = filename;
-//   document.body.appendChild(a);
-//   a.click();
-//   document.body.removeChild(a);
-// };
+ipcRenderer.on('choose-json-file-response', (event, response) => {
+  try {
+    if (response.success) {
+      jsonStr = response.jsonInfo.content;
+      jsonPath = response.jsonInfo.path;
+      // 在这里处理读取到的 JSON 数据
+    } else {
+      const errorMessage = response.error;
+      // 处理读取文件失败的情况
+      console.error('Failed to read JSON file:', errorMessage);
+    }
+  } catch (error) {
+    console.error('An error occurred while processing JSON file:', error);
+    console.log(response);
+  }
+});
+
 const scaleRange = 60;
 const onWheel = event => {
   if (event.deltaY < 0) {

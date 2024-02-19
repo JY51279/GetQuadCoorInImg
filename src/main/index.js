@@ -1,8 +1,8 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron';
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
-
+const fs = require('fs');
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -33,6 +33,7 @@ function createWindow() {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
+  mainWindow.webContents.openDevTools();
 }
 
 // This method will be called when Electron has finished
@@ -50,8 +51,34 @@ app.whenReady().then(() => {
   });
 
   // IPC test
-  ipcMain.on('ping', () => console.log('pong'));
-
+  ipcMain.on('ping', () => console.log('ping'));
+  ipcMain.on('open-json-file-dialog', event => {
+    //console.log('ipcMain.on  open-json-file-dialog');
+    dialog
+      .showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'JSON Files', extensions: ['json'] }],
+      })
+      .then(result => {
+        if (!result.canceled && result.filePaths.length > 0) {
+          // 发送选中文件的路径到渲染进程
+          const filePath = result.filePaths[0];
+          fs.readFile(filePath, 'utf-8', (err, data) => {
+            if (err) {
+              console.log('false');
+              event.reply('choose-json-file-response', { success: false, error: err.message });
+              return;
+            }
+            console.log('suc');
+            const jsonInfo = { content: data, path: filePath };
+            event.reply('choose-json-file-response', { success: true, jsonInfo });
+          });
+        }
+      })
+      .catch(err => {
+        console.error('Error while opening file dialog:', err);
+      });
+  });
   createWindow();
 
   app.on('activate', function () {
