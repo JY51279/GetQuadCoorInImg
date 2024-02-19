@@ -3,6 +3,7 @@ const electron = require("electron");
 const path = require("path");
 const utils = require("@electron-toolkit/utils");
 const icon = path.join(__dirname, "../../resources/icon.png");
+require("fs");
 function createWindow() {
   const mainWindow = new electron.BrowserWindow({
     width: 900,
