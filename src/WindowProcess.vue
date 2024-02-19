@@ -1,18 +1,6 @@
 <template>
-  <input
-    @change="loadImgFile"
-    type="file"
-    ref="imgFileInput"
-    accept="image/*"
-    style="display: none"
-  />
-  <input
-    @change="loadJsonFile"
-    type="file"
-    ref="jsonFileInput"
-    accept=".json"
-    style="display: none"
-  />
+  <input @change="loadImgFile" type="file" ref="imgFileInput" accept="image/*" style="display: none" />
+  <input @change="loadJsonFile" type="file" ref="jsonFileInput" accept=".json" style="display: none" />
   <div class="container">
     <div @wheel="onWheel" class="image-container" ref="divRef">
       <canvas
@@ -31,9 +19,9 @@
         :key="dot.id"
         :style="`
               transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px) scale(${scale});
-              transform-origin: 0% 0%;
-              top: ${dot.y}px;
-              left: ${dot.x}px;
+                        transform-origin: 0% 0%;
+                        top: ${dot.y}px;
+                        left: ${dot.x}px;
               z-index: 9998;
             `"
       ></div>
@@ -46,16 +34,7 @@
               z-index: 9998;
             `"
       ></div>
-      <div
-        style="
-          display: flex;
-          position: fixed;
-          left: 5%;
-          bottom: 25px;
-          width: calc(60% + 60px);
-          z-index: 9999;
-        "
-      >
+      <div style="display: flex; position: fixed; left: 5%; bottom: 25px; width: calc(60% + 60px); z-index: 9999">
         <input
           type="number"
           min="0.1"
@@ -79,36 +58,27 @@
     <div class="tool-container">
       <div>
         <div class="zoomViewBox">
-          <canvas
-            ref="zoomView"
-            id="zoom"
-            class="zoom-style"
-            width="120"
-            height="120"
-          ></canvas>
+          <canvas ref="zoomView" id="zoom" class="zoom-style" width="120" height="120"></canvas>
         </div>
         <div>
-          <input type="checkbox" v-model="selectedOption" @click="checkClass" value="DBR">DBR<br>
-          <input type="checkbox" v-model="selectedOption" @click="checkClass" value="DDN">DDN<br>
-          <input type="checkbox" v-model="selectedOption" @click="checkClass" value="DLR">DLR<br>
+          <input type="checkbox" v-model="selectedOption" @click="checkClass" value="DBR" />DBR<br />
+          <input type="checkbox" v-model="selectedOption" @click="checkClass" value="DDN" />DDN<br />
+          <input type="checkbox" v-model="selectedOption" @click="checkClass" value="DLR" />DLR<br />
         </div>
         <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
         <div class="fileInfo-style">图片: {{ imgFileName }}</div>
-        <div
-          v-for="(item, index) in dotsRealCoor"
-          :key="index"
-        >
+        <div v-for="(item, index) in dotsRealCoor" :key="index">
           <span>({{ item.x }}, {{ item.y }})</span>
           <button @click="clearOneDot(index)" class="button-delete-style">x</button>
         </div>
         <div class="fileInfo-style">矩形对应次序: {{ outputQuadNumber }}</div>
-        <input :value="inputQuadNum" @input="getInputQuadNum" placeholder="矩形次序修正">
+        <input :value="inputQuadNum" @input="getInputQuadNum" placeholder="矩形次序修正" />
       </div>
       <div>
-      <!-- 输出区域 -->
-      <div ref="output" class="output" style="overflow-y: scroll; height: 200px;">
-        <div v-for="(message, index) in outputMessages" :key="index">{{ message }}</div>
-      </div>
+        <!-- 输出区域 -->
+        <div ref="output" class="output" style="overflow-y: scroll; height: 200px">
+          <div v-for="(message, index) in outputMessages" :key="index">{{ message }}</div>
+        </div>
       </div>
       <div class="button-group">
         <button @click="chooseJsonFile" class="button-style">Get JsonFile</button>
@@ -116,9 +86,7 @@
         <button @click="saveDots" class="button-style">Save Dots</button>
         <button @click="clearDots" class="button-style">Clear Dots</button>
         <button @click="clearMessage" class="button-style">Clear Msgs</button>
-        <button @click="resetPosition" class="button-style">
-          Reset Position
-        </button>
+        <button @click="resetPosition" class="button-style">Reset Position</button>
       </div>
     </div>
   </div>
@@ -127,7 +95,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
-import { resetJsonProcess, setQuadInfo, updateQuadIndex, getQuadDotsStr } from './JsonProcess.js';
+import { resetJsonProcess, setQuadInfo, updateQuadIndex, isTransQuadDots2Str } from './JsonProcess.js';
 
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
@@ -156,7 +124,7 @@ const { pressed } = useMousePressed({ target: divRef });
 const { x, y } = useMouse();
 
 // Basic delete
-function deletePt(ptIndex){
+function deletePt(ptIndex) {
   if (ptIndex !== -1 && ptIndex < dotsCanvasCoor.value.length) {
     dotsCanvasCoor.value.splice(ptIndex, 1);
     dotsRealCoor.value.splice(ptIndex, 1);
@@ -165,17 +133,17 @@ function deletePt(ptIndex){
     return true;
   }
   return false;
-};
+}
 
 // Delete Dot in canvas
-function deleteDot(e){
+function deleteDot(e) {
   const { existingDotIndex } = getDotInfo(e);
   if (!deletePt(existingDotIndex)) {
     outputMessage('Error delete the pt in canvas!');
   }
-};
+}
 
-function getDotInfo(e){
+function getDotInfo(e) {
   let canvasCoor = {
     x: e.clientX,
     y: e.clientY,
@@ -186,24 +154,21 @@ function getDotInfo(e){
   transReal2CanvasInfo(canvasCoor, realCoor); // 得到贴合后画布确切坐标
 
   const existingDotIndex = dotsRealCoor.value.findIndex(
-    (realDot) =>
-      Math.abs(realDot.x - realCoor.x) < 2 &&
-      Math.abs(realDot.y - realCoor.y) < 2
+    realDot => Math.abs(realDot.x - realCoor.x) < 2 && Math.abs(realDot.y - realCoor.y) < 2,
   );
   // console.log('***********getDotInfo');
   // console.log('e.client: (' + e.clientX + ', ' + e.clientY + ')');
   // console.log('canvasCoor: (' + canvasCoor.x + ', ' + canvasCoor.y + ')');
   // console.log('realCoor: (' + realCoor.x + ', ' + realCoor.y + ')');
   return { canvasCoor, realCoor, existingDotIndex };
-};
+}
 
 let imgPixelData2D = [];
-function updataImgData()
-{
-   // 创建一个Canvas对象
-   let canvasTmp = document.createElement('canvas');
-   canvasTmp.width = initImgWidth.value;
-   canvasTmp.height = initImgHeight.value;
+function updataImgData() {
+  // 创建一个Canvas对象
+  let canvasTmp = document.createElement('canvas');
+  canvasTmp.width = initImgWidth.value;
+  canvasTmp.height = initImgHeight.value;
 
   // 将图像绘制到Canvas上
   var ctxTmp = canvasTmp.getContext('2d');
@@ -233,7 +198,7 @@ const canvasRBCoor = { x: 0, y: 0 };
 const sourceLTCoor = { x: 0, y: 0 };
 const sourceRBCoor = { x: 0, y: 0 };
 const gridLimit = 10;
-function drawCanvas(){
+function drawCanvas() {
   if (canvas === null || canvas.value === null) {
     outputMessage('drawCanvas canvas Error.');
     return;
@@ -244,25 +209,19 @@ function drawCanvas(){
     offsetX.value <= -initImgWidth.value * scale.value ||
     offsetY <= -initImgHeight.value * scale.value
   ) {
-    console.log("offset: (" + offsetX.value + ', ' + offsetY.value + ')');
-    console.log("maxOff: (" + viewportWidth.value + ', ' + viewportHeight.value + ')');
-    console.log("minOff: (" + -initImgWidth.value * scale.value + ', ' + -initImgHeight.value * scale.value + ')');
-    console.log('scale: ' + scale.value)
+    console.log('offset: (' + offsetX.value + ', ' + offsetY.value + ')');
+    console.log('maxOff: (' + viewportWidth.value + ', ' + viewportHeight.value + ')');
+    console.log('minOff: (' + -initImgWidth.value * scale.value + ', ' + -initImgHeight.value * scale.value + ')');
+    console.log('scale: ' + scale.value);
     outputMessage('drawCanvas offset Error.');
     return;
   }
 
   // Calc Overlap area
   const x1 = Math.max(0, offsetX.value);
-  const x2 = Math.min(
-    viewportWidth.value - 1,
-    offsetX.value + initImgWidth.value * scale.value - 1
-  );
+  const x2 = Math.min(viewportWidth.value - 1, offsetX.value + initImgWidth.value * scale.value - 1);
   const y1 = Math.max(0, offsetY.value);
-  const y2 = Math.min(
-    viewportHeight.value - 1,
-    offsetY.value + initImgHeight.value * scale.value - 1
-  );
+  const y2 = Math.min(viewportHeight.value - 1, offsetY.value + initImgHeight.value * scale.value - 1);
   let imgScaledLTCoor = { x: x1 - offsetX.value, y: y1 - offsetY.value };
   let imgScaledRBCoor = { x: x2 - offsetX.value, y: y2 - offsetY.value };
 
@@ -286,97 +245,74 @@ function drawCanvas(){
 
   //Draw
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
-  if(scale.value < gridLimit)
-  {
+  if (scale.value < gridLimit) {
     initCanvasSettings();
-    ctx.value.drawImage(
-        imageObj.value,
-        sourceLTCoor.x,
-        sourceLTCoor.y,
-        sw,
-        sh,
-        canvasLTCoor.x,
-        canvasLTCoor.y,
-        dw,
-        dh
-      );
-  }
-  else
-  {
+    ctx.value.drawImage(imageObj.value, sourceLTCoor.x, sourceLTCoor.y, sw, sh, canvasLTCoor.x, canvasLTCoor.y, dw, dh);
+  } else {
     drawGrid();
     drawImgInGrid(sw, sh);
   }
-
-};
+}
 
 // Area: [canvasLTCoor, canvasRBCoor)
-function drawGrid(){
+function drawGrid() {
   // 设置间隔
   const space = scale.value + 1;
   // 区域的左上和右下
-  const areaX1 = canvasLTCoor.x, areaX2 = Math.min(canvasRBCoor.x, canvas.value.width);
-  const areaY1 = canvasLTCoor.y, areaY2 = Math.min(canvasRBCoor.y, canvas.value.height);
+  const areaX1 = canvasLTCoor.x,
+    areaX2 = Math.min(canvasRBCoor.x, canvas.value.width);
+  const areaY1 = canvasLTCoor.y,
+    areaY2 = Math.min(canvasRBCoor.y, canvas.value.height);
   // 设置虚线
   ctx.value.setLineDash([]);
 
   // 绘制水平方向的网格线
-  for(let y = areaY1; y <= areaY2; y += space){
-      ctx.value.beginPath();
-      ctx.value.moveTo(areaX1, y);
-      ctx.value.lineTo(areaX2, y);
-      ctx.value.stroke();
+  for (let y = areaY1; y <= areaY2; y += space) {
+    ctx.value.beginPath();
+    ctx.value.moveTo(areaX1, y);
+    ctx.value.lineTo(areaX2, y);
+    ctx.value.stroke();
   }
 
   // 绘制垂直方向的网格线
-  for(let x = areaX1; x <= areaX2; x += space){
-      ctx.value.beginPath();
-      ctx.value.moveTo(x, areaY1);
-      ctx.value.lineTo(x, areaY2);
-      ctx.value.stroke();
+  for (let x = areaX1; x <= areaX2; x += space) {
+    ctx.value.beginPath();
+    ctx.value.moveTo(x, areaY1);
+    ctx.value.lineTo(x, areaY2);
+    ctx.value.stroke();
   }
 }
 
-function drawImgInGrid(sourceWidth, sourceHeight)
-{
-  
-    const space = scale.value + 1;
-    const dw = scale.value, dh = scale.value;
-    const startX = canvasLTCoor.x + 1, startY = canvasLTCoor.y + 1; // 包括最左/上侧网格线
-    for (let shOffset = 0; shOffset < sourceHeight; ++shOffset) {
-      const canvasY = startY + shOffset * space;
-      const sourceY = sourceLTCoor.y + shOffset;
-      for (let swOffset = 0; swOffset < sourceWidth; ++swOffset) {
-        const canvasX = startX + swOffset * space;
-        const sourceX = sourceLTCoor.x + swOffset;
+function drawImgInGrid(sourceWidth, sourceHeight) {
+  const space = scale.value + 1;
+  const dw = scale.value,
+    dh = scale.value;
+  const startX = canvasLTCoor.x + 1,
+    startY = canvasLTCoor.y + 1; // 包括最左/上侧网格线
+  for (let shOffset = 0; shOffset < sourceHeight; ++shOffset) {
+    const canvasY = startY + shOffset * space;
+    const sourceY = sourceLTCoor.y + shOffset;
+    for (let swOffset = 0; swOffset < sourceWidth; ++swOffset) {
+      const canvasX = startX + swOffset * space;
+      const sourceX = sourceLTCoor.x + swOffset;
 
-        ctx.value.fillStyle = imgPixelData2D[sourceX][sourceY];
-        ctx.value.fillRect(canvasX, canvasY, dw, dh);
-      }
+      ctx.value.fillStyle = imgPixelData2D[sourceX][sourceY];
+      ctx.value.fillRect(canvasX, canvasY, dw, dh);
     }
+  }
 }
 
-
-function drawZoomAnddots(){
+function drawZoomAnddots() {
   if (realDot2GetZoom.value.x === -1) return;
   const zoomctx = zoomView.value.getContext('2d');
-  zoomctx.drawImage(
-    imageObj.value,
-    realDot2GetZoom.value.x,
-    realDot2GetZoom.value.y,
-    6,
-    6,
-    0,
-    0,
-    120,
-    120
-  );
+  zoomctx.drawImage(imageObj.value, realDot2GetZoom.value.x, realDot2GetZoom.value.y, 6, 6, 0, 0, 120, 120);
 
   for (let i = 0; i < dotsRealCoor.value.length; ++i) {
     drawDotInZoom(dotsRealCoor.value[i]);
   }
-};
+}
 
-function drawDotInZoom(newRealCoor){
+function drawDotInZoom(newRealCoor) {
   if (realDot2GetZoom.value.x === -1) return;
   const zoomctx = zoomView.value.getContext('2d');
   let transX = newRealCoor.x - realDot2GetZoom.value.x;
@@ -384,7 +320,7 @@ function drawDotInZoom(newRealCoor){
   if (transX >= 0 && transX < 6 && transY >= 0 && transY < 6) {
     zoomctx.fillRect(transX * 20, transY * 20, 20, 20);
   }
-};
+}
 
 function updateViewPortDraw() {
   if (imageSrc === null || imageSrc.value === '') return;
@@ -408,8 +344,8 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
     if (!(imageSrc === null || imageSrc.value === '')) {
       if (Math.abs(newX) < Math.abs(oldX)) {
         if (Math.abs(offsetX.value) < autoAdaptBorderDis) offsetX.value = 0;
-      } else if (Math.abs(newX) > Math.abs(oldX)){
-        if (Math.abs(offsetX.value + initImgWidth.value * scale.value -  viewportWidth.value) < autoAdaptBorderDis)
+      } else if (Math.abs(newX) > Math.abs(oldX)) {
+        if (Math.abs(offsetX.value + initImgWidth.value * scale.value - viewportWidth.value) < autoAdaptBorderDis)
           offsetX.value = viewportWidth.value - initImgWidth.value * scale.value;
       }
 
@@ -429,11 +365,15 @@ function updateOffset(oldScale, newScale) {
   if (oldScale < 1 || newScale < 1) return;
 
   // Judge: Mouse in rendered area
-  let canvasCoor = Object.assign({}, mouseCoor);;
+  let canvasCoor = Object.assign({}, mouseCoor);
   let realCoor = { x: 0, y: 0 };
   transCanvas2RealInfo(realCoor, canvasCoor, oldScale);
-  if (realCoor.x < sourceLTCoor.x || realCoor.x > sourceRBCoor.x ||
-    realCoor.y < sourceLTCoor.y || realCoor.y > sourceRBCoor.y)
+  if (
+    realCoor.x < sourceLTCoor.x ||
+    realCoor.x > sourceRBCoor.x ||
+    realCoor.y < sourceLTCoor.y ||
+    realCoor.y > sourceRBCoor.y
+  )
     return;
 
   // purpose：Scale the image based on the mouseCoor
@@ -441,12 +381,12 @@ function updateOffset(oldScale, newScale) {
   transReal2CanvasInfo(canvasCoor, realCoor, oldScale);
   const offsetPixels = {
     x: mouseCoor.x - canvasCoor.x,
-    y: mouseCoor.y - canvasCoor.y
-  }
+    y: mouseCoor.y - canvasCoor.y,
+  };
   const fineTuning = {
-    x: Math.floor(offsetPixels.x / oldScale * newScale),
-    y: Math.floor(offsetPixels.y / oldScale * newScale)
-  }
+    x: Math.floor((offsetPixels.x / oldScale) * newScale),
+    y: Math.floor((offsetPixels.y / oldScale) * newScale),
+  };
 
   // Calc scaled canvasCoor without updating offset
   transReal2CanvasInfo(canvasCoor, realCoor, newScale);
@@ -463,7 +403,7 @@ watch(scale, (newScale, oldScale) => {
 });
 
 // Judge click type
-watch(pressed, (newVal) => {
+watch(pressed, newVal => {
   if (newVal) {
     isNotLongPress = true;
     mouseMoved = false; // 重置鼠标移动状态
@@ -488,7 +428,7 @@ onMounted(() => {
   initZoomSettings();
   updateViewSize();
   window.addEventListener('resize', updateViewSize);
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('mousemove', e => {
     mouseCoor.x = e.clientX;
     mouseCoor.y = e.clientY;
     mouseMoved = true;
@@ -501,7 +441,7 @@ onMounted(() => {
 onUnmounted(() => {
   console.log('onUnmounted...');
   window.removeEventListener('resize', updateViewSize);
-  window.removeEventListener('mousemove', (e) => {
+  window.removeEventListener('mousemove', e => {
     mouseCoor.x = e.clientX;
     mouseCoor.y = e.clientY;
     mouseMoved = true;
@@ -519,7 +459,7 @@ async function outputMessage(message) {
 }
 
 // Input
-const inputQuadNum = ref('')
+const inputQuadNum = ref('');
 const calcQuadNum = ref(0);
 const outputQuadNumber = ref(0);
 function updateQuadNum() {
@@ -528,34 +468,33 @@ function updateQuadNum() {
   updateQuadIndex(outputQuadNumber.value);
 }
 
-function getInputQuadNum(e)
-{
+function getInputQuadNum(e) {
   inputQuadNum.value = e.target.value;
   updateQuadNum();
 }
 
 /******click */
 // Click checkbox to check the class
-const selectedOption = ref(["DBR"]);
-const classTotalStr = ["DBR", "DDN", "DLR"];
-function checkClass(e){
-	setTimeout(function(){
-		if(selectedOption.value.length===0){
-		selectedOption.value.push(classTotalStr[0]);
+const selectedOption = ref(['DBR']);
+const classTotalStr = ['DBR', 'DDN', 'DLR'];
+function checkClass(e) {
+  setTimeout(function () {
+    if (selectedOption.value.length === 0) {
+      selectedOption.value.push(classTotalStr[0]);
     }
-		if(selectedOption.value.length > 1){
-		selectedOption.value.splice(0, 1);
+    if (selectedOption.value.length > 1) {
+      selectedOption.value.splice(0, 1);
     }
-	}, 1);
+  }, 1);
 }
 
 // Click button to del dot
-function clearOneDot(index){
+function clearOneDot(index) {
   deletePt(index);
-};
+}
 
 // Click canvas to get dot
-function toggleDot(e){
+function toggleDot(e) {
   if (imageSrc == null || imageSrc.value == '' || !isNotLongPress) {
     return;
   }
@@ -586,13 +525,12 @@ function toggleDot(e){
     if (dotsRealCoor.value.length === 4) {
       setQuadInfo(dotsRealCoor.value, calcQuadNum);
       //console.log("outputQuadNumber: " + outputQuadNumber.value);
-    }
-    else {
+    } else {
       calcQuadNum.value = 0;
     }
     updateQuadNum();
   }
-};
+}
 
 function resetPosition() {
   offsetX.value = 0;
@@ -600,20 +538,18 @@ function resetPosition() {
   updateViewPortDraw();
 }
 
-function clearDots(){
+function clearDots() {
   dotsCanvasCoor.value = [];
   dotsRealCoor.value = [];
   outputQuadNumber.value = 0;
   //outputMessage('cleardots Successfully.');
-};
-
-function saveDots()
-{
-  getQuadDotsStr(dotsRealCoor.value);
 }
 
-function clearMessage()
-{
+function saveDots() {
+  isTransQuadDots2Str(dotsRealCoor.value);
+}
+
+function clearMessage() {
   outputMessages.value = [];
 }
 
@@ -621,12 +557,12 @@ const imgFileInput = ref(null);
 function chooseImgFile() {
   imgFileInput.value.value = null;
   imgFileInput.value.click();
-};
+}
 
 const jsonFileInput = ref(null);
-function chooseJsonFile(){
+function chooseJsonFile() {
   jsonFileInput.value.click();
-};
+}
 
 // Load Img
 const initImgWidth = ref(0);
@@ -652,20 +588,12 @@ function initDrawImg() {
     updataImgData();
     // Update ctx
     if (ctx !== null && ctx.value !== null) {
-      ctx.value.clearRect(
-        0,
-        0,
-        ctx.value.canvas.width,
-        ctx.value.canvas.height
-      );
+      ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
     }
     ctx.value = canvas.value.getContext('2d');
 
     // 计算初始缩放比例
-    const scaleValue = Math.min(
-      viewportWidth.value / img.width,
-      viewportHeight.value / img.height
-    );
+    const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
     scale.value = scaleValue; //scale.value修改，自动调用watch scale
 
     console.log('scale:', scale);
@@ -683,14 +611,14 @@ function loadImgFile(event) {
   const file = event.target.files[0];
   imgFileName.value = file.name;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = e => {
     imageSrc.value = e.target.result;
     imageObj.value = new Image();
     imageObj.value.src = e.target.result;
     initDrawImg();
   };
   reader.readAsDataURL(file);
-};
+}
 
 let jsonFileName = ref(null);
 let jsonStr = {};
@@ -698,12 +626,12 @@ function loadJsonFile(event) {
   const file = event.target.files[0];
   jsonFileName.value = file.name;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = e => {
     jsonStr = e.target.result;
     //setJsonInfos(json);
   };
   reader.readAsText(file);
-};
+}
 
 // // 保存JSON文件到本地文件系统
 // function saveJsonFile(filename, json) {
@@ -718,17 +646,15 @@ function loadJsonFile(event) {
 //   document.body.removeChild(a);
 // };
 const scaleRange = 60;
-const onWheel = (event) => {
+const onWheel = event => {
   if (event.deltaY < 0) {
     if (scale.value < 0.9) scale.value += 0.1;
-    else if (scale.value < scaleRange)scale.value = Math.floor(scale.value + 1);
-  } else{
+    else if (scale.value < scaleRange) scale.value = Math.floor(scale.value + 1);
+  } else {
     if (scale.value > 0.2) {
       if (scale.value <= 1) scale.value -= 0.1;
       else scale.value = Math.ceil(scale.value - 1);
-    }
-    else
-      scale.value = 0.1;
+    } else scale.value = 0.1;
   }
   console.log(scale.value);
 };
@@ -762,35 +688,30 @@ function updateZoomView(event) {
 function updateDotsCanvasCoor() {
   // 新增一个红点
   const realDotsNum = dotsRealCoor.value.length;
-  if (dotsCanvasCoor.value.length !== realDotsNum)
-  {
+  if (dotsCanvasCoor.value.length !== realDotsNum) {
     dotsCanvasCoor.value.push({ x: 0, y: 0 });
     transReal2CanvasInfo(dotsCanvasCoor.value[realDotsNum - 1], dotsRealCoor.value[realDotsNum - 1]);
-    if (scale.value >= gridLimit)
-    {
+    if (scale.value >= gridLimit) {
       dotsCanvasCoor.value[realDotsNum - 1].x += 1;
       dotsCanvasCoor.value[realDotsNum - 1].y += 1;
     }
   }
 
   // 更新所有点的坐标
-  else
-  {
+  else {
     for (let i = 0; i < realDotsNum; ++i) {
       transReal2CanvasInfo(dotsCanvasCoor.value[i], dotsRealCoor.value[i]);
-      if (scale.value >= gridLimit)
-      {
+      if (scale.value >= gridLimit) {
         dotsCanvasCoor.value[i].x += 1;
         dotsCanvasCoor.value[i].y += 1;
       }
     }
   }
-  
 }
 
 function transScaled2RealInfo(targetCoor, scaledCoor) {
-    targetCoor.x = Math.floor(scaledCoor.x / scale.value);
-    targetCoor.y = Math.floor(scaledCoor.y / scale.value);   
+  targetCoor.x = Math.floor(scaledCoor.x / scale.value);
+  targetCoor.y = Math.floor(scaledCoor.y / scale.value);
 }
 
 function transReal2ScaledInfo(targetCoor, realCoor) {
@@ -803,9 +724,7 @@ function transScaled2CanvasInfo(targetCoor, scaledCoor) {
     let realCoor = { x: 0, y: 0 };
     transScaled2RealInfo(realCoor, scaledCoor);
     transReal2CanvasInfo(targetCoor, realCoor);
-  }
-  else
-  {
+  } else {
     targetCoor.x = scaledCoor.x + offsetX.value + offsetCanvasLeft;
     targetCoor.y = scaledCoor.y + offsetY.value + offsetCanvasTop;
   }
@@ -817,10 +736,11 @@ function transScaled2CanvasInfo(targetCoor, scaledCoor) {
 // }
 function transReal2CanvasInfo(targetCoor, realCoor, setScale = 0) {
   if (setScale === 0) setScale = scale.value;
-  let xOffsetGrid = 0, yOffsetGrid = 0;
+  let xOffsetGrid = 0,
+    yOffsetGrid = 0;
   if (setScale >= gridLimit) {
-    xOffsetGrid = (realCoor.x - sourceLTCoor.x);
-    yOffsetGrid = (realCoor.y - sourceLTCoor.y);
+    xOffsetGrid = realCoor.x - sourceLTCoor.x;
+    yOffsetGrid = realCoor.y - sourceLTCoor.y;
   }
   targetCoor.x = realCoor.x * setScale + xOffsetGrid + offsetX.value + offsetCanvasLeft;
   targetCoor.y = realCoor.y * setScale + yOffsetGrid + offsetY.value + offsetCanvasTop;
@@ -828,7 +748,8 @@ function transReal2CanvasInfo(targetCoor, realCoor, setScale = 0) {
 
 function transCanvas2RealInfo(targetCoor, canvasCoor, setScale = 0) {
   if (setScale === 0) setScale = scale.value;
-  let xOffsetGrid = 0, yOffsetGrid = 0;
+  let xOffsetGrid = 0,
+    yOffsetGrid = 0;
   if (setScale >= gridLimit) {
     const xResult = (canvasCoor.x - canvasLTCoor.x) / (setScale + 1);
     const yResult = (canvasCoor.y - canvasLTCoor.y) / (setScale + 1);
@@ -836,13 +757,12 @@ function transCanvas2RealInfo(targetCoor, canvasCoor, setScale = 0) {
     yOffsetGrid = Number.isInteger(yResult) ? yResult : Math.floor(yResult) + 1;
   }
 
-  targetCoor.x = Math.floor((canvasCoor.x - xOffsetGrid - offsetX.value -offsetCanvasLeft) / setScale);
-  targetCoor.y = Math.floor((canvasCoor.y - yOffsetGrid - offsetY.value -offsetCanvasTop) / setScale);
-
+  targetCoor.x = Math.floor((canvasCoor.x - xOffsetGrid - offsetX.value - offsetCanvasLeft) / setScale);
+  targetCoor.y = Math.floor((canvasCoor.y - yOffsetGrid - offsetY.value - offsetCanvasTop) / setScale);
 }
 
 function updateRectanglePosition(left, top) {
-  if(scale.value >= gridLimit) return;
+  if (scale.value >= gridLimit) return;
   // 获取 .rectangle 元素
   let rectangle = document.querySelector('.rectangle');
 
@@ -855,7 +775,7 @@ async function updateViewSize() {
   if (divRef.value) {
     viewportWidth.value = divRef.value.offsetWidth - 4; // - 4(border 2 * 2)
     viewportHeight.value = divRef.value.offsetHeight - 4;
-    await nextTick()
+    await nextTick();
 
     //Reset ctx.value when update canvasSize
     initCanvasSettings();
@@ -887,9 +807,10 @@ function initZoomSettings() {
 </script>
 
 <style scoped>
-*{
+* {
   user-select: none;
 }
+
 .container {
   box-sizing: border-box;
   display: flex;
@@ -908,11 +829,13 @@ function initZoomSettings() {
   flex-direction: column;
   justify-content: space-between;
 }
+
 .zoomViewBox {
   border: 1px dotted #333;
   margin-bottom: 20px;
   display: flex;
 }
+
 .zoom-style {
   width: 120px;
   height: 120px;
