@@ -623,28 +623,30 @@ function chooseJsonFile() {
 }
 
 let jsonFileName = ref(null);
-let jsonStr = '';
-let jsonPath = '';
+let jsonStr = {};
 function loadJsonFile(event) {
   const file = event.target.files[0];
   jsonFileName.value = file.name;
-  //ipcRenderer.send('choose-json-file', file);
+  const reader = new FileReader();
+  reader.onload = e => {
+    jsonStr = e.target.result;
+    //setJsonInfos(json);
+  };
+  reader.readAsText(file);
 }
-//
-// ipcRenderer.on('choose-json-file-response', (event, response) => {
-//   if (response.success) {
-//     jsonStr = response.data;
-//     jsonPath = event.target.files[0].path;
-//     // 在这里处理读取到的 JSON 数据
-//     console.log('jsonPath: ', jsonPath);
-//     console.log('jsonStr: ', jsonStr);
-//   } else {
-//     const errorMessage = response.error;
-//     // 处理读取文件失败的情况
-//     console.error('Failed to read JSON file:', errorMessage);
-//   }
-// });
 
+// // 保存JSON文件到本地文件系统
+// function saveJsonFile(filename, json) {
+//   const jsonString = JSON.stringify(json);
+//   const blob = new Blob([jsonString], { type: 'application/json' });
+//   const url = URL.createObjectURL(blob);
+//   const a = document.createElement('a');
+//   a.href = url;
+//   a.download = filename;
+//   document.body.appendChild(a);
+//   a.click();
+//   document.body.removeChild(a);
+// };
 const scaleRange = 60;
 const onWheel = event => {
   if (event.deltaY < 0) {
