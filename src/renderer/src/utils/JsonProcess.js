@@ -1,62 +1,53 @@
 import { setQuadDots2ClockWise, getQuadCenterPoint, parsePointString, getClosestPtIndexInArray } from './BasicFuncs.js';
-export function resetJsonProcess(jsonStr, classStr, imgStr)
-{
+export function resetJsonProcess(jsonStr, classStr, imgStr) {
   quadIndex = -1;
   try {
     resetJson(jsonStr);
     resetClassKeys(classStr.toUpperCase());
-    console.log("000");
+    console.log('000');
     resetPicJson(imgStr);
-    console.log("111");
+    console.log('111');
     resetCenterPtList();
-    console.log("222")
-  }
-  catch(err) {
-    window.alert("Failed to reset JSON data. Please check the input and try again.");
+    console.log('222');
+  } catch (err) {
+    window.alert('Failed to reset JSON data. Please check the input and try again.');
   }
 }
 
-const rootKey = "Picture";
-const imgKey = "Image Source";
+const rootKey = 'Picture';
+const imgKey = 'Image Source';
 const TotalClassKeys = [
   {
-      class: 'DBR',
-      key1: 'Barcode Info',
-      key2: 'Barcode Location'
-    }, 
-    {
-      class: 'DDN',
-      key1: 'Quadrilateral Info',
-      key2: 'Expected Quadrilateral Points'
-    },
-    {
-      class: 'DLR',
-      key1: 'Label Info',
-      key2: 'Label Location'
-    }
-  ];
-
-let classKeys = {class:'', key1:'', key2:''};
-function resetClassKeys(classStr)
-{
-  for (let i = 0; i < 3; ++i)
+    class: 'DBR',
+    key1: 'Barcode Info',
+    key2: 'Barcode Location',
+  },
   {
-      if (TotalClassKeys[i].class === classStr)
-      {
-        classKeys = TotalClassKeys[i];
-        console.log(classKeys);
-      }
+    class: 'DDN',
+    key1: 'Quadrilateral Info',
+    key2: 'Expected Quadrilateral Points',
+  },
+  {
+    class: 'DLR',
+    key1: 'Label Info',
+    key2: 'Label Location',
+  },
+];
+
+let classKeys = { class: '', key1: '', key2: '' };
+function resetClassKeys(classStr) {
+  for (let i = 0; i < 3; ++i) {
+    if (TotalClassKeys[i].class === classStr) {
+      classKeys = TotalClassKeys[i];
+      console.log(classKeys);
+    }
   }
 }
 
-
-function resetImgIndex(imgStr)
-{
+function resetImgIndex(imgStr) {
   let imgIndex = -1;
-  for (let i = 0; i < json[rootKey].length; ++i)
-  {
-    if (json[rootKey][i][imgKey].search(imgStr) !== -1)
-    {
+  for (let i = 0; i < json[rootKey].length; ++i) {
+    if (json[rootKey][i][imgKey].search(imgStr) !== -1) {
       imgIndex = i;
       return imgIndex;
     }
@@ -65,45 +56,38 @@ function resetImgIndex(imgStr)
 }
 
 let jsonPerPicArray = [];
-function resetPicJson(imgStr)
-{
+function resetPicJson(imgStr) {
   const imgIndex = resetImgIndex(imgStr);
-  if(imgIndex === -1)
-  {
-    window.alert("Unable to retrieve the image from the JSON file.");
+  if (imgIndex === -1) {
+    window.alert('Unable to retrieve the image from the JSON file.');
   }
   jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
 }
 
 let json = {};
-function resetJson(jsonStr)
-{
+function resetJson(jsonStr) {
   json = JSON.parse(jsonStr);
   //console.log(json);
 }
 
 let centerPtList = [];
 const separator = ' ';
-function resetCenterPtList()
-{
+function resetCenterPtList() {
   centerPtList = [];
-  for (let i = 0; i < jsonPerPicArray.length; ++i)
-  {
+  for (let i = 0; i < jsonPerPicArray.length; ++i) {
     const quadPts = parsePointString(jsonPerPicArray[i][classKeys.key2], separator);
     const quadCenter = getQuadCenterPoint(quadPts);
     centerPtList.push(quadCenter);
   }
 }
 
-
 let quadDots = [];
 let quadDotsStr = '';
 let centerPt = { x: 0, y: 0 };
 let quadIndex = -1;
-export function setQuadInfo(realDots, quadNumberRef)
-{
+export function setQuadInfo(realDots, quadNumberRef) {
   if (realDots.length !== 4) {
-    window.alert("Not enough dots to obtain the quadInfo.");
+    window.alert('Not enough dots to obtain the quadInfo.');
     return;
   }
   quadDots = realDots.slice();
@@ -115,13 +99,11 @@ export function setQuadInfo(realDots, quadNumberRef)
   //console.log("quadIndex: " + quadIndex);
 }
 
-export function updateQuadIndex(quadNum)
-{
+export function updateQuadIndex(quadNum) {
   quadIndex = quadNum - 1;
 }
 
-export function isTransQuadDots2Str(realDots)
-{
+export function isTransQuadDots2Str(realDots) {
   if (realDots.length !== 4) {
     return false;
   }
@@ -129,6 +111,3 @@ export function isTransQuadDots2Str(realDots)
   //console.log(quadDotsStr);
   return true;
 }
-
-
-

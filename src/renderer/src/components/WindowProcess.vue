@@ -96,7 +96,6 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
 import { resetJsonProcess, setQuadInfo, updateQuadIndex, isTransQuadDots2Str } from '../utils/JsonProcess.js';
-import { ipcRenderer } from 'electron';
 
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
@@ -554,7 +553,18 @@ function clearMessage() {
   outputMessages.value = [];
 }
 
-// InitImg
+const imgFileInput = ref(null);
+function chooseImgFile() {
+  imgFileInput.value.value = null;
+  imgFileInput.value.click();
+}
+
+const jsonFileInput = ref(null);
+function chooseJsonFile() {
+  jsonFileInput.value.click();
+}
+
+// Load Img
 const initImgWidth = ref(0);
 const initImgHeight = ref(0);
 const imageObj = ref(null);
@@ -594,13 +604,6 @@ function initDrawImg() {
   };
 }
 
-// Get files
-const imgFileInput = ref(null);
-function chooseImgFile() {
-  imgFileInput.value.value = null;
-  imgFileInput.value.click();
-}
-
 let imgFileName = ref(null);
 function loadImgFile(event) {
   console.log(event.target);
@@ -615,11 +618,6 @@ function loadImgFile(event) {
     initDrawImg();
   };
   reader.readAsDataURL(file);
-}
-
-const jsonFileInput = ref(null);
-function chooseJsonFile() {
-  jsonFileInput.value.click();
 }
 
 let jsonFileName = ref(null);
