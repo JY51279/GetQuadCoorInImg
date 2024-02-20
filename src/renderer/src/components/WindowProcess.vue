@@ -71,11 +71,11 @@
           <button class="button-delete-style" @click="clearOneDot(index)">x</button>
         </div>
         <div class="fileInfo-style">矩形对应次序: {{ outputQuadNumber }}</div>
-        <input :value="inputQuadNum" placeholder="矩形次序修正" @input="getInputQuadNum" />
+        <input class="inputText-style" :value="inputQuadNum" placeholder="矩形次序修正" @input="getInputQuadNum" />
       </div>
       <div>
         <!-- 输出区域 -->
-        <div ref="output" class="output" style="overflow-y: scroll; height: 200px">
+        <div ref="output" class="outputText-style" style="overflow-y: scroll; height: 200px">
           <div v-for="(message, index) in outputMessages" :key="index">{{ message }}</div>
         </div>
       </div>
@@ -847,6 +847,18 @@ function initZoomSettings() {
 
 .fileInfo-style {
   font-size: 16px;
+  margin-bottom: 20px;
+  word-wrap: break-word;
+}
+
+.inputText-style {
+  font-size: 16px;
+  width: 120px;
+  margin-bottom: 20px;
+}
+
+.outputText-style {
+  font-size: 12px;
   margin-bottom: 20px;
   word-wrap: break-word;
 }
