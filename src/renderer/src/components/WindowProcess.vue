@@ -547,7 +547,6 @@ function clearDots() {
 }
 
 function saveDots() {
-  console.log('Get here1!');
   isTransQuadDots2Str(dotsRealCoor.value);
 }
 
@@ -622,8 +621,6 @@ let jsonFileName = ref(null);
 let jsonStr = '';
 let jsonPath = '';
 function chooseJsonFile() {
-  console.log('chooseJsonFile...');
-  ipcRenderer.send('ping');
   try {
     ipcRenderer.send('open-json-file-dialog');
   } catch (error) {
@@ -638,10 +635,9 @@ ipcRenderer.on('choose-json-file-response', (event, response) => {
     if (response.success) {
       jsonStr = response.jsonInfo.content;
       jsonPath = response.jsonInfo.path;
-      // 在这里处理读取到的 JSON 数据
     } else {
-      const errorMessage = response.error;
       // 处理读取文件失败的情况
+      const errorMessage = response.error;
       console.error('Failed to read JSON file:', errorMessage);
     }
   } catch (error) {

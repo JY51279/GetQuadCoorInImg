@@ -6,8 +6,8 @@ const icon = path.join(__dirname, "../../resources/icon.png");
 const fs = require("fs");
 function createWindow() {
   const mainWindow = new electron.BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1920,
+    height: 1080,
     show: false,
     autoHideMenuBar: true,
     ...process.platform === "linux" ? { icon } : {},
@@ -35,7 +35,7 @@ electron.app.whenReady().then(() => {
   electron.app.on("browser-window-created", (_, window) => {
     utils.optimizer.watchWindowShortcuts(window);
   });
-  electron.ipcMain.on("ping", () => console.log("ping"));
+  electron.ipcMain.setMaxListeners(20);
   electron.ipcMain.on("open-json-file-dialog", (event) => {
     electron.dialog.showOpenDialog({
       properties: ["openFile"],
@@ -45,7 +45,7 @@ electron.app.whenReady().then(() => {
         const filePath = result.filePaths[0];
         fs.readFile(filePath, "utf-8", (err, data) => {
           if (err) {
-            console.log("false");
+            console.log("fail");
             event.reply("choose-json-file-response", { success: false, error: err.message });
             return;
           }

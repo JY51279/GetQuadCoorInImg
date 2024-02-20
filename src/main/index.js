@@ -3,11 +3,12 @@ import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
 const fs = require('fs');
+
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1920,
+    height: 1080,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -51,7 +52,7 @@ app.whenReady().then(() => {
   });
 
   // IPC test
-  ipcMain.on('ping', () => console.log('ping'));
+  ipcMain.setMaxListeners(20);
   ipcMain.on('open-json-file-dialog', event => {
     //console.log('ipcMain.on  open-json-file-dialog');
     dialog
@@ -65,7 +66,7 @@ app.whenReady().then(() => {
           const filePath = result.filePaths[0];
           fs.readFile(filePath, 'utf-8', (err, data) => {
             if (err) {
-              console.log('false');
+              console.log('fail');
               event.reply('choose-json-file-response', { success: false, error: err.message });
               return;
             }
