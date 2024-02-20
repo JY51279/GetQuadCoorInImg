@@ -450,9 +450,16 @@ onUnmounted(() => {
 });
 
 // 输出信息到输出区域
+const MAX_MESSAGES = 50;
 const outputMessages = ref([]);
 async function outputMessage(message) {
   outputMessages.value.push(message);
+
+  // 仅保留最新的MAX_MESSAGES条
+  if (outputMessages.value.length > MAX_MESSAGES) {
+    outputMessages.value.splice(0, 1);
+  }
+
   // 滚动到最底部
   await nextTick();
   const outputDiv = output.value;
@@ -616,7 +623,6 @@ function loadImgFile(event) {
   reader.readAsDataURL(file);
 }
 
-const jsonFileInput = ref(null);
 let jsonFileName = ref(null);
 let jsonStr = '';
 let jsonPath = '';
@@ -626,8 +632,6 @@ function chooseJsonFile() {
   } catch (error) {
     console.error('Error while sending IPC message:', error);
   }
-
-  //jsonFileInput.value.click();
 }
 
 ipcRenderer.on('choose-json-file-response', (event, response) => {
@@ -635,6 +639,7 @@ ipcRenderer.on('choose-json-file-response', (event, response) => {
     if (response.success) {
       jsonStr = response.jsonInfo.content;
       jsonPath = response.jsonInfo.path;
+      outputMessage('JSON data retrieval successful.');
     } else {
       // 处理读取文件失败的情况
       const errorMessage = response.error;

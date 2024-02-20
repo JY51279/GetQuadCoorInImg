@@ -7,15 +7,15 @@ import {
 } from './BasicFuncs.js';
 
 export function resetJsonProcess(jsonStr, classStr, imgStr) {
-  quadIndex = -1;
   try {
+    quadIndex = -1;
     resetJson(jsonStr);
     resetClassKeys(classStr.toUpperCase());
-    console.log('000');
+    //console.log('000');
     resetPicJson(imgStr);
-    console.log('111');
+    //console.log('111');
     resetCenterPtList();
-    console.log('222');
+    //console.log('222');
   } catch (err) {
     window.alert('Failed to reset JSON data. Please check the input and try again.');
   }
@@ -46,7 +46,6 @@ function resetClassKeys(classStr) {
   for (let i = 0; i < 3; ++i) {
     if (TotalClassKeys[i].class === classStr) {
       classKeys = TotalClassKeys[i];
-      console.log(classKeys);
     }
   }
 }
@@ -80,9 +79,9 @@ function resetJson(jsonStr) {
 let centerPtList = [];
 const separator = ' ';
 function resetCenterPtList() {
-  centerPtList = [];
+  centerPtList.splice(0, centerPtList.length);
   for (let i = 0; i < jsonPerPicArray.length; ++i) {
-    const quadPts = parsePointString(jsonPerPicArray[i][classKeys.key2], separator);
+    const quadPts = parsePointString2Array(jsonPerPicArray[i][classKeys.key2], separator);
     const quadCenter = getQuadCenterPoint(quadPts);
     centerPtList.push(quadCenter);
   }
