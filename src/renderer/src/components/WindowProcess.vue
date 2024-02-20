@@ -94,6 +94,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
+import cloneDeep from 'lodash/cloneDeep';
 import { resetJsonProcess, setQuadInfo, updateQuadIndex, isTransQuadDots2Str } from '../utils/JsonProcess.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
@@ -365,7 +366,7 @@ function updateOffset(oldScale, newScale) {
   if (oldScale < 1 || newScale < 1) return;
 
   // Judge: Mouse in rendered area
-  let canvasCoor = Object.assign({}, mouseCoor);
+  let canvasCoor = cloneDeep(mouseCoor);
   let realCoor = { x: 0, y: 0 };
   transCanvas2RealInfo(realCoor, canvasCoor, oldScale);
   if (
@@ -546,6 +547,7 @@ function clearDots() {
 }
 
 function saveDots() {
+  console.log('Get here1!');
   isTransQuadDots2Str(dotsRealCoor.value);
 }
 

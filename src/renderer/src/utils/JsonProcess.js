@@ -1,4 +1,11 @@
-import { setQuadDots2ClockWise, getQuadCenterPoint, parsePointString, getClosestPtIndexInArray } from './BasicFuncs.js';
+import {
+  setQuadDots2ClockWise,
+  getQuadCenterPoint,
+  parsePointString2Array,
+  serializePointArray2String,
+  getClosestPtIndexInArray,
+} from './BasicFuncs.js';
+
 export function resetJsonProcess(jsonStr, classStr, imgStr) {
   quadIndex = -1;
   try {
@@ -104,10 +111,8 @@ export function updateQuadIndex(quadNum) {
 }
 
 export function isTransQuadDots2Str(realDots) {
-  if (realDots.length !== 4) {
-    return false;
-  }
-  quadDotsStr = realDots.map(item => `${item.x} ${item.y}`).join(' ');
-  //console.log(quadDotsStr);
+  if (realDots.length !== 4) return false;
+  quadDotsStr = serializePointArray2String(realDots);
+  if (quadDotsStr === '') return false;
   return true;
 }

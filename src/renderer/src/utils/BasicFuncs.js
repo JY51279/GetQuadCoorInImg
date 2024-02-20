@@ -1,3 +1,4 @@
+import cloneDeep from 'lodash/cloneDeep';
 export function swap(arr, index1, index2) {
   [arr[index1], arr[index2]] = [arr[index2], arr[index1]];
 }
@@ -58,7 +59,7 @@ function getCenterPt(targetPt, point1, point2) {
   targetPt.y = (point1.y + point2.y) / 2;
 }
 
-export function parsePointString(str, separator) {
+export function parsePointString2Array(str, separator) {
   const points = [];
   const coords = str.split(separator).map(Number);
 
@@ -67,6 +68,13 @@ export function parsePointString(str, separator) {
   }
 
   return points;
+}
+
+export function serializePointArray2String(points, separator) {
+  let pointsTmp = cloneDeep(points);
+  if (!setQuadDots2ClockWise(pointsTmp)) return '';
+  const str = pointsTmp.map(item => `${item.x} ${item.y}`).join(separator);
+  return str;
 }
 
 export function getClosestPtIndexInArray(oriPoint, pointArray) {
