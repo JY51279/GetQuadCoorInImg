@@ -1,5 +1,5 @@
 <script setup>
-import WindowProcess from './components/WindowProcess.vue'
+import WindowProcess from './components/WindowProcess.vue';
 </script>
 
 <template>
@@ -7,3 +7,12 @@ import WindowProcess from './components/WindowProcess.vue'
     <WindowProcess />
   </div>
 </template>
+
+<style>
+#app,
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+</style>

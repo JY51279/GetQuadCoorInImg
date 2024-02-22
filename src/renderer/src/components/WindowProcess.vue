@@ -844,7 +844,6 @@ function initZoomSettings() {
   user-select: none;
 }
 .container {
-  box-sizing: border-box;
   display: flex;
   width: 100%;
   height: 100%;
@@ -921,7 +920,6 @@ function initZoomSettings() {
 }
 
 .image-container {
-  box-sizing: border-box;
   background: url('../src/assets/bg.png') repeat;
   width: calc(100% - 166px);
   /*20*2 + 120 + 2((1)*2) + 4(blankspace)*/
