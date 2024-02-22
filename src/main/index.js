@@ -66,11 +66,11 @@ app.whenReady().then(() => {
           const filePath = result.filePaths[0];
           fs.readFile(filePath, 'utf-8', (err, data) => {
             if (err) {
-              console.log('fail');
+              console.log('Fail Open Json');
               event.reply('choose-json-file-response', { success: false, error: err.message });
               return;
             }
-            console.log('suc');
+            console.log('Suc Open Json');
             const jsonInfo = { content: data, path: filePath };
             event.reply('choose-json-file-response', { success: true, jsonInfo });
           });
@@ -79,6 +79,20 @@ app.whenReady().then(() => {
       .catch(err => {
         console.error('Error while opening file dialog:', err);
       });
+  });
+  ipcMain.on('save-json-file', (event, data) => {
+    const filePath = data.jsonPath;
+    const content = data.jsonStr;
+
+    fs.writeFile(filePath, content, err => {
+      if (err) {
+        console.log('Fail Save Json');
+        event.reply('save-json-file-response', { success: false, error: err.message });
+      } else {
+        console.log('Suc Save Json');
+        event.reply('save-json-file-response', { success: true });
+      }
+    });
   });
   createWindow();
 

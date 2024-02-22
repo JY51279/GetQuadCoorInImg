@@ -109,7 +109,8 @@ export function setQuadInfo(realDots, quadNumberRef) {
   //console.log("quadIndex: " + quadIndex);
 }
 
-export function updateQuadIndex(quadNum) {
+export function updateQuadIndex(realDots, quadNum) {
+  quadDots = realDots.slice();
   quadIndex = quadNum - 1;
 }
 

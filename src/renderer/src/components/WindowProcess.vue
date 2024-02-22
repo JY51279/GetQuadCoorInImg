@@ -129,7 +129,8 @@ function deletePt(ptIndex) {
   if (ptIndex !== -1 && ptIndex < dotsCanvasCoor.value.length) {
     dotsCanvasCoor.value.splice(ptIndex, 1);
     dotsRealCoor.value.splice(ptIndex, 1);
-    outputQuadNumber.value = 0;
+    calcQuadNum.value = 0;
+    updateQuadNum();
     drawZoomAnddots();
     return true;
   }
@@ -473,7 +474,7 @@ const outputQuadNumber = ref(0);
 function updateQuadNum() {
   if (inputQuadNum.value === '') outputQuadNumber.value = calcQuadNum.value;
   else outputQuadNumber.value = inputQuadNum.value;
-  updateQuadIndex(outputQuadNumber.value);
+  updateQuadIndex(dotsRealCoor.value, outputQuadNumber.value);
 }
 
 function getInputQuadNum(e) {
@@ -532,7 +533,6 @@ function toggleDot(e) {
     drawDotInZoom(realCoor);
     if (dotsRealCoor.value.length === 4) {
       setQuadInfo(dotsRealCoor.value, calcQuadNum);
-      //console.log("outputQuadNumber: " + outputQuadNumber.value);
     } else {
       calcQuadNum.value = 0;
     }
@@ -549,7 +549,8 @@ function resetPosition() {
 function clearDots() {
   dotsCanvasCoor.value = [];
   dotsRealCoor.value = [];
-  outputQuadNumber.value = 0;
+  calcQuadNum.value = 0;
+  updateQuadNum();
   //outputMessage('cleardots Successfully.');
 }
 
@@ -559,7 +560,30 @@ function saveDots() {
     outputMessage(updateJsonRes);
     return;
   }
+  saveJsonFile(jsonData);
 }
+
+function saveJsonFile(jsonData) {
+  try {
+    ipcRenderer.send('save-json-file', jsonData);
+  } catch (error) {
+    console.error('Error while sending IPC message:', error);
+  }
+}
+
+ipcRenderer.on('save-json-file-response', (event, response) => {
+  try {
+    if (response.success) {
+      outputMessage('JSON data output successful.');
+    } else {
+      const errorMessage = response.error;
+      console.error('Failed to save JSON file:', errorMessage);
+    }
+  } catch (error) {
+    console.error('An error occurred while saving JSON file:', error);
+    console.log(response);
+  }
+});
 
 function clearMessage() {
   outputMessages.value = [];
@@ -642,7 +666,7 @@ ipcRenderer.on('choose-json-file-response', (event, response) => {
     if (response.success) {
       jsonData.jsonStr = response.jsonInfo.content;
       jsonData.jsonPath = response.jsonInfo.path;
-      outputMessage('JSON data retrieval successful.');
+      outputMessage('JSON data input successful.');
     } else {
       // 处理读取文件失败的情况
       const errorMessage = response.error;
