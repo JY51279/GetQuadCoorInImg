@@ -70,6 +70,15 @@ export function parsePointString2Array(str, separator) {
   return points;
 }
 
+export function transStr2Json(jsonStr) {
+  var json = JSON.parse(jsonStr);
+  return json;
+}
+export function transJson2Str(json) {
+  var jsonStr = JSON.stringify(json);
+  return jsonStr;
+}
+
 export function serializePointArray2String(points, separator) {
   let pointsTmp = cloneDeep(points);
   if (!setQuadDots2ClockWise(pointsTmp)) return '';

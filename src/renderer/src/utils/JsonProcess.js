@@ -4,6 +4,8 @@ import {
   parsePointString2Array,
   serializePointArray2String,
   getClosestPtIndexInArray,
+  transStr2Json,
+  transJson2Str,
 } from './BasicFuncs.js';
 
 export function resetJsonProcess(jsonStr, classStr, imgStr) {
@@ -50,30 +52,33 @@ function resetClassKeys(classStr) {
   }
 }
 
+let imgIndex = -1;
 function resetImgIndex(imgStr) {
-  let imgIndex = -1;
   for (let i = 0; i < json[rootKey].length; ++i) {
     if (json[rootKey][i][imgKey].search(imgStr) !== -1) {
       imgIndex = i;
-      return imgIndex;
     }
   }
-  return imgIndex;
 }
 
 let jsonPerPicArray = [];
-function resetPicJson(imgStr) {
-  const imgIndex = resetImgIndex(imgStr);
-  if (imgIndex === -1) {
-    window.alert('Unable to retrieve the image from the JSON file.');
+function resetPicJson(imgStr = '') {
+  if (imgStr !== '') {
+    resetImgIndex(imgStr);
+    if (imgIndex === -1) {
+      window.alert('Unable to retrieve the image from the JSON file.');
+    }
   }
-  jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
+  try {
+    jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
+  } catch (err) {
+    console.error('An error occurred while accessing the JSON array:', err);
+  }
 }
 
 let json = {};
 function resetJson(jsonStr) {
-  json = JSON.parse(jsonStr);
-  //console.log(json);
+  json = transStr2Json(jsonStr);
 }
 
 let centerPtList = [];
@@ -88,8 +93,6 @@ function resetCenterPtList() {
 }
 
 let quadDots = [];
-let quadDotsStr = '';
-let centerPt = { x: 0, y: 0 };
 let quadIndex = -1;
 export function setQuadInfo(realDots, quadNumberRef) {
   if (realDots.length !== 4) {
@@ -99,6 +102,7 @@ export function setQuadInfo(realDots, quadNumberRef) {
   quadDots = realDots.slice();
   setQuadDots2ClockWise(quadDots);
   //quadDotsStr = array.join(separator); // 将数组转换为以separator分隔的字符串
+  let centerPt = { x: 0, y: 0 };
   centerPt = getQuadCenterPoint(quadDots);
   quadIndex = getClosestPtIndexInArray(centerPt, centerPtList);
   quadNumberRef.value = quadIndex + 1;
@@ -109,9 +113,26 @@ export function updateQuadIndex(quadNum) {
   quadIndex = quadNum - 1;
 }
 
-export function isTransQuadDots2Str(realDots) {
-  if (realDots.length !== 4) return false;
-  quadDotsStr = serializePointArray2String(realDots);
-  if (quadDotsStr === '') return false;
+function TransQuadDots2Str(realDots) {
+  let targetStr = '';
+  if (realDots.length !== 4) return targetStr;
+  targetStr = serializePointArray2String(realDots, separator);
+  //console.log('targetStr: ' + targetStr);
+  if (targetStr === '') return targetStr;
+  return targetStr;
+}
+
+export function updateJson(jsonData) {
+  let quadStr = TransQuadDots2Str(quadDots);
+  if (quadStr === '') return 'Failed to trans dots to string.';
+  try {
+    json[rootKey][imgIndex][classKeys.key1][quadIndex][classKeys.key2] = quadStr;
+    // console.log('quadStr: ' + quadStr);
+    // console.log(json);
+    jsonData.jsonStr = transJson2Str(json);
+    resetPicJson();
+  } catch (err) {
+    return 'Failed to save string to json.';
+  }
   return true;
 }

@@ -95,7 +95,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
 import cloneDeep from 'lodash/cloneDeep';
-import { resetJsonProcess, setQuadInfo, updateQuadIndex, isTransQuadDots2Str } from '../utils/JsonProcess.js';
+import { resetJsonProcess, setQuadInfo, updateQuadIndex, updateJson } from '../utils/JsonProcess.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 const offsetCanvasLeft = 22;
@@ -554,7 +554,11 @@ function clearDots() {
 }
 
 function saveDots() {
-  isTransQuadDots2Str(dotsRealCoor.value);
+  let updateJsonRes = updateJson(jsonData);
+  if (updateJsonRes !== true) {
+    outputMessage(updateJsonRes);
+    return;
+  }
 }
 
 function clearMessage() {
@@ -575,7 +579,7 @@ function initDrawImg() {
   offsetX.value = 0;
   offsetY.value = 0;
   clearDots();
-  resetJsonProcess(jsonStr, selectedOption.value[0], imgFileName.value);
+  resetJsonProcess(jsonData.jsonStr, selectedOption.value[0], imgFileName.value);
   const img = new Image();
   img.src = imageSrc.value;
   img.onload = () => {
@@ -624,8 +628,7 @@ function loadImgFile(event) {
 }
 
 let jsonFileName = ref(null);
-let jsonStr = '';
-let jsonPath = '';
+let jsonData = { jsonStr: '', jsonPath: '' };
 function chooseJsonFile() {
   try {
     ipcRenderer.send('open-json-file-dialog');
@@ -637,8 +640,8 @@ function chooseJsonFile() {
 ipcRenderer.on('choose-json-file-response', (event, response) => {
   try {
     if (response.success) {
-      jsonStr = response.jsonInfo.content;
-      jsonPath = response.jsonInfo.path;
+      jsonData.jsonStr = response.jsonInfo.content;
+      jsonData.jsonPath = response.jsonInfo.path;
       outputMessage('JSON data retrieval successful.');
     } else {
       // 处理读取文件失败的情况
