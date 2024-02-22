@@ -1,9 +1,10 @@
 "use strict";
 const electron = require("electron");
-const path = require("path");
+const path$1 = require("path");
 const utils = require("@electron-toolkit/utils");
-const icon = path.join(__dirname, "../../resources/icon.png");
+const icon = path$1.join(__dirname, "../../resources/icon.png");
 const fs = require("fs");
+const path = require("path");
 function createWindow() {
   const mainWindow = new electron.BrowserWindow({
     width: 1920,
@@ -12,7 +13,7 @@ function createWindow() {
     autoHideMenuBar: true,
     ...process.platform === "linux" ? { icon } : {},
     webPreferences: {
-      preload: path.join(__dirname, "../preload/index.js"),
+      preload: path$1.join(__dirname, "../preload/index.js"),
       sandbox: false
     }
   });
@@ -26,7 +27,7 @@ function createWindow() {
   if (utils.is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+    mainWindow.loadFile(path$1.join(__dirname, "../renderer/index.html"));
   }
   mainWindow.webContents.openDevTools();
 }
@@ -43,6 +44,7 @@ electron.app.whenReady().then(() => {
     }).then((result) => {
       if (!result.canceled && result.filePaths.length > 0) {
         const filePath = result.filePaths[0];
+        const fileName = path.basename(filePath);
         fs.readFile(filePath, "utf-8", (err, data) => {
           if (err) {
             console.log("Fail Open Json");
@@ -50,7 +52,7 @@ electron.app.whenReady().then(() => {
             return;
           }
           console.log("Suc Open Json");
-          const jsonInfo = { content: data, path: filePath };
+          const jsonInfo = { str: data, path: filePath, fileName };
           event.reply("choose-json-file-response", { success: true, jsonInfo });
         });
       }
@@ -59,8 +61,8 @@ electron.app.whenReady().then(() => {
     });
   });
   electron.ipcMain.on("save-json-file", (event, data) => {
-    const filePath = data.jsonPath;
-    const content = data.jsonStr;
+    const filePath = data.path;
+    const content = data.str;
     fs.writeFile(filePath, content, (err) => {
       if (err) {
         console.log("Fail Save Json");

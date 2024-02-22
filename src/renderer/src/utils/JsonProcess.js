@@ -128,9 +128,9 @@ export function updateJson(jsonData) {
   if (quadStr === '') return 'Failed to trans dots to string.';
   try {
     json[rootKey][imgIndex][classKeys.key1][quadIndex][classKeys.key2] = quadStr;
-    // console.log('quadStr: ' + quadStr);
-    // console.log(json);
-    jsonData.jsonStr = transJson2Str(json);
+    //console.log('quadStr: ' + quadStr);
+    //console.log(json);
+    jsonData.str = transJson2Str(json);
     resetPicJson();
   } catch (err) {
     return 'Failed to save string to json.';

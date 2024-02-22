@@ -3,7 +3,7 @@ import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
 const fs = require('fs');
-
+const path = require('path');
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -64,6 +64,7 @@ app.whenReady().then(() => {
         if (!result.canceled && result.filePaths.length > 0) {
           // 发送选中文件的路径到渲染进程
           const filePath = result.filePaths[0];
+          const fileName = path.basename(filePath);
           fs.readFile(filePath, 'utf-8', (err, data) => {
             if (err) {
               console.log('Fail Open Json');
@@ -71,7 +72,7 @@ app.whenReady().then(() => {
               return;
             }
             console.log('Suc Open Json');
-            const jsonInfo = { content: data, path: filePath };
+            const jsonInfo = { str: data, path: filePath, fileName: fileName };
             event.reply('choose-json-file-response', { success: true, jsonInfo });
           });
         }
@@ -81,8 +82,8 @@ app.whenReady().then(() => {
       });
   });
   ipcMain.on('save-json-file', (event, data) => {
-    const filePath = data.jsonPath;
-    const content = data.jsonStr;
+    const filePath = data.path;
+    const content = data.str;
 
     fs.writeFile(filePath, content, err => {
       if (err) {

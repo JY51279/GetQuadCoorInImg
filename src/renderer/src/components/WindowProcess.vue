@@ -603,7 +603,7 @@ function initDrawImg() {
   offsetX.value = 0;
   offsetY.value = 0;
   clearDots();
-  resetJsonProcess(jsonData.jsonStr, selectedOption.value[0], imgFileName.value);
+  resetJsonProcess(jsonData.str, selectedOption.value[0], imgFileName.value);
   const img = new Image();
   img.src = imageSrc.value;
   img.onload = () => {
@@ -651,8 +651,6 @@ function loadImgFile(event) {
   reader.readAsDataURL(file);
 }
 
-let jsonFileName = ref(null);
-let jsonData = { jsonStr: '', jsonPath: '' };
 function chooseJsonFile() {
   try {
     ipcRenderer.send('open-json-file-dialog');
@@ -661,11 +659,13 @@ function chooseJsonFile() {
   }
 }
 
+let jsonFileName = ref(null);
+let jsonData = { str: '', path: '', fileName: '' };
 ipcRenderer.on('choose-json-file-response', (event, response) => {
   try {
     if (response.success) {
-      jsonData.jsonStr = response.jsonInfo.content;
-      jsonData.jsonPath = response.jsonInfo.path;
+      jsonData = response.jsonInfo;
+      jsonFileName.value = jsonData.fileName;
       outputMessage('JSON data input successful.');
     } else {
       // 处理读取文件失败的情况
