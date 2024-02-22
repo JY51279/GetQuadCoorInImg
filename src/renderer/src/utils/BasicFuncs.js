@@ -75,7 +75,7 @@ export function transStr2Json(jsonStr) {
   return json;
 }
 export function transJson2Str(json) {
-  var jsonStr = JSON.stringify(json);
+  var jsonStr = JSON.stringify(json, null, 2);
   return jsonStr;
 }
 
