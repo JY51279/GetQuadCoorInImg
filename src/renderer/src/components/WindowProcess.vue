@@ -108,6 +108,7 @@ const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
 const divRef = ref(null);
 const canvas = ref(null);
+const scale = ref(1);
 
 // Basic delete
 function deletePt(ptIndex) {
@@ -320,6 +321,7 @@ const autoAdaptBorderDis = 10;
 const offsetX = ref(0);
 const offsetY = ref(0);
 const { x, y } = useMouse();
+const { pressed } = useMousePressed({ target: divRef });
 watch([x, y], ([newX, newY], [oldX, oldY]) => {
   if (pressed.value) {
     //console.log(`Mouse moved from (${oldX}, ${oldY}) to (${newX}, ${newY})`);
@@ -396,7 +398,6 @@ watch(scale, (newScale, oldScale) => {
 let mouseMoved = false;
 let timer = null;
 let isNotLongPress = true;
-const { pressed } = useMousePressed({ target: divRef });
 watch(pressed, newVal => {
   if (newVal) {
     isNotLongPress = true;
@@ -674,7 +675,6 @@ ipcRenderer.on('choose-json-file-response', (event, response) => {
 });
 
 const scaleRange = 60;
-const scale = ref(1);
 const onWheel = event => {
   if (event.deltaY < 0) {
     if (scale.value < 0.9) scale.value += 0.1;
