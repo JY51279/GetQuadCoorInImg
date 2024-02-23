@@ -247,11 +247,12 @@ function drawCanvas() {
     offsetX.value <= -initImgWidth.value * scale.value ||
     offsetY.value <= -initImgHeight.value * scale.value
   ) {
-    console.log('offset: (' + offsetX.value + ', ' + offsetY.value + ')');
-    console.log('maxOff: (' + viewportWidth.value + ', ' + viewportHeight.value + ')');
-    console.log('minOff: (' + -initImgWidth.value * scale.value + ', ' + -initImgHeight.value * scale.value + ')');
-    console.log('scale: ' + scale.value);
-    outputMessage('drawCanvas offset Error.');
+    // console.log('offset: (' + offsetX.value + ', ' + offsetY.value + ')');
+    // console.log('maxOff: (' + viewportWidth.value + ', ' + viewportHeight.value + ')');
+    // console.log('minOff: (' + -initImgWidth.value * scale.value + ', ' + -initImgHeight.value * scale.value + ')');
+    // console.log('scale: ' + scale.value);
+    ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
+    outputMessage('The image is out of the visible area.');
     return;
   }
 
