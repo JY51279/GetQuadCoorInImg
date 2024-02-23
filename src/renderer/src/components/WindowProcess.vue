@@ -91,11 +91,14 @@
         <button class="button-style" @click="resetPosition">Reset Position</button>
       </div>
     </div>
-    <div class="json-container">
-      <pre ref="jsonView" @mousemove="highlightLine"> <span v-for="(jsonItem, index) in formattedJsonStrArray" 
-                                                        :key="index" 
-                                                        :class="{ 'highlighted-line': index === lightIndex }"
-                                                        > {{ jsonItem }}<br></span></pre>
+    <div class="json-container" @mousemove="highlightLine($event, $refs.jsonView)">
+      <pre ref="jsonView"> 
+      <div v-for="(jsonItem, index) in formattedJsonStrArray"
+      :key="index"
+      :class="{ 'highlighted-line': index === lightIndex }"
+    >
+      <span style="padding-left: 0px;">{{ jsonItem }}</span>
+    </div></pre>
       <!-- <div class="highlighted-line" v-if="highlightedJson !== null"></div> -->
     </div>
   </div>
@@ -128,7 +131,7 @@ let jsonPerPicArray = [];
 let jsonPerObjLineNum = -1;
 function updateFormattedJson() {
   formattedJsonStrArray.value = getJsonPerPicStrArray();
-  jsonPerObjLineNum = getJsonPerPicPerObjKeysNum() + 2; // Add "{"  "}" 2 line
+  jsonPerObjLineNum = getJsonPerPicPerObjKeysNum() + 2 + 2; // Add "{"  "}" 2 line + div add 2 lines
   const jsonArrayTmp = [];
   for (let i = 0; i < formattedJsonStrArray.value.length; i++)
     jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
@@ -137,22 +140,22 @@ function updateFormattedJson() {
 }
 
 const lightIndex = ref(-1);
-function highlightLine(e) {
+function highlightLine(e, preElement) {
   if (jsonPerObjLineNum === -1) return;
-  const preElement = e.target;
   const computedStyle = getComputedStyle(preElement);
   const lineHeight = parseFloat(computedStyle.lineHeight);
   // 计算滚动区域中不可见的部分的高度
   const invisibleHeight = preElement.scrollTop;
   // 当前鼠标相对于滚动容器的 Y 方向偏移量
-  const offsetY = e.offsetY;
+  const rect = preElement.getBoundingClientRect();
+  const offsetY = e.clientY - rect.top;
   // 计算当前鼠标所在的行数
-  const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight);
+  const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight) - 2; // Div the first line is lineIndex = 2
   // 计算对应的元素下标
   lightIndex.value = Math.floor(hoveredLine / jsonPerObjLineNum);
 
   highlightedJson.value = jsonPerPicArray[lightIndex.value];
-  console.log(highlightedJson.value);
+  //console.log(highlightedJson.value);
 }
 
 // Basic delete
@@ -971,6 +974,7 @@ function initZoomSettings() {
   margin-left: auto;
   overflow: auto;
   border: 2px solid gray;
+  display: flex; /* 将每个 JSON 数据元素放置在同一行上 */
 }
 .highlighted-line {
   background-color: #ffff006b; /* Yellow color with some transparency */
