@@ -1,7 +1,7 @@
 <template>
   <input ref="imgFileInput" type="file" accept="image/*" style="display: none" @change="loadImgFile" />
   <div class="container">
-    <div ref="divRef" class="image-container" @wheel="onWheel">
+    <div class="image-container" ref="divRef" @wheel="onWheel">
       <canvas
         ref="canvas"
         :width="viewportWidth + offsetCanvasLeft"
@@ -33,26 +33,29 @@
               z-index: 9998;
             `"
       ></div>
-      <div style="display: flex; position: fixed; left: 5%; bottom: 25px; width: calc(60% + 60px); z-index: 9999">
-        <input
-          v-if="imageSrc"
-          v-model.number="scale"
-          type="number"
-          min="0.1"
-          :max="scaleRange"
-          step="0.1"
-          style="width: 60px"
-        />
-        <input
-          v-if="imageSrc"
-          v-model.number="scale"
-          type="range"
-          min="1"
-          :max="scaleRange"
-          step="1"
-          style="width: calc(100% - 60px)"
-        />
-      </div>
+    </div>
+    <div
+      class="scale"
+      style="display: flex; position: fixed; left: 5%; bottom: 25px; width: calc(60% + 60px); z-index: 9999"
+    >
+      <input
+        v-if="imageSrc"
+        v-model.number="scale"
+        type="number"
+        min="0.1"
+        :max="scaleRange"
+        step="0.1"
+        style="width: 60px"
+      />
+      <input
+        v-if="imageSrc"
+        v-model.number="scale"
+        type="range"
+        min="1"
+        :max="scaleRange"
+        step="1"
+        style="width: calc(100% - 60px)"
+      />
     </div>
     <div class="tool-container">
       <div>
@@ -89,6 +92,9 @@
       </div>
     </div>
   </div>
+  <div class="json-container">
+    <pre ref="jsonView" @mousemove="highlightLine">{{ formattedJson }}</pre>
+  </div>
 </template>
 
 <script setup>
@@ -100,29 +106,8 @@ import { resetJsonProcess, setQuadInfo, updateQuadIndex, updateJson } from '../u
 const ipcRenderer = window.electron.ipcRenderer;
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
-
 const divRef = ref(null);
-const viewportWidth = ref(0);
-const viewportHeight = ref(0);
-
 const canvas = ref(null);
-const ctx = ref(null);
-
-let mouseMoved = false;
-let timer = null;
-let isNotLongPress = true;
-const dotsCanvasCoor = ref([]);
-const dotsRealCoor = ref([]);
-
-// for zoom
-const realDot2GetZoom = ref({ x: -1, y: -1 });
-
-const offsetX = ref(0);
-const offsetY = ref(0);
-const scale = ref(1);
-
-const { pressed } = useMousePressed({ target: divRef });
-const { x, y } = useMouse();
 
 // Basic delete
 function deletePt(ptIndex) {
@@ -332,6 +317,9 @@ function updateViewPortDraw() {
 
 // Move
 const autoAdaptBorderDis = 10;
+const offsetX = ref(0);
+const offsetY = ref(0);
+const { x, y } = useMouse();
 watch([x, y], ([newX, newY], [oldX, oldY]) => {
   if (pressed.value) {
     //console.log(`Mouse moved from (${oldX}, ${oldY}) to (${newX}, ${newY})`);
@@ -405,6 +393,10 @@ watch(scale, (newScale, oldScale) => {
 });
 
 // Judge click type
+let mouseMoved = false;
+let timer = null;
+let isNotLongPress = true;
+const { pressed } = useMousePressed({ target: divRef });
 watch(pressed, newVal => {
   if (newVal) {
     isNotLongPress = true;
@@ -503,6 +495,8 @@ function clearOneDot(index) {
 }
 
 // Click canvas to get dot
+const dotsCanvasCoor = ref([]);
+const dotsRealCoor = ref([]);
 function toggleDot(e) {
   if (imageSrc.value == null || imageSrc.value == '' || !isNotLongPress) {
     return;
@@ -594,6 +588,7 @@ const initImgWidth = ref(0);
 const initImgHeight = ref(0);
 const imageObj = ref(null);
 const imageSrc = ref('');
+const ctx = ref(null);
 function initDrawImg() {
   if (imageSrc.value === '' || imageSrc.value === null) {
     outputMessage('initDrawImg Error.');
@@ -679,6 +674,7 @@ ipcRenderer.on('choose-json-file-response', (event, response) => {
 });
 
 const scaleRange = 60;
+const scale = ref(1);
 const onWheel = event => {
   if (event.deltaY < 0) {
     if (scale.value < 0.9) scale.value += 0.1;
@@ -692,7 +688,9 @@ const onWheel = event => {
   console.log(scale.value);
 };
 
+// for zoom
 const zoomView = ref(null);
+const realDot2GetZoom = ref({ x: -1, y: -1 });
 function updateZoomView(event) {
   if (!imageObj.value) return;
 
@@ -804,6 +802,8 @@ function updateRectanglePosition(left, top) {
   rectangle.style.top = top + 'px';
 }
 
+const viewportWidth = ref(0);
+const viewportHeight = ref(0);
 async function updateViewSize() {
   if (divRef.value) {
     viewportWidth.value = divRef.value.offsetWidth - 4; // - 4(border 2 * 2)
