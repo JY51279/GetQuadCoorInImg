@@ -36,7 +36,7 @@
     </div>
     <div
       class="scale"
-      style="display: flex; position: fixed; left: 5%; bottom: 25px; width: calc(60% + 60px); z-index: 9999"
+      style="display: flex; position: fixed; left: 40px; bottom: 25px; width: calc(50%); z-index: 9999"
     >
       <input
         v-if="imageSrc"
@@ -54,7 +54,7 @@
         min="1"
         :max="scaleRange"
         step="1"
-        style="width: calc(100% - 60px)"
+        style="width: calc(100%)"
       />
     </div>
     <div class="tool-container">
@@ -91,9 +91,12 @@
         <button class="button-style" @click="resetPosition">Reset Position</button>
       </div>
     </div>
-  </div>
-  <div class="json-container">
-    <pre ref="jsonView" @mousemove="highlightLine">{{ formattedJson }}</pre>
+    <div class="json-container">
+      <pre ref="jsonView" @mousemove="highlightLine">{{ formattedJsonStr }}</pre>
+      <div class="highlighted-line" v-if="highlightedLine !== null">
+        Current JSON content of the highlighted line: {{ getCurrentJsonContent() }}
+      </div>
+    </div>
   </div>
 </template>
 
@@ -101,7 +104,13 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
 import cloneDeep from 'lodash/cloneDeep';
-import { resetJsonProcess, setQuadInfo, updateQuadIndex, updateJson } from '../utils/JsonProcess.js';
+import {
+  resetJsonProcess,
+  setQuadInfo,
+  updateQuadIndex,
+  updateJson,
+  getJsonPerPicFormatted,
+} from '../utils/JsonProcess.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 const offsetCanvasLeft = 22;
@@ -109,6 +118,45 @@ const offsetCanvasTop = 22;
 const divRef = ref(null);
 const canvas = ref(null);
 const scale = ref(1);
+
+const formattedJsonStr = ref('');
+const highlightedLine = ref(null);
+const currentJsonContent = ref({});
+
+let formattedJson = {};
+function updateFormattedJson() {
+  formattedJsonStr.value = getJsonPerPicFormatted();
+  formattedJson = JSON.parse(formattedJsonStr.value);
+}
+
+function highlightLine(e) {
+  const preElement = e.target;
+  const lineHeight = preElement.clientHeight / preElement.scrollHeight;
+  const hoveredLine = Math.floor(e.offsetY / (preElement.scrollHeight * lineHeight));
+  highlightedLine.value = hoveredLine + 1;
+
+  // 获取当前行的 JSON 内容
+  //console.log(formattedJson);
+  currentJsonContent.value = getCurrentJsonContent(formattedJson, hoveredLine);
+}
+
+// 根据行号获取当前行的 JSON 内容
+function getCurrentJsonContent(data, lineNumber) {
+  console.log('getCurrentJsonContent');
+  console.log(data);
+  console.log('lineNumber: ' + lineNumber);
+  if (Array.isArray(data)) {
+    console.log('isArray');
+    console.log(data[lineNumber]);
+    return data[lineNumber];
+  } else if (typeof data === 'object') {
+    console.log('isObject');
+    const keys = Object.keys(data);
+    console.log(keys);
+    return data[keys[lineNumber]];
+  }
+  return 'Faild Get Current Json';
+}
 
 // Basic delete
 function deletePt(ptIndex) {
@@ -600,6 +648,7 @@ function initDrawImg() {
   offsetY.value = 0;
   clearDots();
   resetJsonProcess(jsonData.str, selectedOption.value[0], imgFileName.value);
+  updateFormattedJson();
   const img = new Image();
   img.src = imageSrc.value;
   img.onload = () => {
@@ -843,6 +892,10 @@ function initZoomSettings() {
 * {
   user-select: none;
 }
+/* 添加样式来高亮当前行 */
+pre .highlighted-line {
+  background-color: #ffff006b; /* Yellow color with some transparency */
+}
 .container {
   display: flex;
   width: 100%;
@@ -852,12 +905,11 @@ function initZoomSettings() {
 }
 
 .tool-container {
-  margin-left: auto;
-  margin-right: 0;
   width: 122px;
   height: 100%;
   display: flex;
   flex-direction: column;
+  margin-left: calc(75% - 130px);
   justify-content: space-between;
 }
 .zoomViewBox {
@@ -918,15 +970,22 @@ function initZoomSettings() {
   /* 修改边距以适应多个按钮 */
   cursor: pointer;
 }
-
+.json-container {
+  width: calc(25%);
+  /*20*2 + 120 + 2((1)*2) + 4(blankspace)*/
+  height: calc(100%);
+  margin-left: auto;
+  overflow: hidden;
+  border: 2px solid gray;
+}
 .image-container {
   background: url('../src/assets/bg.png') repeat;
-  width: calc(100% - 166px);
-  /*20*2 + 120 + 2((1)*2) + 4(blankspace)*/
+  width: calc(75% - 170px);
+  /* 20*2 + 122 + 4(blankspace)*2 */
   height: calc(100% - 40px);
-  position: fixed;
   top: 20px;
   left: 20px;
+  position: fixed;
   overflow: hidden;
   border: 2px solid gray;
 }
@@ -940,9 +999,9 @@ function initZoomSettings() {
 
 .rectangle {
   position: absolute;
-  width: 6px;
+  width: 8px;
   /* 矩形的宽度 */
-  height: 6px;
+  height: 8px;
   /* 矩形的高度 */
   border: 1px solid rgba(255, 0, 0, 0.5);
   /* 红色的边界 */

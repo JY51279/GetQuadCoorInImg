@@ -76,6 +76,10 @@ function resetPicJson(imgStr = '') {
   }
 }
 
+export function getJsonPerPicFormatted() {
+  return transJson2Str(jsonPerPicArray);
+}
+
 let json = {};
 function resetJson(jsonStr) {
   json = transStr2Json(jsonStr);
@@ -127,7 +131,8 @@ export function updateJson(jsonData) {
   let quadStr = TransQuadDots2Str(quadDots);
   if (quadStr === '') return 'Failed to trans dots to string.';
   try {
-    json[rootKey][imgIndex][classKeys.key1][quadIndex][classKeys.key2] = quadStr;
+    jsonPerPicArray[quadIndex][classKeys.key2] = quadStr;
+    json[rootKey][imgIndex][classKeys.key1] = jsonPerPicArray;
     //console.log('quadStr: ' + quadStr);
     //console.log(json);
     jsonData.str = transJson2Str(json);
