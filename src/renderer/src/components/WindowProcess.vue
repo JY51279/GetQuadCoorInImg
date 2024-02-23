@@ -92,12 +92,13 @@
       </div>
     </div>
     <div class="json-container" @mousemove="highlightLine($event, $refs.jsonView)">
-      <pre ref="jsonView"> 
+      <pre class="json-all-container" ref="jsonView"> 
       <div v-for="(jsonItem, index) in formattedJsonStrArray"
       :key="index"
       :class="{ 'highlighted-line': index === lightIndex }"
+      class="json-item-container"
     >
-      <span style="padding-left: 0px;">{{ jsonItem }}</span>
+      <span>{{ jsonItem }}</span>
     </div></pre>
       <!-- <div class="highlighted-line" v-if="highlightedJson !== null"></div> -->
     </div>
@@ -131,7 +132,7 @@ let jsonPerPicArray = [];
 let jsonPerObjLineNum = -1;
 function updateFormattedJson() {
   formattedJsonStrArray.value = getJsonPerPicStrArray();
-  jsonPerObjLineNum = getJsonPerPicPerObjKeysNum() + 2 + 2; // Add "{"  "}" 2 line + div add 2 lines
+  jsonPerObjLineNum = getJsonPerPicPerObjKeysNum() + 2; // Add "{"  "}" 2 line
   const jsonArrayTmp = [];
   for (let i = 0; i < formattedJsonStrArray.value.length; i++)
     jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
@@ -150,7 +151,8 @@ function highlightLine(e, preElement) {
   const rect = preElement.getBoundingClientRect();
   const offsetY = e.clientY - rect.top;
   // 计算当前鼠标所在的行数
-  const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight) - 2; // Div the first line is lineIndex = 2
+  const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight);
+  console.log('hoveredLine' + hoveredLine);
   // 计算对应的元素下标
   lightIndex.value = Math.floor(hoveredLine / jsonPerObjLineNum);
 
@@ -974,10 +976,16 @@ function initZoomSettings() {
   margin-left: auto;
   overflow: auto;
   border: 2px solid gray;
-  display: flex; /* 将每个 JSON 数据元素放置在同一行上 */
+}
+.json-all-container {
+  display: inline-flex; /* 或者 display: inline-flex; */
+  flex-direction: column;
 }
 .highlighted-line {
   background-color: #ffff006b; /* Yellow color with some transparency */
+}
+.json-item-container {
+  display: inline-flex; /* 或者 display: inline-flex; */
 }
 .image-container {
   background: url('../src/assets/bg.png') repeat;
