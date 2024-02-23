@@ -152,12 +152,18 @@ function highlightLine(e, preElement) {
   const offsetY = e.clientY - rect.top;
   // 计算当前鼠标所在的行数
   const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight);
-  console.log('hoveredLine' + hoveredLine);
   // 计算对应的元素下标
   lightIndex.value = Math.floor(hoveredLine / jsonPerObjLineNum);
 
   highlightedJson.value = jsonPerPicArray[lightIndex.value];
   //console.log(highlightedJson.value);
+}
+
+function updateNextLightIndex() {
+  lightIndex.value = Math.min(lightIndex.value + 1, jsonPerPicArray.length - 1);
+}
+function updatePreviousLightIndex() {
+  lightIndex.value = Math.max(lightIndex.value - 1, 0);
 }
 
 // Basic delete
@@ -202,7 +208,7 @@ function getDotInfo(e) {
 }
 
 let imgPixelData2D = [];
-function updataImgData() {
+function updateImgData() {
   // 创建一个Canvas对象
   let canvasTmp = document.createElement('canvas');
   canvasTmp.width = initImgWidth.value;
@@ -479,6 +485,8 @@ onMounted(() => {
     mouseCoor.y = e.clientY;
     mouseMoved = true;
   });
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keyup', handleKeyUp);
 
   const outputDiv = output.value;
   outputDiv.scrollTop = outputDiv.scrollHeight;
@@ -492,7 +500,67 @@ onUnmounted(() => {
     mouseCoor.y = e.clientY;
     mouseMoved = true;
   });
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keyup', handleKeyUp);
 });
+
+// 监听键盘事件
+// TODO 补全快捷键
+let isLogging = false;
+function handleKeyDown(e) {
+  // 兼容不同浏览器的 keyCode 或者 code 属性
+  const keyCode = e.keyCode || e.code;
+  if (!isLogging && keyCode >= 48 && keyCode <= 57) {
+    // 按下了键盘上侧的数字键
+    const digit = keyCode - 48;
+    //console.log(`Pressed number: ${digit}`);
+    clearOneDot(digit - 1);
+  }
+
+  if (e.ctrlKey) {
+    e.preventDefault(); // 阻止默认行为
+    switch (e.key) {
+      case 's':
+        saveDots(); // 执行保存操作
+        break;
+      case 'c':
+        clearDots();
+        break;
+      case 'r':
+        resetPosition();
+        break;
+      case 'm':
+        clearMessage();
+        break;
+      default:
+        return; // 不执行后续代码
+    }
+  } else {
+    switch (e.key) {
+      case 'ArrowLeft':
+      case 'a':
+        // 处理向左箭头或 'a' 键的逻辑
+        break;
+      case 'ArrowRight':
+      case 'd':
+        // 处理向右箭头或 'd' 键的逻辑
+        break;
+      case 'ArrowUp':
+      case 'w':
+        updatePreviousLightIndex();
+        break;
+      case 'ArrowDown':
+      case 's':
+        updateNextLightIndex();
+        break;
+      default:
+        return; // 不执行后续代码
+    }
+  }
+}
+function handleKeyUp() {
+  isLogging = false; // 在键盘释放时重置标志为 false，以便下次可以再次执行日志记录操作
+}
 
 // 输出信息到输出区域
 const MAX_MESSAGES = 50;
@@ -658,7 +726,7 @@ function initDrawImg() {
     // Update imgInfo
     initImgWidth.value = img.width;
     initImgHeight.value = img.height;
-    updataImgData();
+    updateImgData();
     // Update ctx
     if (ctx.value !== null && ctx.value !== null) {
       ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
@@ -670,8 +738,8 @@ function initDrawImg() {
     scale.value = scaleValue; //scale.value修改，自动调用watch scale
 
     console.log('scale:', scale);
-    console.log('viewportWidth.value:', viewportWidth.value);
-    console.log('viewportHeight .value:', viewportHeight.value);
+    //console.log('viewportWidth.value:', viewportWidth.value);
+    //console.log('viewportHeight .value:', viewportHeight.value);
     console.log('img.width:', img.width);
     console.log('img.height:', img.height);
   };
@@ -685,7 +753,7 @@ function chooseImgFile() {
   imgFileInput.value.click();
 }
 function loadImgFile(event) {
-  console.log(event.target);
+  //console.log(event.target);
   outputMessage('Load Pic......');
   const file = event.target.files[0];
   imgFileName.value = file.name;
