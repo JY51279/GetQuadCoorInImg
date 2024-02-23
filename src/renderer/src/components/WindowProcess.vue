@@ -92,10 +92,11 @@
       </div>
     </div>
     <div class="json-container">
-      <pre ref="jsonView" @mousemove="highlightLine">{{ formattedJsonStr }}</pre>
-      <div class="highlighted-line" v-if="highlightedLine !== null">
-        Current JSON content of the highlighted line: {{ getCurrentJsonContent() }}
-      </div>
+      <pre ref="jsonView" @mousemove="highlightLine"> <span v-for="(jsonItem, index) in formattedJsonStrArray" 
+                                                        :key="index" 
+                                                        :class="{ 'highlighted-line': index === lightIndex }"
+                                                        > {{ jsonItem }}<br></span></pre>
+      <!-- <div class="highlighted-line" v-if="highlightedJson !== null"></div> -->
     </div>
   </div>
 </template>
@@ -109,7 +110,8 @@ import {
   setQuadInfo,
   updateQuadIndex,
   updateJson,
-  getJsonPerPicFormatted,
+  getJsonPerPicStrArray,
+  getJsonPerPicPerObjKeysNum,
 } from '../utils/JsonProcess.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
@@ -119,43 +121,38 @@ const divRef = ref(null);
 const canvas = ref(null);
 const scale = ref(1);
 
-const formattedJsonStr = ref('');
-const highlightedLine = ref(null);
-const currentJsonContent = ref({});
+const formattedJsonStrArray = ref('');
+const highlightedJson = ref(null);
 
-let formattedJson = {};
+let jsonPerPicArray = [];
+let jsonPerObjLineNum = -1;
 function updateFormattedJson() {
-  formattedJsonStr.value = getJsonPerPicFormatted();
-  formattedJson = JSON.parse(formattedJsonStr.value);
+  formattedJsonStrArray.value = getJsonPerPicStrArray();
+  jsonPerObjLineNum = getJsonPerPicPerObjKeysNum() + 2; // Add "{"  "}" 2 line
+  const jsonArrayTmp = [];
+  for (let i = 0; i < formattedJsonStrArray.value.length; i++)
+    jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
+  jsonPerPicArray = jsonArrayTmp;
+  highlightedJson.value = null;
 }
 
+const lightIndex = ref(-1);
 function highlightLine(e) {
+  if (jsonPerObjLineNum === -1) return;
   const preElement = e.target;
-  const lineHeight = preElement.clientHeight / preElement.scrollHeight;
-  const hoveredLine = Math.floor(e.offsetY / (preElement.scrollHeight * lineHeight));
-  highlightedLine.value = hoveredLine + 1;
+  const computedStyle = getComputedStyle(preElement);
+  const lineHeight = parseFloat(computedStyle.lineHeight);
+  // 计算滚动区域中不可见的部分的高度
+  const invisibleHeight = preElement.scrollTop;
+  // 当前鼠标相对于滚动容器的 Y 方向偏移量
+  const offsetY = e.offsetY;
+  // 计算当前鼠标所在的行数
+  const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight);
+  // 计算对应的元素下标
+  lightIndex.value = Math.floor(hoveredLine / jsonPerObjLineNum);
 
-  // 获取当前行的 JSON 内容
-  //console.log(formattedJson);
-  currentJsonContent.value = getCurrentJsonContent(formattedJson, hoveredLine);
-}
-
-// 根据行号获取当前行的 JSON 内容
-function getCurrentJsonContent(data, lineNumber) {
-  console.log('getCurrentJsonContent');
-  console.log(data);
-  console.log('lineNumber: ' + lineNumber);
-  if (Array.isArray(data)) {
-    console.log('isArray');
-    console.log(data[lineNumber]);
-    return data[lineNumber];
-  } else if (typeof data === 'object') {
-    console.log('isObject');
-    const keys = Object.keys(data);
-    console.log(keys);
-    return data[keys[lineNumber]];
-  }
-  return 'Faild Get Current Json';
+  highlightedJson.value = jsonPerPicArray[lightIndex.value];
+  console.log(highlightedJson.value);
 }
 
 // Basic delete
@@ -893,9 +890,6 @@ function initZoomSettings() {
   user-select: none;
 }
 /* 添加样式来高亮当前行 */
-pre .highlighted-line {
-  background-color: #ffff006b; /* Yellow color with some transparency */
-}
 .container {
   display: flex;
   width: 100%;
@@ -975,8 +969,11 @@ pre .highlighted-line {
   /*20*2 + 120 + 2((1)*2) + 4(blankspace)*/
   height: calc(100%);
   margin-left: auto;
-  overflow: hidden;
+  overflow: auto;
   border: 2px solid gray;
+}
+.highlighted-line {
+  background-color: #ffff006b; /* Yellow color with some transparency */
 }
 .image-container {
   background: url('../src/assets/bg.png') repeat;

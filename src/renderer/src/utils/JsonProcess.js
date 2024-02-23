@@ -62,6 +62,7 @@ function resetImgIndex(imgStr) {
 }
 
 let jsonPerPicArray = [];
+let jsonPerPicPerObjKeysNum = 0;
 function resetPicJson(imgStr = '') {
   if (imgStr !== '') {
     resetImgIndex(imgStr);
@@ -71,13 +72,19 @@ function resetPicJson(imgStr = '') {
   }
   try {
     jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
+    if (jsonPerPicArray.length > 0) jsonPerPicPerObjKeysNum = Object.keys(jsonPerPicArray[0]).length;
   } catch (err) {
     console.error('An error occurred while accessing the JSON array:', err);
   }
 }
 
-export function getJsonPerPicFormatted() {
-  return transJson2Str(jsonPerPicArray);
+export function getJsonPerPicStrArray() {
+  let jsonPerPicStrArray = [];
+  for (let i = 0; i < jsonPerPicArray.length; i++) jsonPerPicStrArray.push(transJson2Str(jsonPerPicArray[i]));
+  return jsonPerPicStrArray;
+}
+export function getJsonPerPicPerObjKeysNum() {
+  return jsonPerPicPerObjKeysNum;
 }
 
 let json = {};
