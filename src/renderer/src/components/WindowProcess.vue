@@ -1,7 +1,7 @@
 <template>
   <input ref="imgFileInput" type="file" accept="image/*" style="display: none" @change="loadImgFile" />
   <div class="container">
-    <div class="image-container" ref="divRef" @wheel="onWheel">
+    <div ref="divRef" class="image-container" @wheel="onWheel">
       <canvas
         ref="canvas"
         :width="viewportWidth + offsetCanvasLeft"
@@ -92,10 +92,11 @@
       </div>
     </div>
     <div class="json-container" @mousemove="highlightLine($event, $refs.jsonView)">
-      <pre class="json-all-container" ref="jsonView"> 
-      <div v-for="(jsonItem, index) in formattedJsonStrArray"
+      <pre ref="jsonView" class="json-all-container"> 
+      <div
+      v-for="(jsonItem, index) in formattedJsonStrArray"
       :key="index"
-      :class="{ 'highlighted-line': index === lightIndex }"
+      :class="{ 'highlighted-line': index === highlightedIndex }"
       class="json-item-container"
     >
       <span>{{ jsonItem }}</span>
@@ -140,11 +141,16 @@ function updateFormattedJson() {
   highlightedJson.value = null;
 }
 
-const lightIndex = ref(-1);
+const highlightedIndex = ref(-1);
+watch(highlightedIndex, newIndex => {
+  if (newIndex !== -1) ensureHighlightVisible();
+});
+
+let lineHeight = 0;
 function highlightLine(e, preElement) {
   if (jsonPerObjLineNum === -1) return;
   const computedStyle = getComputedStyle(preElement);
-  const lineHeight = parseFloat(computedStyle.lineHeight);
+  lineHeight = parseFloat(computedStyle.lineHeight);
   // 计算滚动区域中不可见的部分的高度
   const invisibleHeight = preElement.scrollTop;
   // 当前鼠标相对于滚动容器的 Y 方向偏移量
@@ -153,17 +159,34 @@ function highlightLine(e, preElement) {
   // 计算当前鼠标所在的行数
   const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight);
   // 计算对应的元素下标
-  lightIndex.value = Math.floor(hoveredLine / jsonPerObjLineNum);
+  highlightedIndex.value = Math.floor(hoveredLine / jsonPerObjLineNum);
 
-  highlightedJson.value = jsonPerPicArray[lightIndex.value];
+  highlightedJson.value = jsonPerPicArray[highlightedIndex.value];
   //console.log(highlightedJson.value);
 }
 
-function updateNextLightIndex() {
-  lightIndex.value = Math.min(lightIndex.value + 1, jsonPerPicArray.length - 1);
+function updateLightIndex(direction) {
+  if (direction === 'next') {
+    highlightedIndex.value = Math.min(highlightedIndex.value + 1, jsonPerPicArray.length - 1);
+  } else if (direction === 'previous') {
+    highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0);
+  }
 }
-function updatePreviousLightIndex() {
-  lightIndex.value = Math.max(lightIndex.value - 1, 0);
+
+function ensureHighlightVisible() {
+  const container = document.querySelector('.json-container');
+  const containerRect = container.getBoundingClientRect();
+
+  const objHeight = jsonPerObjLineNum * lineHeight;
+  const highlightedLineOffset = highlightedIndex.value * objHeight + lineHeight;
+  const scrollBottom = container.scrollTop + containerRect.height - objHeight - lineHeight; // - lineHeight cause the verScroll
+  if (highlightedLineOffset < container.scrollTop) {
+    // 如果高亮部分在可视内容之前，向上滚动
+    container.scrollBy(0, highlightedLineOffset - container.scrollTop);
+  } else if (highlightedLineOffset > scrollBottom) {
+    // 如果高亮部分在可视内容之后，向下滚动
+    container.scrollBy(0, highlightedLineOffset - scrollBottom);
+  }
 }
 
 // Basic delete
@@ -172,7 +195,6 @@ function deletePt(ptIndex) {
     dotsCanvasCoord.value.splice(ptIndex, 1);
     dotsRealCoord.value.splice(ptIndex, 1);
     calcQuadNum.value = 0;
-    updateQuadNum();
     drawZoomAndDots();
     return true;
   }
@@ -292,7 +314,17 @@ function drawCanvas() {
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
   if (scale.value < gridLimit) {
     initCanvasSettings();
-    ctx.value.drawImage(imageObj.value, sourceLTCoord.x, sourceLTCoord.y, sw, sh, canvasLTCoord.x, canvasLTCoord.y, dw, dh);
+    ctx.value.drawImage(
+      imageObj.value,
+      sourceLTCoord.x,
+      sourceLTCoord.y,
+      sw,
+      sh,
+      canvasLTCoord.x,
+      canvasLTCoord.y,
+      dw,
+      dh,
+    );
   } else {
     drawGrid();
     drawImgInGrid(sw, sh);
@@ -547,11 +579,13 @@ function handleKeyDown(e) {
         break;
       case 'ArrowUp':
       case 'w':
-        updatePreviousLightIndex();
+        e.preventDefault();
+        updateLightIndex('previous');
         break;
       case 'ArrowDown':
       case 's':
-        updateNextLightIndex();
+        e.preventDefault();
+        updateLightIndex('next');
         break;
       default:
         return; // 不执行后续代码
@@ -581,7 +615,18 @@ async function outputMessage(message) {
 
 // Input
 const inputQuadNum = ref('');
+watch(inputQuadNum, () => {
+  updateQuadNum();
+});
+function getInputQuadNum(e) {
+  inputQuadNum.value = e.target.value;
+}
+
 const calcQuadNum = ref(0);
+watch(calcQuadNum, () => {
+  updateQuadNum();
+});
+
 const outputQuadNumber = ref(0);
 function updateQuadNum() {
   if (inputQuadNum.value === '') outputQuadNumber.value = calcQuadNum.value;
@@ -589,16 +634,11 @@ function updateQuadNum() {
   updateQuadIndex(dotsRealCoord.value, outputQuadNumber.value);
 }
 
-function getInputQuadNum(e) {
-  inputQuadNum.value = e.target.value;
-  updateQuadNum();
-}
-
 /******click */
 // Click checkbox to check the class
 const selectedOption = ref(['DBR']);
 const classTotalStr = ['DBR', 'DDN', 'DLR'];
-function checkClass(e) {
+function checkClass() {
   setTimeout(function () {
     if (selectedOption.value.length === 0) {
       selectedOption.value.push(classTotalStr[0]);
@@ -632,6 +672,7 @@ function toggleDot(e) {
     return;
   }
 
+  // eslint-disable-next-line no-unused-vars
   const { canvasCoord, realCoord, existingDotIndex } = getDotInfo(e);
   if (existingDotIndex !== -1) {
     // 如果已经存在红点，删除它
@@ -650,7 +691,6 @@ function toggleDot(e) {
     } else {
       calcQuadNum.value = 0;
     }
-    updateQuadNum();
   }
 }
 
@@ -664,7 +704,6 @@ function clearDots() {
   dotsCanvasCoord.value = [];
   dotsRealCoord.value = [];
   calcQuadNum.value = 0;
-  updateQuadNum();
   //outputMessage('clearDots Successfully.');
 }
 
