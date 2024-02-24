@@ -12,7 +12,7 @@
         @mousemove="updateZoomView"
       ></canvas>
       <div
-        v-for="dot in dotsCanvasCoor"
+        v-for="dot in dotsCanvasCoord"
         :key="dot.id"
         class="dot"
         :style="`
@@ -69,7 +69,7 @@
         </div>
         <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
         <div class="fileInfo-style">图片: {{ imgFileName }}</div>
-        <div v-for="(item, index) in dotsRealCoor" :key="index">
+        <div v-for="(item, index) in dotsRealCoord" :key="index">
           <span>({{ item.x }}, {{ item.y }})</span>
           <button class="button-delete-style" @click="clearOneDot(index)">x</button>
         </div>
@@ -168,12 +168,12 @@ function updatePreviousLightIndex() {
 
 // Basic delete
 function deletePt(ptIndex) {
-  if (ptIndex !== -1 && ptIndex < dotsCanvasCoor.value.length) {
-    dotsCanvasCoor.value.splice(ptIndex, 1);
-    dotsRealCoor.value.splice(ptIndex, 1);
+  if (ptIndex !== -1 && ptIndex < dotsCanvasCoord.value.length) {
+    dotsCanvasCoord.value.splice(ptIndex, 1);
+    dotsRealCoord.value.splice(ptIndex, 1);
     calcQuadNum.value = 0;
     updateQuadNum();
-    drawZoomAnddots();
+    drawZoomAndDots();
     return true;
   }
   return false;
@@ -188,23 +188,23 @@ function deleteDot(e) {
 }
 
 function getDotInfo(e) {
-  let canvasCoor = {
+  let canvasCoord = {
     x: e.clientX,
     y: e.clientY,
   };
-  let realCoor = { x: 0, y: 0 };
+  let realCoord = { x: 0, y: 0 };
 
-  transCanvas2RealInfo(realCoor, canvasCoor); // 得到原始图片对应坐标
-  transReal2CanvasInfo(canvasCoor, realCoor); // 得到贴合后画布确切坐标
+  transCanvas2RealInfo(realCoord, canvasCoord); // 得到原始图片对应坐标
+  transReal2CanvasInfo(canvasCoord, realCoord); // 得到贴合后画布确切坐标
 
-  const existingDotIndex = dotsRealCoor.value.findIndex(
-    realDot => Math.abs(realDot.x - realCoor.x) < 2 && Math.abs(realDot.y - realCoor.y) < 2,
+  const existingDotIndex = dotsRealCoord.value.findIndex(
+    realDot => Math.abs(realDot.x - realCoord.x) < 2 && Math.abs(realDot.y - realCoord.y) < 2,
   );
   // console.log('***********getDotInfo');
   // console.log('e.client: (' + e.clientX + ', ' + e.clientY + ')');
-  // console.log('canvasCoor: (' + canvasCoor.x + ', ' + canvasCoor.y + ')');
-  // console.log('realCoor: (' + realCoor.x + ', ' + realCoor.y + ')');
-  return { canvasCoor, realCoor, existingDotIndex };
+  // console.log('canvasCoord: (' + canvasCoord.x + ', ' + canvasCoord.y + ')');
+  // console.log('realCoord: (' + realCoord.x + ', ' + realCoord.y + ')');
+  return { canvasCoord, realCoord, existingDotIndex };
 }
 
 let imgPixelData2D = [];
@@ -237,10 +237,10 @@ function updateImgData() {
 }
 
 // Only draw the part of img inside the viewport
-const canvasLTCoor = { x: 0, y: 0 };
-const canvasRBCoor = { x: 0, y: 0 };
-const sourceLTCoor = { x: 0, y: 0 };
-const sourceRBCoor = { x: 0, y: 0 };
+const canvasLTCoord = { x: 0, y: 0 };
+const canvasRBCoord = { x: 0, y: 0 };
+const sourceLTCoord = { x: 0, y: 0 };
+const sourceRBCoord = { x: 0, y: 0 };
 const gridLimit = 10;
 function drawCanvas() {
   if (canvas.value === null || canvas.value === null) {
@@ -267,47 +267,47 @@ function drawCanvas() {
   const x2 = Math.min(viewportWidth.value - 1, offsetX.value + initImgWidth.value * scale.value - 1);
   const y1 = Math.max(0, offsetY.value);
   const y2 = Math.min(viewportHeight.value - 1, offsetY.value + initImgHeight.value * scale.value - 1);
-  let imgScaledLTCoor = { x: x1 - offsetX.value, y: y1 - offsetY.value };
-  let imgScaledRBCoor = { x: x2 - offsetX.value, y: y2 - offsetY.value };
+  let imgScaledLTCoord = { x: x1 - offsetX.value, y: y1 - offsetY.value };
+  let imgScaledRBCoord = { x: x2 - offsetX.value, y: y2 - offsetY.value };
 
-  //Calc letf-top and right-bottom pts in canvas
-  transScaled2RealInfo(sourceLTCoor, imgScaledLTCoor);
-  transScaled2RealInfo(sourceRBCoor, imgScaledRBCoor);
+  //Calc left-top and right-bottom pts in canvas
+  transScaled2RealInfo(sourceLTCoord, imgScaledLTCoord);
+  transScaled2RealInfo(sourceRBCoord, imgScaledRBCoord);
 
-  transReal2ScaledInfo(imgScaledLTCoor, sourceLTCoor); // 使点位置与图片像素贴合
-  transReal2ScaledInfo(imgScaledRBCoor, {
-    x: sourceRBCoor.x + 1,
-    y: sourceRBCoor.y + 1,
+  transReal2ScaledInfo(imgScaledLTCoord, sourceLTCoord); // 使点位置与图片像素贴合
+  transReal2ScaledInfo(imgScaledRBCoord, {
+    x: sourceRBCoord.x + 1,
+    y: sourceRBCoord.y + 1,
   }); //得到目标范围外的右下一点，用以后续计算dw dh
 
-  const sw = Math.abs(sourceLTCoor.x - sourceRBCoor.x) + 1;
-  const sh = Math.abs(sourceLTCoor.y - sourceRBCoor.y) + 1;
-  const dw = Math.abs(imgScaledRBCoor.x - imgScaledLTCoor.x);
-  const dh = Math.abs(imgScaledRBCoor.y - imgScaledLTCoor.y);
+  const sw = Math.abs(sourceLTCoord.x - sourceRBCoord.x) + 1;
+  const sh = Math.abs(sourceLTCoord.y - sourceRBCoord.y) + 1;
+  const dw = Math.abs(imgScaledRBCoord.x - imgScaledLTCoord.x);
+  const dh = Math.abs(imgScaledRBCoord.y - imgScaledLTCoord.y);
 
-  transScaled2CanvasInfo(canvasLTCoor, imgScaledLTCoor);
-  transScaled2CanvasInfo(canvasRBCoor, imgScaledRBCoor);
+  transScaled2CanvasInfo(canvasLTCoord, imgScaledLTCoord);
+  transScaled2CanvasInfo(canvasRBCoord, imgScaledRBCoord);
 
   //Draw
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
   if (scale.value < gridLimit) {
     initCanvasSettings();
-    ctx.value.drawImage(imageObj.value, sourceLTCoor.x, sourceLTCoor.y, sw, sh, canvasLTCoor.x, canvasLTCoor.y, dw, dh);
+    ctx.value.drawImage(imageObj.value, sourceLTCoord.x, sourceLTCoord.y, sw, sh, canvasLTCoord.x, canvasLTCoord.y, dw, dh);
   } else {
     drawGrid();
     drawImgInGrid(sw, sh);
   }
 }
 
-// Area: [canvasLTCoor, canvasRBCoor)
+// Area: [canvasLTCoord, canvasRBCoord)
 function drawGrid() {
   // 设置间隔
   const space = scale.value + 1;
   // 区域的左上和右下
-  const areaX1 = canvasLTCoor.x,
-    areaX2 = Math.min(canvasRBCoor.x, canvas.value.width);
-  const areaY1 = canvasLTCoor.y,
-    areaY2 = Math.min(canvasRBCoor.y, canvas.value.height);
+  const areaX1 = canvasLTCoord.x,
+    areaX2 = Math.min(canvasRBCoord.x, canvas.value.width);
+  const areaY1 = canvasLTCoord.y,
+    areaY2 = Math.min(canvasRBCoord.y, canvas.value.height);
   // 设置虚线
   ctx.value.setLineDash([]);
 
@@ -332,14 +332,14 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
   const space = scale.value + 1;
   const dw = scale.value,
     dh = scale.value;
-  const startX = canvasLTCoor.x + 1,
-    startY = canvasLTCoor.y + 1; // 包括最左/上侧网格线
+  const startX = canvasLTCoord.x + 1,
+    startY = canvasLTCoord.y + 1; // 包括最左/上侧网格线
   for (let shOffset = 0; shOffset < sourceHeight; ++shOffset) {
     const canvasY = startY + shOffset * space;
-    const sourceY = sourceLTCoor.y + shOffset;
+    const sourceY = sourceLTCoord.y + shOffset;
     for (let swOffset = 0; swOffset < sourceWidth; ++swOffset) {
       const canvasX = startX + swOffset * space;
-      const sourceX = sourceLTCoor.x + swOffset;
+      const sourceX = sourceLTCoord.x + swOffset;
 
       ctx.value.fillStyle = imgPixelData2D[sourceX][sourceY];
       ctx.value.fillRect(canvasX, canvasY, dw, dh);
@@ -347,30 +347,30 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
   }
 }
 
-function drawZoomAnddots() {
+function drawZoomAndDots() {
   if (realDot2GetZoom.value.x === -1) return;
-  const zoomctx = zoomView.value.getContext('2d');
-  zoomctx.drawImage(imageObj.value, realDot2GetZoom.value.x, realDot2GetZoom.value.y, 6, 6, 0, 0, 120, 120);
+  const zoomCtx = zoomView.value.getContext('2d');
+  zoomCtx.drawImage(imageObj.value, realDot2GetZoom.value.x, realDot2GetZoom.value.y, 6, 6, 0, 0, 120, 120);
 
-  for (let i = 0; i < dotsRealCoor.value.length; ++i) {
-    drawDotInZoom(dotsRealCoor.value[i]);
+  for (let i = 0; i < dotsRealCoord.value.length; ++i) {
+    drawDotInZoom(dotsRealCoord.value[i]);
   }
 }
 
-function drawDotInZoom(newRealCoor) {
+function drawDotInZoom(newRealCoord) {
   if (realDot2GetZoom.value.x === -1) return;
-  const zoomctx = zoomView.value.getContext('2d');
-  let transX = newRealCoor.x - realDot2GetZoom.value.x;
-  let transY = newRealCoor.y - realDot2GetZoom.value.y;
+  const zoomCtx = zoomView.value.getContext('2d');
+  let transX = newRealCoord.x - realDot2GetZoom.value.x;
+  let transY = newRealCoord.y - realDot2GetZoom.value.y;
   if (transX >= 0 && transX < 6 && transY >= 0 && transY < 6) {
-    zoomctx.fillRect(transX * 20, transY * 20, 20, 20);
+    zoomCtx.fillRect(transX * 20, transY * 20, 20, 20);
   }
 }
 
 function updateViewPortDraw() {
   if (imageSrc.value === null || imageSrc.value === '') return;
   drawCanvas();
-  updateDotsCanvasCoor();
+  updateDotsCanvasCoord();
 }
 
 // Move
@@ -414,34 +414,34 @@ function updateOffset(oldScale, newScale) {
   if (oldScale < 1 || newScale < 1) return;
 
   // Judge: Mouse in rendered area
-  let canvasCoor = cloneDeep(mouseCoor);
-  let realCoor = { x: 0, y: 0 };
-  transCanvas2RealInfo(realCoor, canvasCoor, oldScale);
+  let canvasCoord = cloneDeep(mouseCoord);
+  let realCoord = { x: 0, y: 0 };
+  transCanvas2RealInfo(realCoord, canvasCoord, oldScale);
   if (
-    realCoor.x < sourceLTCoor.x ||
-    realCoor.x > sourceRBCoor.x ||
-    realCoor.y < sourceLTCoor.y ||
-    realCoor.y > sourceRBCoor.y
+    realCoord.x < sourceLTCoord.x ||
+    realCoord.x > sourceRBCoord.x ||
+    realCoord.y < sourceLTCoord.y ||
+    realCoord.y > sourceRBCoord.y
   )
     return;
 
-  // purpose：Scale the image based on the mouseCoor
+  // purpose：Scale the image based on the mouseCoord
   // Calc fineTuning
-  transReal2CanvasInfo(canvasCoor, realCoor, oldScale);
+  transReal2CanvasInfo(canvasCoord, realCoord, oldScale);
   const offsetPixels = {
-    x: mouseCoor.x - canvasCoor.x,
-    y: mouseCoor.y - canvasCoor.y,
+    x: mouseCoord.x - canvasCoord.x,
+    y: mouseCoord.y - canvasCoord.y,
   };
   const fineTuning = {
     x: Math.floor((offsetPixels.x / oldScale) * newScale),
     y: Math.floor((offsetPixels.y / oldScale) * newScale),
   };
 
-  // Calc scaled canvasCoor without updating offset
-  transReal2CanvasInfo(canvasCoor, realCoor, newScale);
+  // Calc scaled canvasCoord without updating offset
+  transReal2CanvasInfo(canvasCoord, realCoord, newScale);
 
-  offsetX.value -= canvasCoor.x + fineTuning.x - mouseCoor.x;
-  offsetY.value -= canvasCoor.y + fineTuning.y - mouseCoor.y;
+  offsetX.value -= canvasCoord.x + fineTuning.x - mouseCoord.x;
+  offsetY.value -= canvasCoord.y + fineTuning.y - mouseCoord.y;
 }
 
 watch(scale, (newScale, oldScale) => {
@@ -473,7 +473,7 @@ watch(pressed, newVal => {
   }
 });
 
-const mouseCoor = { x: 0, y: 0 };
+const mouseCoord = { x: 0, y: 0 };
 const output = ref(null);
 onMounted(() => {
   console.log('onMounted...');
@@ -481,8 +481,8 @@ onMounted(() => {
   updateViewSize();
   window.addEventListener('resize', updateViewSize);
   window.addEventListener('mousemove', e => {
-    mouseCoor.x = e.clientX;
-    mouseCoor.y = e.clientY;
+    mouseCoord.x = e.clientX;
+    mouseCoord.y = e.clientY;
     mouseMoved = true;
   });
   window.addEventListener('keydown', handleKeyDown);
@@ -496,8 +496,8 @@ onUnmounted(() => {
   console.log('onUnmounted...');
   window.removeEventListener('resize', updateViewSize);
   window.removeEventListener('mousemove', e => {
-    mouseCoor.x = e.clientX;
-    mouseCoor.y = e.clientY;
+    mouseCoord.x = e.clientX;
+    mouseCoord.y = e.clientY;
     mouseMoved = true;
   });
   window.addEventListener('keydown', handleKeyDown);
@@ -586,7 +586,7 @@ const outputQuadNumber = ref(0);
 function updateQuadNum() {
   if (inputQuadNum.value === '') outputQuadNumber.value = calcQuadNum.value;
   else outputQuadNumber.value = inputQuadNum.value;
-  updateQuadIndex(dotsRealCoor.value, outputQuadNumber.value);
+  updateQuadIndex(dotsRealCoord.value, outputQuadNumber.value);
 }
 
 function getInputQuadNum(e) {
@@ -615,38 +615,38 @@ function clearOneDot(index) {
 }
 
 // Click canvas to get dot
-const dotsCanvasCoor = ref([]);
-const dotsRealCoor = ref([]);
+const dotsCanvasCoord = ref([]);
+const dotsRealCoord = ref([]);
 function toggleDot(e) {
   if (imageSrc.value == null || imageSrc.value == '' || !isNotLongPress) {
     return;
   }
   // 如果红点在图片显示范围外，输出“The pt is not in the pic.”
   if (
-    e.clientX < canvasLTCoor.x ||
-    e.clientX >= canvasRBCoor.x ||
-    e.clientY < canvasLTCoor.y ||
-    e.clientY >= canvasRBCoor.y
+    e.clientX < canvasLTCoord.x ||
+    e.clientX >= canvasRBCoord.x ||
+    e.clientY < canvasLTCoord.y ||
+    e.clientY >= canvasRBCoord.y
   ) {
     outputMessage('The pt is not in the pic.');
     return;
   }
 
-  const { canvasCoor, realCoor, existingDotIndex } = getDotInfo(e);
+  const { canvasCoord, realCoord, existingDotIndex } = getDotInfo(e);
   if (existingDotIndex !== -1) {
     // 如果已经存在红点，删除它
     deletePt(existingDotIndex);
     outputMessage('Delete the pt.');
-  } else if (dotsCanvasCoor.value.length >= 4) {
+  } else if (dotsCanvasCoord.value.length >= 4) {
     // 如果已经有四个红点，输出“Already set 4 pts.”
     outputMessage('Already set 4 pts.');
   } else {
     // 否则，添加一个新的红点
-    dotsRealCoor.value.push({ x: realCoor.x, y: realCoor.y });
-    updateDotsCanvasCoor();
-    drawDotInZoom(realCoor);
-    if (dotsRealCoor.value.length === 4) {
-      setQuadInfo(dotsRealCoor.value, calcQuadNum);
+    dotsRealCoord.value.push({ x: realCoord.x, y: realCoord.y });
+    updateDotsCanvasCoord();
+    drawDotInZoom(realCoord);
+    if (dotsRealCoord.value.length === 4) {
+      setQuadInfo(dotsRealCoord.value, calcQuadNum);
     } else {
       calcQuadNum.value = 0;
     }
@@ -661,11 +661,11 @@ function resetPosition() {
 }
 
 function clearDots() {
-  dotsCanvasCoor.value = [];
-  dotsRealCoor.value = [];
+  dotsCanvasCoord.value = [];
+  dotsRealCoord.value = [];
   calcQuadNum.value = 0;
   updateQuadNum();
-  //outputMessage('cleardots Successfully.');
+  //outputMessage('clearDots Successfully.');
 }
 
 function saveDots() {
@@ -814,102 +814,102 @@ const realDot2GetZoom = ref({ x: -1, y: -1 });
 function updateZoomView(event) {
   if (!imageObj.value) return;
 
-  let canvasCoor = {
+  let canvasCoord = {
     x: event.clientX,
     y: event.clientY,
   };
-  transCanvas2RealInfo(realDot2GetZoom.value, canvasCoor);
+  transCanvas2RealInfo(realDot2GetZoom.value, canvasCoord);
   // Make the mouse in the middle of the zoomRect
-  realDot2GetZoom.value.x = Math.min(Math.max(realDot2GetZoom.value.x - 3, sourceLTCoor.x), sourceRBCoor.x - 5);
-  realDot2GetZoom.value.y = Math.min(Math.max(realDot2GetZoom.value.y - 3, sourceLTCoor.y), sourceRBCoor.y - 5);
+  realDot2GetZoom.value.x = Math.min(Math.max(realDot2GetZoom.value.x - 3, sourceLTCoord.x), sourceRBCoord.x - 5);
+  realDot2GetZoom.value.y = Math.min(Math.max(realDot2GetZoom.value.y - 3, sourceLTCoord.y), sourceRBCoord.y - 5);
 
   // Draw scaled rect in canvas
-  let rectCoor = {
+  let rectCoord = {
     x: realDot2GetZoom.value.x - 1,
     y: realDot2GetZoom.value.y - 1,
   };
 
-  transReal2CanvasInfo(canvasCoor, rectCoor);
-  updateRectanglePosition(canvasCoor.x, canvasCoor.y);
+  transReal2CanvasInfo(canvasCoord, rectCoord);
+  updateRectanglePosition(canvasCoord.x, canvasCoord.y);
 
   // Draw zoom
-  drawZoomAnddots();
+  drawZoomAndDots();
 }
 
-function updateDotsCanvasCoor() {
+function updateDotsCanvasCoord() {
   // 新增一个红点
-  const realDotsNum = dotsRealCoor.value.length;
-  if (dotsCanvasCoor.value.length !== realDotsNum) {
-    dotsCanvasCoor.value.push({ x: 0, y: 0 });
-    transReal2CanvasInfo(dotsCanvasCoor.value[realDotsNum - 1], dotsRealCoor.value[realDotsNum - 1]);
+  const realDotsNum = dotsRealCoord.value.length;
+  if (dotsCanvasCoord.value.length !== realDotsNum) {
+    dotsCanvasCoord.value.push({ x: 0, y: 0 });
+    transReal2CanvasInfo(dotsCanvasCoord.value[realDotsNum - 1], dotsRealCoord.value[realDotsNum - 1]);
     if (scale.value >= gridLimit) {
-      dotsCanvasCoor.value[realDotsNum - 1].x += 1;
-      dotsCanvasCoor.value[realDotsNum - 1].y += 1;
+      dotsCanvasCoord.value[realDotsNum - 1].x += 1;
+      dotsCanvasCoord.value[realDotsNum - 1].y += 1;
     }
   }
 
   // 更新所有点的坐标
   else {
     for (let i = 0; i < realDotsNum; ++i) {
-      transReal2CanvasInfo(dotsCanvasCoor.value[i], dotsRealCoor.value[i]);
+      transReal2CanvasInfo(dotsCanvasCoord.value[i], dotsRealCoord.value[i]);
       if (scale.value >= gridLimit) {
-        dotsCanvasCoor.value[i].x += 1;
-        dotsCanvasCoor.value[i].y += 1;
+        dotsCanvasCoord.value[i].x += 1;
+        dotsCanvasCoord.value[i].y += 1;
       }
     }
   }
 }
 
-function transScaled2RealInfo(targetCoor, scaledCoor) {
-  targetCoor.x = Math.floor(scaledCoor.x / scale.value);
-  targetCoor.y = Math.floor(scaledCoor.y / scale.value);
+function transScaled2RealInfo(targetCoord, scaledCoord) {
+  targetCoord.x = Math.floor(scaledCoord.x / scale.value);
+  targetCoord.y = Math.floor(scaledCoord.y / scale.value);
 }
 
-function transReal2ScaledInfo(targetCoor, realCoor) {
-  targetCoor.x = realCoor.x * scale.value;
-  targetCoor.y = realCoor.y * scale.value;
+function transReal2ScaledInfo(targetCoord, realCoord) {
+  targetCoord.x = realCoord.x * scale.value;
+  targetCoord.y = realCoord.y * scale.value;
 }
 
-function transScaled2CanvasInfo(targetCoor, scaledCoor) {
+function transScaled2CanvasInfo(targetCoord, scaledCoord) {
   if (scale.value >= gridLimit) {
-    let realCoor = { x: 0, y: 0 };
-    transScaled2RealInfo(realCoor, scaledCoor);
-    transReal2CanvasInfo(targetCoor, realCoor);
+    let realCoord = { x: 0, y: 0 };
+    transScaled2RealInfo(realCoord, scaledCoord);
+    transReal2CanvasInfo(targetCoord, realCoord);
   } else {
-    targetCoor.x = scaledCoor.x + offsetX.value + offsetCanvasLeft;
-    targetCoor.y = scaledCoor.y + offsetY.value + offsetCanvasTop;
+    targetCoord.x = scaledCoord.x + offsetX.value + offsetCanvasLeft;
+    targetCoord.y = scaledCoord.y + offsetY.value + offsetCanvasTop;
   }
 }
 
-// function transCanvas2ScaledInfo(targetCoor, canvasCoor) {
-//   targetCoor.x = canvasCoor.x - offsetX.value - offsetCanvasLeft;
-//   targetCoor.y = canvasCoor.y - offsetY.value - offsetCanvasTop;
+// function transCanvas2ScaledInfo(targetCoord, canvasCoord) {
+//   targetCoord.x = canvasCoord.x - offsetX.value - offsetCanvasLeft;
+//   targetCoord.y = canvasCoord.y - offsetY.value - offsetCanvasTop;
 // }
-function transReal2CanvasInfo(targetCoor, realCoor, setScale = 0) {
+function transReal2CanvasInfo(targetCoord, realCoord, setScale = 0) {
   if (setScale === 0) setScale = scale.value;
   let xOffsetGrid = 0,
     yOffsetGrid = 0;
   if (setScale >= gridLimit) {
-    xOffsetGrid = realCoor.x - sourceLTCoor.x;
-    yOffsetGrid = realCoor.y - sourceLTCoor.y;
+    xOffsetGrid = realCoord.x - sourceLTCoord.x;
+    yOffsetGrid = realCoord.y - sourceLTCoord.y;
   }
-  targetCoor.x = realCoor.x * setScale + xOffsetGrid + offsetX.value + offsetCanvasLeft;
-  targetCoor.y = realCoor.y * setScale + yOffsetGrid + offsetY.value + offsetCanvasTop;
+  targetCoord.x = realCoord.x * setScale + xOffsetGrid + offsetX.value + offsetCanvasLeft;
+  targetCoord.y = realCoord.y * setScale + yOffsetGrid + offsetY.value + offsetCanvasTop;
 }
 
-function transCanvas2RealInfo(targetCoor, canvasCoor, setScale = 0) {
+function transCanvas2RealInfo(targetCoord, canvasCoord, setScale = 0) {
   if (setScale === 0) setScale = scale.value;
   let xOffsetGrid = 0,
     yOffsetGrid = 0;
   if (setScale >= gridLimit) {
-    const xResult = (canvasCoor.x - canvasLTCoor.x) / (setScale + 1);
-    const yResult = (canvasCoor.y - canvasLTCoor.y) / (setScale + 1);
+    const xResult = (canvasCoord.x - canvasLTCoord.x) / (setScale + 1);
+    const yResult = (canvasCoord.y - canvasLTCoord.y) / (setScale + 1);
     xOffsetGrid = Number.isInteger(xResult) ? xResult : Math.floor(xResult) + 1;
     yOffsetGrid = Number.isInteger(yResult) ? yResult : Math.floor(yResult) + 1;
   }
 
-  targetCoor.x = Math.floor((canvasCoor.x - xOffsetGrid - offsetX.value - offsetCanvasLeft) / setScale);
-  targetCoor.y = Math.floor((canvasCoor.y - yOffsetGrid - offsetY.value - offsetCanvasTop) / setScale);
+  targetCoord.x = Math.floor((canvasCoord.x - xOffsetGrid - offsetX.value - offsetCanvasLeft) / setScale);
+  targetCoord.y = Math.floor((canvasCoord.y - yOffsetGrid - offsetY.value - offsetCanvasTop) / setScale);
 }
 
 function updateRectanglePosition(left, top) {
@@ -950,12 +950,12 @@ function initCanvasSettings() {
 }
 
 function initZoomSettings() {
-  const zoomctx = zoomView.value.getContext('2d');
-  zoomctx.imageSmoothingEnabled = false;
-  zoomctx.mozImageSmoothingEnabled = false;
-  zoomctx.webkitImageSmoothingEnabled = false;
-  zoomctx.msImageSmoothingEnabled = false;
-  zoomctx.fillStyle = 'rgb(255,0,0)'; // 设置颜色
+  const zoomCtx = zoomView.value.getContext('2d');
+  zoomCtx.imageSmoothingEnabled = false;
+  zoomCtx.mozImageSmoothingEnabled = false;
+  zoomCtx.webkitImageSmoothingEnabled = false;
+  zoomCtx.msImageSmoothingEnabled = false;
+  zoomCtx.fillStyle = 'rgb(255,0,0)'; // 设置颜色
 }
 </script>
 
@@ -1040,7 +1040,7 @@ function initZoomSettings() {
 }
 .json-container {
   width: calc(25%);
-  /*20*2 + 120 + 2((1)*2) + 4(blankspace)*/
+  /*20*2 + 120 + 2((1)*2) + 4(blankSpace)*/
   height: calc(100%);
   margin-left: auto;
   overflow: auto;
@@ -1059,7 +1059,7 @@ function initZoomSettings() {
 .image-container {
   background: url('../src/assets/bg.png') repeat;
   width: calc(75% - 170px);
-  /* 20*2 + 122 + 4(blankspace)*2 */
+  /* 20*2 + 122 + 4(blankSpace)*2 */
   height: calc(100% - 40px);
   top: 20px;
   left: 20px;
