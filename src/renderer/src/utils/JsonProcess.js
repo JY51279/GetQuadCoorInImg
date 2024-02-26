@@ -3,7 +3,6 @@ import {
   getQuadCenterPoint,
   parsePointString2Array,
   serializePointArray2String,
-  getClosestPtIndexInArray,
   transStr2Json,
   transJson2Str,
 } from './BasicFuncs.js';
@@ -103,24 +102,17 @@ function resetCenterPtList() {
 
 let quadDots = [];
 let quadIndex = -1;
-export function setQuadInfo(realDots, quadNumberRef) {
+export function setQuadInfo(realDots) {
   if (realDots.length !== 4) {
     window.alert('Not enough dots to obtain the quadInfo.');
     return;
   }
   quadDots = realDots.slice();
   setQuadDots2ClockWise(quadDots);
-  //quadDotsStr = array.join(separator); // 将数组转换为以separator分隔的字符串
-  let centerPt = { x: 0, y: 0 };
-  centerPt = getQuadCenterPoint(quadDots);
-  quadIndex = getClosestPtIndexInArray(centerPt, centerPtList);
-  quadNumberRef.value = quadIndex + 1;
-  //console.log("quadIndex: " + quadIndex);
 }
 
-export function updateQuadIndex(realDots, quadNum) {
-  quadDots = realDots.slice();
-  quadIndex = quadNum - 1;
+export function updateQuadIndex(highlightIndex) {
+  quadIndex = highlightIndex;
 }
 
 function TransQuadDots2Str(realDots) {

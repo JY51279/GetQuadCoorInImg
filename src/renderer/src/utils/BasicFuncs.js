@@ -92,6 +92,7 @@ export function serializePointArray2String(points, separator) {
   return str;
 }
 
+// unusedFunction
 export function getClosestPtIndexInArray(oriPoint, pointArray) {
   let minDistance = Infinity;
   let closestIndex = -1;

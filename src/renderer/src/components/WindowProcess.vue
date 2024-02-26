@@ -73,8 +73,7 @@
           <span>({{ item.x }}, {{ item.y }})</span>
           <button class="button-delete-style" @click="clearOneDot(index)">x</button>
         </div>
-        <div class="fileInfo-style">矩形对应次序: {{ outputQuadNumber }}</div>
-        <input class="inputText-style" :value="inputQuadNum" placeholder="矩形次序修正" @input="getInputQuadNum" />
+        <div class="fileInfo-style">矩形次序: {{ highlightedIndex + 1 }}</div>
       </div>
       <div>
         <!-- 输出区域 -->
@@ -136,6 +135,7 @@ function initViewJson() {
   resetPicJson(imgFileName.value);
   updateFormattedJson();
   updateLineHeight();
+  highlightedIndex.value = -1;
 }
 
 let jsonPerPicArray = [];
@@ -163,6 +163,7 @@ function updateLineHeight() {
 const highlightedIndex = ref(-1);
 watch(highlightedIndex, newIndex => {
   if (newIndex !== -1) ensureHighlightVisible();
+  updateQuadIndex(newIndex);
 });
 
 function highlightLine(e, preElement) {
@@ -211,7 +212,6 @@ function deletePt(ptIndex) {
   if (ptIndex !== -1 && ptIndex < dotsCanvasCoord.value.length) {
     dotsCanvasCoord.value.splice(ptIndex, 1);
     dotsRealCoord.value.splice(ptIndex, 1);
-    calcQuadNum.value = 0;
     drawZoomAndDots();
     return true;
   }
@@ -632,27 +632,6 @@ async function outputMessage(message) {
   outputDiv.scrollTop = outputDiv.scrollHeight;
 }
 
-// Input
-const inputQuadNum = ref('');
-watch(inputQuadNum, () => {
-  updateQuadNum();
-});
-function getInputQuadNum(e) {
-  inputQuadNum.value = e.target.value;
-}
-
-const calcQuadNum = ref(0);
-watch(calcQuadNum, () => {
-  updateQuadNum();
-});
-
-const outputQuadNumber = ref(0);
-function updateQuadNum() {
-  if (inputQuadNum.value === '') outputQuadNumber.value = calcQuadNum.value;
-  else outputQuadNumber.value = inputQuadNum.value;
-  updateQuadIndex(dotsRealCoord.value, outputQuadNumber.value);
-}
-
 /******click */
 // Click checkbox to check the class
 const selectedOption = ref(['DBR']);
@@ -706,9 +685,7 @@ function toggleDot(e) {
     updateDotsCanvasCoord();
     drawDotInZoom(realCoord);
     if (dotsRealCoord.value.length === 4) {
-      setQuadInfo(dotsRealCoord.value, calcQuadNum);
-    } else {
-      calcQuadNum.value = 0;
+      setQuadInfo(dotsRealCoord.value);
     }
   }
 }
@@ -722,7 +699,6 @@ function resetPosition() {
 function clearDots() {
   dotsCanvasCoord.value = [];
   dotsRealCoord.value = [];
-  calcQuadNum.value = 0;
   //outputMessage('clearDots Successfully.');
 }
 
@@ -1093,12 +1069,6 @@ function initZoomSettings() {
   font-size: 16px;
   margin-bottom: 20px;
   word-wrap: break-word;
-}
-
-.inputText-style {
-  font-size: 16px;
-  width: 120px;
-  margin-bottom: 20px;
 }
 
 .outputText-style {
