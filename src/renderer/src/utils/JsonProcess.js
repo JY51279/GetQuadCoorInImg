@@ -7,22 +7,37 @@ import {
   transStr2Json,
   transJson2Str,
 } from './BasicFuncs.js';
-
-export function resetJsonProcess(jsonStr, classStr, imgStr) {
+import { KEYS } from '../utils/BasicFuncs.js';
+export function resetJsonProcess(jsonStr, classStr) {
   try {
     quadIndex = -1;
     resetJson(jsonStr);
     resetClassKeys(classStr.toUpperCase());
     //console.log('000');
-    resetPicJson(imgStr);
+    //resetPicJson(imgStr);
     //console.log('111');
     resetCenterPtList();
     //console.log('222');
   } catch (err) {
-    window.alert('Failed to reset JSON data. Please check the input and try again.');
+    window.alert('Failed to retrieve JSON data for the picture. Please check the files and try again.');
   }
 }
 
+let jsonPerPicArray = [];
+let jsonPerPicPerObjKeysNum = 0;
+export function resetPicJson(imgFileName) {
+  resetImgIndex(imgFileName);
+  if (imgIndex === -1) {
+    window.alert('Unable to retrieve the image from the JSON file.');
+  }
+
+  try {
+    jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
+    if (jsonPerPicArray.length > 0) jsonPerPicPerObjKeysNum = Object.keys(jsonPerPicArray[0]).length;
+  } catch (err) {
+    console.error('An error occurred while accessing the JSON array:', err);
+  }
+}
 const rootKey = 'Picture';
 const imgKey = 'Image Source';
 const TotalClassKeys = [
@@ -58,23 +73,6 @@ function resetImgIndex(imgStr) {
     if (json[rootKey][i][imgKey].search(imgStr) !== -1) {
       imgIndex = i;
     }
-  }
-}
-
-let jsonPerPicArray = [];
-let jsonPerPicPerObjKeysNum = 0;
-function resetPicJson(imgStr = '') {
-  if (imgStr !== '') {
-    resetImgIndex(imgStr);
-    if (imgIndex === -1) {
-      window.alert('Unable to retrieve the image from the JSON file.');
-    }
-  }
-  try {
-    jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
-    if (jsonPerPicArray.length > 0) jsonPerPicPerObjKeysNum = Object.keys(jsonPerPicArray[0]).length;
-  } catch (err) {
-    console.error('An error occurred while accessing the JSON array:', err);
   }
 }
 
@@ -143,9 +141,30 @@ export function updateJson(jsonData) {
     //console.log('quadStr: ' + quadStr);
     //console.log(json);
     jsonData.str = transJson2Str(json);
-    resetPicJson();
+    updateOtherVariablesFromJson();
   } catch (err) {
     return 'Failed to save string to json.';
   }
   return true;
+}
+
+function updateOtherVariablesFromJson() {
+  jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
+  const quadPts = parsePointString2Array(jsonPerPicArray[quadIndex][classKeys.key2], separator);
+  const quadCenter = getQuadCenterPoint(quadPts);
+  centerPtList[quadIndex] = quadCenter;
+}
+
+export function getAdjacentImagePath(direction) {
+  let newIndex;
+  const totalImages = json[rootKey].length;
+  if (direction === KEYS.NEXT) {
+    newIndex = (imgIndex + 1) % totalImages; // 获取下一张图片的索引
+  } else if (direction === KEYS.PREVIOUS) {
+    newIndex = (imgIndex - 1) % totalImages; // 获取上一张图片的索引
+  }
+  if (newIndex < 0) {
+    newIndex = totalImages - 1; // 处理索引小于0的情况
+  }
+  return json[rootKey][newIndex][imgKey]; // 返回对应图片的地址
 }

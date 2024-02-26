@@ -55,6 +55,25 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.setMaxListeners(20);
+  ipcMain.on('open-pic-file', (event, filePath) => {
+    const stream = fs.createReadStream(filePath);
+    let base64 = '';
+    stream.on('data', chunk => {
+      base64 += chunk.toString('base64');
+    });
+    stream.on('end', () => {
+      // 将base64编码字符串发送给渲染进程
+      //event.sender.send('pic-file-content', base64);
+      console.log('Suc Open Pic');
+      const fileName = path.basename(filePath);
+      const picInfo = { str: base64, fileName: fileName };
+      event.reply('open-pic-file-response', { success: true, picInfo });
+    });
+    stream.on('error', err => {
+      // 发生错误时，向渲染进程回复错误信息
+      event.reply('open-pic-file-response', { success: false, error: err.message });
+    });
+  });
   ipcMain.on('open-json-file-dialog', event => {
     //console.log('ipcMain.on  open-json-file-dialog');
     dialog
@@ -74,7 +93,7 @@ app.whenReady().then(() => {
               return;
             }
             console.log('Suc Open Json');
-            const jsonInfo = { str: data, path: filePath, fileName: fileName };
+            const jsonInfo = { str: data, fileName: fileName };
             event.reply('choose-json-file-response', { success: true, jsonInfo });
           });
         }

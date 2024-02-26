@@ -39,6 +39,22 @@ electron.app.whenReady().then(() => {
     utils.optimizer.watchWindowShortcuts(window);
   });
   electron.ipcMain.setMaxListeners(20);
+  electron.ipcMain.on("open-pic-file", (event, filePath) => {
+    const stream = fs.createReadStream(filePath);
+    let base64 = "";
+    stream.on("data", (chunk) => {
+      base64 += chunk.toString("base64");
+    });
+    stream.on("end", () => {
+      console.log("Suc Open Pic");
+      const fileName = path.basename(filePath);
+      const picInfo = { str: base64, fileName };
+      event.reply("open-pic-file-response", { success: true, picInfo });
+    });
+    stream.on("error", (err) => {
+      event.reply("open-pic-file-response", { success: false, error: err.message });
+    });
+  });
   electron.ipcMain.on("open-json-file-dialog", (event) => {
     electron.dialog.showOpenDialog({
       properties: ["openFile"],
@@ -54,7 +70,7 @@ electron.app.whenReady().then(() => {
             return;
           }
           console.log("Suc Open Json");
-          const jsonInfo = { str: data, path: filePath, fileName };
+          const jsonInfo = { str: data, fileName };
           event.reply("choose-json-file-response", { success: true, jsonInfo });
         });
       }

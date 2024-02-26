@@ -92,7 +92,7 @@
       </div>
     </div>
     <div class="json-container" @mousemove="highlightLine($event, $refs.jsonView)">
-      <pre ref="jsonView" class="json-all-container"> 
+      <pre ref="jsonView" class="json-all-container">
       <div
       v-for="(jsonItem, index) in formattedJsonStrArray"
       :key="index"
@@ -112,12 +112,15 @@ import { useMouse, useMousePressed } from '@vueuse/core';
 import cloneDeep from 'lodash/cloneDeep';
 import {
   resetJsonProcess,
+  resetPicJson,
+  getAdjacentImagePath,
   setQuadInfo,
   updateQuadIndex,
   updateJson,
   getJsonPerPicStrArray,
   getJsonPerPicPerObjKeysNum,
 } from '../utils/JsonProcess.js';
+import { KEYS } from '../utils/BasicFuncs.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 const offsetCanvasLeft = 22;
@@ -166,9 +169,9 @@ function highlightLine(e, preElement) {
 }
 
 function updateLightIndex(direction) {
-  if (direction === 'next') {
+  if (direction === KEYS.NEXT) {
     highlightedIndex.value = Math.min(highlightedIndex.value + 1, jsonPerPicArray.length - 1);
-  } else if (direction === 'previous') {
+  } else if (direction === KEYS.PREVIOUS) {
     highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0);
   }
 }
@@ -571,21 +574,23 @@ function handleKeyDown(e) {
     switch (e.key) {
       case 'ArrowLeft':
       case 'a':
-        // 处理向左箭头或 'a' 键的逻辑
+        e.preventDefault();
+        changeImageByArrowKeys(KEYS.PREVIOUS);
         break;
       case 'ArrowRight':
       case 'd':
-        // 处理向右箭头或 'd' 键的逻辑
+        e.preventDefault();
+        changeImageByArrowKeys(KEYS.NEXT);
         break;
       case 'ArrowUp':
       case 'w':
         e.preventDefault();
-        updateLightIndex('previous');
+        updateLightIndex(KEYS.PREVIOUS);
         break;
       case 'ArrowDown':
       case 's':
         e.preventDefault();
-        updateLightIndex('next');
+        updateLightIndex(KEYS.NEXT);
         break;
       default:
         return; // 不执行后续代码
@@ -757,7 +762,7 @@ function initDrawImg() {
   offsetX.value = 0;
   offsetY.value = 0;
   clearDots();
-  resetJsonProcess(jsonData.str, selectedOption.value[0], imgFileName.value);
+  resetPicJson(imgFileName.value);
   updateFormattedJson();
   const img = new Image();
   img.src = imageSrc.value;
@@ -805,6 +810,34 @@ function loadImgFile(event) {
   };
   reader.readAsDataURL(file);
 }
+function changeImageByArrowKeys(direction) {
+  const path = getAdjacentImagePath(direction);
+  loadImgFromPath(path);
+}
+function loadImgFromPath(path) {
+  outputMessage('Load Pic from Path...');
+  ipcRenderer.send('open-pic-file', path);
+}
+
+ipcRenderer.on('open-pic-file-response', (e, response) => {
+  try {
+    if (response.success) {
+      imgFileName.value = response.picInfo.fileName;
+      imageSrc.value = response.picInfo.str;
+      imageObj.value = new Image();
+      imageObj.value.src = response.picInfo.str;
+      initDrawImg();
+      outputMessage('Pic data input successful.');
+    } else {
+      // 处理读取文件失败的情况
+      const errorMessage = response.error;
+      console.error('Failed to open pic:', errorMessage);
+    }
+  } catch (error) {
+    console.error('An error occurred while processing pic file:', error);
+    console.log(response);
+  }
+});
 
 function chooseJsonFile() {
   try {
@@ -815,12 +848,13 @@ function chooseJsonFile() {
 }
 
 let jsonFileName = ref(null);
-let jsonData = { str: '', path: '', fileName: '' };
-ipcRenderer.on('choose-json-file-response', (event, response) => {
+let jsonData = { str: '', fileName: '' };
+ipcRenderer.on('choose-json-file-response', (e, response) => {
   try {
     if (response.success) {
       jsonData = response.jsonInfo;
       jsonFileName.value = jsonData.fileName;
+      resetJsonProcess(jsonData.str, selectedOption.value[0]);
       outputMessage('JSON data input successful.');
     } else {
       // 处理读取文件失败的情况

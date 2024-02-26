@@ -11,5 +11,5 @@
   "insertPragma": false,
   "requirePragma": false,
   "proseWrap": "preserve",
-  "endOfLine": "crlf"
+  "endOfLine": "lf"
 }
