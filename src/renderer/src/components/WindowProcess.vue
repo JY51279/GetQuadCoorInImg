@@ -132,6 +132,12 @@ const scale = ref(1);
 const formattedJsonStrArray = ref('');
 const highlightedJson = ref(null);
 
+function initViewJson() {
+  resetPicJson(imgFileName.value);
+  updateFormattedJson();
+  updateLineHeight();
+}
+
 let jsonPerPicArray = [];
 let jsonPerObjLineNum = -1;
 function updateFormattedJson() {
@@ -144,16 +150,23 @@ function updateFormattedJson() {
   highlightedJson.value = null;
 }
 
+let lineHeight = 0;
+const jsonView = ref(null);
+function updateLineHeight() {
+  if (jsonView.value !== null) {
+    const preElement = jsonView.value;
+    const computedStyle = getComputedStyle(preElement);
+    lineHeight = parseFloat(computedStyle.lineHeight);
+  }
+}
+
 const highlightedIndex = ref(-1);
 watch(highlightedIndex, newIndex => {
   if (newIndex !== -1) ensureHighlightVisible();
 });
 
-let lineHeight = 0;
 function highlightLine(e, preElement) {
   if (jsonPerObjLineNum === -1) return;
-  const computedStyle = getComputedStyle(preElement);
-  lineHeight = parseFloat(computedStyle.lineHeight);
   // 计算滚动区域中不可见的部分的高度
   const invisibleHeight = preElement.scrollTop;
   // 当前鼠标相对于滚动容器的 Y 方向偏移量
@@ -165,7 +178,6 @@ function highlightLine(e, preElement) {
   highlightedIndex.value = Math.floor(hoveredLine / jsonPerObjLineNum);
 
   highlightedJson.value = jsonPerPicArray[highlightedIndex.value];
-  //console.log(highlightedJson.value);
 }
 
 function updateLightIndex(direction) {
@@ -183,6 +195,8 @@ function ensureHighlightVisible() {
   const objHeight = jsonPerObjLineNum * lineHeight;
   const highlightedLineOffset = highlightedIndex.value * objHeight + lineHeight;
   const scrollBottom = container.scrollTop + containerRect.height - objHeight - lineHeight; // - lineHeight cause the verScroll
+  console.log(objHeight);
+  console.log(lineHeight);
   if (highlightedLineOffset < container.scrollTop) {
     // 如果高亮部分在可视内容之前，向上滚动
     container.scrollBy(0, highlightedLineOffset - container.scrollTop);
@@ -762,8 +776,7 @@ function initDrawImg() {
   offsetX.value = 0;
   offsetY.value = 0;
   clearDots();
-  resetPicJson(imgFileName.value);
-  updateFormattedJson();
+  initViewJson();
   const img = new Image();
   img.src = imageSrc.value;
   img.onload = () => {
