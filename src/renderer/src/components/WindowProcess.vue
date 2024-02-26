@@ -1,7 +1,7 @@
 <template>
   <input ref="imgFileInput" type="file" accept="image/*" style="display: none" @change="loadImgFile" />
   <div class="container">
-    <div ref="divRef" class="image-container" @wheel="onWheel">
+    <div ref="divRef" class="image-container" @wheel.prevent="onWheel">
       <canvas
         ref="canvas"
         :width="viewportWidth + offsetCanvasLeft"
