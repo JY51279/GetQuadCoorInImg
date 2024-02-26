@@ -56,18 +56,35 @@ app.whenReady().then(() => {
   // IPC test
   ipcMain.setMaxListeners(20);
   ipcMain.on('open-pic-file', (event, filePath) => {
-    const stream = fs.createReadStream(filePath);
-    let base64 = '';
+    // 获取文件类型
+    const extname = path.extname(filePath).slice(1);
+    const mimeType = `image/${extname}`;
+    // 组合 base64 数据和图片类型
+    const imageDataURI = `data:${mimeType};base64,`;
+    let base64 = imageDataURI;
+    const stream = fs.createReadStream(filePath, { encoding: 'base64' });
     stream.on('data', chunk => {
-      base64 += chunk.toString('base64');
+      base64 += chunk;
+      // if (base64.length > 1024 * 1024) {
+      //   // 将数据分为多个部分发送
+      //   const picInfo = { str: base64, fileName: '' };
+      //   event.reply('open-pic-file-response', { success: true, picInfo });
+      //   base64 = '';
+      // }
     });
     stream.on('end', () => {
       // 将base64编码字符串发送给渲染进程
       //event.sender.send('pic-file-content', base64);
-      console.log('Suc Open Pic');
-      const fileName = path.basename(filePath);
-      const picInfo = { str: base64, fileName: fileName };
-      event.reply('open-pic-file-response', { success: true, picInfo });
+      try {
+        // 将base64编码字符串发送给渲染进程
+        console.log('Suc Open Pic');
+        const fileName = path.basename(filePath);
+        const picInfo = { str: base64, fileName: fileName };
+        event.reply('open-pic-file-response', { success: true, picInfo });
+      } catch (error) {
+        // 发生异常时，向渲染进程回复错误信息
+        event.reply('open-pic-file-response', { success: false, error: error.message });
+      }
     });
     stream.on('error', err => {
       // 发生错误时，向渲染进程回复错误信息

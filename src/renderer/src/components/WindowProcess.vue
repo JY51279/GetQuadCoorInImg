@@ -816,18 +816,30 @@ function changeImageByArrowKeys(direction) {
 }
 function loadImgFromPath(path) {
   outputMessage('Load Pic from Path...');
+  picBase64 = '';
   ipcRenderer.send('open-pic-file', path);
 }
 
+let picBase64 = '';
 ipcRenderer.on('open-pic-file-response', (e, response) => {
   try {
     if (response.success) {
-      imgFileName.value = response.picInfo.fileName;
-      imageSrc.value = response.picInfo.str;
-      imageObj.value = new Image();
-      imageObj.value.src = response.picInfo.str;
-      initDrawImg();
-      outputMessage('Pic data input successful.');
+      // 设置 Image 对象的 src 属性为读取到的文件内容
+      picBase64 += response.picInfo.str;
+      const image = new Image();
+      image.src = picBase64;
+
+      // 在图片加载完成后执行的操作
+      image.onload = () => {
+        console.log('image.onload');
+
+        imgFileName.value = response.picInfo.fileName;
+        imageSrc.value = image.src;
+        imageObj.value = new Image();
+        imageObj.value.src = image.src;
+        initDrawImg(); // 在图片加载完成后再调用 initDrawImg 方法
+        outputMessage('Pic data input successful.');
+      };
     } else {
       // 处理读取文件失败的情况
       const errorMessage = response.error;

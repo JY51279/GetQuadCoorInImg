@@ -40,16 +40,23 @@ electron.app.whenReady().then(() => {
   });
   electron.ipcMain.setMaxListeners(20);
   electron.ipcMain.on("open-pic-file", (event, filePath) => {
-    const stream = fs.createReadStream(filePath);
-    let base64 = "";
+    const extname = path.extname(filePath).slice(1);
+    const mimeType = `image/${extname}`;
+    const imageDataURI = `data:${mimeType};base64,`;
+    let base64 = imageDataURI;
+    const stream = fs.createReadStream(filePath, { encoding: "base64" });
     stream.on("data", (chunk) => {
-      base64 += chunk.toString("base64");
+      base64 += chunk;
     });
     stream.on("end", () => {
-      console.log("Suc Open Pic");
-      const fileName = path.basename(filePath);
-      const picInfo = { str: base64, fileName };
-      event.reply("open-pic-file-response", { success: true, picInfo });
+      try {
+        console.log("Suc Open Pic");
+        const fileName = path.basename(filePath);
+        const picInfo = { str: base64, fileName };
+        event.reply("open-pic-file-response", { success: true, picInfo });
+      } catch (error) {
+        event.reply("open-pic-file-response", { success: false, error: error.message });
+      }
     });
     stream.on("error", (err) => {
       event.reply("open-pic-file-response", { success: false, error: err.message });
