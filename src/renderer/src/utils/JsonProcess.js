@@ -12,11 +12,7 @@ export function resetJsonProcess(jsonStr, classStr) {
     quadIndex = -1;
     resetJson(jsonStr);
     resetClassKeys(classStr.toUpperCase());
-    //console.log('000');
-    //resetPicJson(imgStr);
-    //console.log('111');
     resetCenterPtList();
-    //console.log('222');
   } catch (err) {
     window.alert('Failed to retrieve JSON data for the picture. Please check the files and try again.');
   }
@@ -73,6 +69,10 @@ function resetImgIndex(imgStr) {
       imgIndex = i;
     }
   }
+}
+
+export function getJsonPicNum() {
+  return { picNum: imgIndex + 1, picTotalNum: json[rootKey].length };
 }
 
 export function getJsonPerPicStrArray() {

@@ -67,17 +67,22 @@
           <input v-model="selectedOption" type="checkbox" value="DDN" @click="checkClass" />DDN<br />
           <input v-model="selectedOption" type="checkbox" value="DLR" @click="checkClass" />DLR<br />
         </div>
-        <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
-        <div class="fileInfo-style">图片: {{ imgFileName }}</div>
-        <div v-for="(item, index) in dotsRealCoord" :key="index">
-          <span>({{ item.x }}, {{ item.y }})</span>
-          <button class="button-delete-style" @click="clearOneDot(index)">x</button>
+        <div class="fileArea-style">
+          <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
+          <div class="fileInfo-style">图片: {{ imgFileName }}</div>
+          <div class="fileInfo-style">图片次序: <br />{{ picInfo.picNum }} / {{ picInfo.picTotalNum }}</div>
+          <div class="fileInfo-style">矩形次序: <br />{{ quadInfo.quadNum }} / {{ quadInfo.quadTotal }}</div>
         </div>
-        <div class="fileInfo-style">矩形次序: {{ highlightedIndex + 1 }}</div>
+        <div class="dotsArea-style">
+          <div v-for="(item, index) in dotsRealCoord" :key="index" class="dots">
+            <span>({{ item.x }}, {{ item.y }})</span>
+            <button class="button-delete-style" @click="clearOneDot(index)">x</button>
+          </div>
+        </div>
       </div>
       <div>
         <!-- 输出区域 -->
-        <div ref="output" class="outputText-style" style="overflow-y: scroll; height: 200px">
+        <div ref="output" class="outputText-style">
           <div v-for="(message, index) in outputMessages" :key="index">{{ message }}</div>
         </div>
       </div>
@@ -87,7 +92,7 @@
         <button class="button-style" @click="saveDots">Save Dots</button>
         <button class="button-style" @click="clearDots">Clear Dots</button>
         <button class="button-style" @click="clearMessage">Clear Msgs</button>
-        <button class="button-style" @click="resetPosition">Reset Position</button>
+        <button class="button-style" @click="resetPosition">Reset Pos</button>
       </div>
     </div>
     <div class="json-container" @mousemove="highlightLine($event, $refs.jsonView)">
@@ -118,6 +123,7 @@ import {
   updateJson,
   getJsonPerPicStrArray,
   getJsonPerPicPerObjKeysNum,
+  getJsonPicNum,
 } from '../utils/JsonProcess.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 
@@ -128,18 +134,21 @@ const divRef = ref(null);
 const canvas = ref(null);
 const scale = ref(1);
 
-const formattedJsonStrArray = ref('');
 const highlightedJson = ref(null);
-
-function initViewJson() {
+const quadInfo = ref({ quadNum: 0, quadTotal: 0 });
+const picInfo = ref({ picNum: 0, picTotalNum: 0 });
+function initFromJson() {
   resetPicJson(imgFileName.value);
   updateFormattedJson();
   updateLineHeight();
   highlightedIndex.value = -1;
+  quadInfo.value.quadTotal = jsonPerPicArray.length;
+  picInfo.value = getJsonPicNum();
 }
 
 let jsonPerPicArray = [];
 let jsonPerObjLineNum = -1;
+const formattedJsonStrArray = ref('');
 function updateFormattedJson() {
   formattedJsonStrArray.value = getJsonPerPicStrArray();
   jsonPerObjLineNum = getJsonPerPicPerObjKeysNum() + 2; // Add "{"  "}" 2 line
@@ -164,6 +173,7 @@ const highlightedIndex = ref(-1);
 watch(highlightedIndex, newIndex => {
   if (newIndex !== -1) ensureHighlightVisible();
   updateQuadIndex(newIndex);
+  quadInfo.value.quadNum = newIndex + 1;
 });
 
 function highlightLine(e, preElement) {
@@ -752,7 +762,7 @@ function initDrawImg() {
   offsetX.value = 0;
   offsetY.value = 0;
   clearDots();
-  initViewJson();
+  initFromJson();
   const img = new Image();
   img.src = imageSrc.value;
   img.onload = () => {
@@ -771,8 +781,6 @@ function initDrawImg() {
     scale.value = scaleValue; //scale.value修改，自动调用watch scale
 
     console.log('scale:', scale);
-    //console.log('viewportWidth.value:', viewportWidth.value);
-    //console.log('viewportHeight .value:', viewportHeight.value);
     console.log('img.width:', img.width);
     console.log('img.height:', img.height);
   };
@@ -805,18 +813,14 @@ function changeImageByArrowKeys(direction) {
 }
 function loadImgFromPath(path) {
   outputMessage('Load Pic from Path...');
-  picBase64 = '';
   ipcRenderer.send('open-pic-file', path);
 }
 
-let picBase64 = '';
 ipcRenderer.on('open-pic-file-response', (e, response) => {
   try {
     if (response.success) {
-      // 设置 Image 对象的 src 属性为读取到的文件内容
-      picBase64 += response.picInfo.str;
       const image = new Image();
-      image.src = picBase64;
+      image.src = response.picInfo.str;
 
       // 在图片加载完成后执行的操作
       image.onload = () => {
@@ -1056,7 +1060,7 @@ function initZoomSettings() {
 }
 .zoomViewBox {
   border: 1px dotted #333;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   display: flex;
 }
 .zoom-style {
@@ -1065,16 +1069,46 @@ function initZoomSettings() {
   border: none;
 }
 
+.fileArea-style {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  row-gap: 10px;
+}
 .fileInfo-style {
-  font-size: 16px;
-  margin-bottom: 20px;
+  font-size: 15px;
   word-wrap: break-word;
 }
+.dotsArea-style {
+  height: 100px;
+  margin-top: 10px;
+}
 
+.dots {
+  margin-top: 5px;
+}
+/* //#ff5f5f; */
+.button-delete-style {
+  background-color: #4caf50; /* 设置按钮的背景颜色 */
+  color: white; /* 设置按钮文字的颜色 */
+  border: none; /* 移除按钮的边框 */
+  border-radius: 5px; /* 设置按钮的边框圆角 */
+  padding: 5px 5px; /* 设置按钮的内边距 */
+  cursor: pointer; /* 设置鼠标样式为手型 */
+  transition: background-color 0.3s ease; /* 添加过渡效果 */
+  width: 20px; /* 设置按钮的宽度为 30 像素 */
+  height: 20px; /* 设置按钮的高度为 30 像素 */
+  line-height: 5px; /* 设置文字的行高等于按钮的高度，实现文字的垂直居中 */
+}
+.button-delete-style:hover {
+  background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
+}
 .outputText-style {
+  height: 200px;
   font-size: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   word-wrap: break-word;
+  overflow-y: scroll;
 }
 
 .button-style {
@@ -1085,26 +1119,13 @@ function initZoomSettings() {
   padding: 8px 8px;
   text-align: center;
   text-decoration: none;
-  font-size: 16px;
+  font-size: 15px;
   width: calc(100%);
   cursor: pointer;
+  transition: background-color 0.3s ease;
 }
-
-.delete-button-style {
-  border-radius: 12px;
-  background-color: #f44336;
-  /* 修改背景颜色为红色 */
-  color: white;
-  border: none;
-  padding: 8px 8px;
-  text-align: center;
-  text-decoration: none;
-  display: inline-block;
-  /* 修改为内联块以适应多个按钮 */
-  font-size: 16px;
-  margin-bottom: 15px;
-  /* 修改边距以适应多个按钮 */
-  cursor: pointer;
+.button-style:hover {
+  background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
 }
 .json-container {
   width: calc(25%);
