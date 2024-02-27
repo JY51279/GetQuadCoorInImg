@@ -70,8 +70,6 @@ function ensureHighlightVisible() {
   const objHeight = jsonPerObjLineNum * lineHeight;
   const highlightedLineOffset = highlightedIndex.value * objHeight + lineHeight;
   const scrollBottom = container.scrollTop + containerRect.height - objHeight - lineHeight; // - lineHeight cause the verScroll
-  console.log(objHeight);
-  console.log(lineHeight);
   if (highlightedLineOffset < container.scrollTop) {
     // 如果高亮部分在可视内容之前，向上滚动
     container.scrollBy(0, highlightedLineOffset - container.scrollTop);

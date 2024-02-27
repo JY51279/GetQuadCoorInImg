@@ -7,10 +7,10 @@ import {
   transJson2Str,
 } from './BasicFuncs.js';
 import { KEYS } from '../utils/BasicFuncs.js';
-export function resetJsonProcess(jsonStr, classStr) {
+export function resetJsonProcess(jsonData, classStr) {
   try {
     quadIndex = -1;
-    resetJson(jsonStr);
+    resetJsonInfo(jsonData);
     resetClassKeys(classStr.toUpperCase());
     resetCenterPtList();
   } catch (err) {
@@ -84,9 +84,18 @@ export function getJsonPerPicPerObjKeysNum() {
   return jsonPerPicPerObjKeysNum;
 }
 
+let jsonFileInfo = { str: '', path: '' };
+export function getJsonFileInfo() {
+  jsonFileInfo.str = transJson2Str(json);
+  jsonFileInfo.path = path;
+  return jsonFileInfo;
+}
+
 let json = {};
-function resetJson(jsonStr) {
-  json = transStr2Json(jsonStr);
+let path = '';
+function resetJsonInfo(jsonData) {
+  json = transStr2Json(jsonData.str);
+  path = jsonData.path;
 }
 
 let centerPtList = [];
@@ -124,15 +133,16 @@ function TransQuadDots2Str(realDots) {
   return targetStr;
 }
 
-export function updateJson(jsonData) {
+export function updateJson() {
   let quadStr = TransQuadDots2Str(quadDots);
-  if (quadStr === '' || quadIndex === -1) return 'Failed to trans dots to string.';
+  if (quadStr === '' || quadIndex === -1) {
+    return 'Failed to trans dots to string.';
+  }
   try {
     jsonPerPicArray[quadIndex][classKeys.key2] = quadStr;
     json[rootKey][imgIndex][classKeys.key1] = jsonPerPicArray;
     //console.log('quadStr: ' + quadStr);
     //console.log(json);
-    jsonData.str = transJson2Str(json);
     updateOtherVariablesFromJson();
   } catch (err) {
     return 'Failed to save string to json.';

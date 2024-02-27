@@ -101,7 +101,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
 import cloneDeep from 'lodash/cloneDeep';
 import jsonItems from './JsonView.vue';
@@ -113,6 +113,7 @@ import {
   updateQuadIndex,
   updateJson,
   getJsonPicNum,
+  getJsonFileInfo,
 } from '../utils/JsonProcess.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 
@@ -123,10 +124,10 @@ const divRef = ref(null);
 const canvas = ref(null);
 const scale = ref(1);
 
-const quadInfo = ref({ quadNum: 0, quadTotal: 0 });
+const quadInfo = reactive({ quadNum: 0, quadTotal: 0 });
 function updateQuadInfo(quadNum = -1, quadTotal = -1) {
-  if (quadNum !== -1) quadInfo.value.quadNum = quadNum;
-  if (quadTotal !== -1) quadInfo.value.quadTotal = quadTotal;
+  if (quadNum !== -1) quadInfo.quadNum = quadNum;
+  if (quadTotal !== -1) quadInfo.quadTotal = quadTotal;
 }
 watch(quadInfo, newQuadInfo => {
   updateQuadIndex(newQuadInfo.quadNum - 1);
@@ -635,18 +636,20 @@ function clearDots() {
 }
 
 function saveDots() {
-  let updateJsonRes = updateJson(jsonData);
+  let updateJsonRes = updateJson();
   if (updateJsonRes !== true) {
     outputMessage(updateJsonRes);
     return;
   }
-  saveJsonFile(jsonData);
+  saveJsonFile();
   jsonView.value.modifyJsonItem();
 }
 
-function saveJsonFile(jsonData) {
+function saveJsonFile() {
   try {
-    ipcRenderer.send('save-json-file', jsonData);
+    let jsonFileInfo = { str: '', path: '' };
+    jsonFileInfo = getJsonFileInfo();
+    ipcRenderer.send('save-json-file', jsonFileInfo);
   } catch (error) {
     console.error('Error while sending IPC message:', error);
   }
@@ -735,7 +738,7 @@ function changeImageByArrowKeys(direction) {
   loadImgFromPath(path);
 }
 function loadImgFromPath(path) {
-  outputMessage('Load Pic from Path...');
+  //outputMessage('Load Pic from Path...');
   ipcRenderer.send('open-pic-file', path);
 }
 
@@ -747,14 +750,12 @@ ipcRenderer.on('open-pic-file-response', (e, response) => {
 
       // 在图片加载完成后执行的操作
       image.onload = () => {
-        console.log('image.onload');
-
+        outputMessage('Load Pic......');
         imgFileName.value = response.picInfo.fileName;
         imageSrc.value = image.src;
         imageObj.value = new Image();
         imageObj.value.src = image.src;
         initDrawImg(); // 在图片加载完成后再调用 initDrawImg 方法
-        outputMessage('Pic data input successful.');
       };
     } else {
       // 处理读取文件失败的情况
@@ -776,13 +777,13 @@ function chooseJsonFile() {
 }
 
 let jsonFileName = ref(null);
-let jsonData = { str: '', fileName: '' };
 ipcRenderer.on('choose-json-file-response', (e, response) => {
   try {
     if (response.success) {
+      let jsonData = { str: '', path: '', fileName: '' };
       jsonData = response.jsonInfo;
       jsonFileName.value = jsonData.fileName;
-      resetJsonProcess(jsonData.str, selectedOption.value[0]);
+      resetJsonProcess(jsonData, selectedOption.value[0]);
       outputMessage('JSON data input successful.');
     } else {
       // 处理读取文件失败的情况
