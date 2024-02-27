@@ -110,6 +110,7 @@ import {
   resetPicJson,
   getAdjacentImagePath,
   setQuadInfo,
+  updateQuadIndex,
   updateJson,
   getJsonPicNum,
 } from '../utils/JsonProcess.js';
@@ -127,6 +128,9 @@ function updateQuadInfo(quadNum = -1, quadTotal = -1) {
   if (quadNum !== -1) quadInfo.value.quadNum = quadNum;
   if (quadTotal !== -1) quadInfo.value.quadTotal = quadTotal;
 }
+watch(quadInfo, newQuadInfo => {
+  updateQuadIndex(newQuadInfo.quadNum - 1);
+});
 
 const picInfo = ref({ picNum: 0, picTotalNum: 0 });
 const jsonView = ref(null);
@@ -637,6 +641,7 @@ function saveDots() {
     return;
   }
   saveJsonFile(jsonData);
+  jsonView.value.modifyJsonItem();
 }
 
 function saveJsonFile(jsonData) {

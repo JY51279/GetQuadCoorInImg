@@ -111,8 +111,8 @@ export function setQuadInfo(realDots) {
   setQuadDots2ClockWise(quadDots);
 }
 
-export function updateQuadIndex(highlightIndex) {
-  quadIndex = highlightIndex;
+export function updateQuadIndex(newIndex) {
+  quadIndex = newIndex;
 }
 
 function TransQuadDots2Str(realDots) {
@@ -126,7 +126,7 @@ function TransQuadDots2Str(realDots) {
 
 export function updateJson(jsonData) {
   let quadStr = TransQuadDots2Str(quadDots);
-  if (quadStr === '') return 'Failed to trans dots to string.';
+  if (quadStr === '' || quadIndex === -1) return 'Failed to trans dots to string.';
   try {
     jsonPerPicArray[quadIndex][classKeys.key2] = quadStr;
     json[rootKey][imgIndex][classKeys.key1] = jsonPerPicArray;

@@ -14,7 +14,7 @@
 
 <script setup>
 import { ref, watch } from 'vue';
-import { updateQuadIndex, getJsonPerPicStrArray, getJsonPerPicPerObjKeysNum } from '../utils/JsonProcess.js';
+import { getJsonPerPicStrArray, getJsonPerPicPerObjKeysNum } from '../utils/JsonProcess.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 // eslint-disable-next-line no-unused-vars
 
@@ -22,6 +22,8 @@ defineExpose({
   //暴露想要传递的值或方法
   updateLightIndex,
   updateJsonView,
+  modifyJsonItem,
+  deleteJsonItem,
 });
 const emits = defineEmits(['update-quad-info']);
 
@@ -35,9 +37,12 @@ const jsonView = ref(null);
 
 const highlightedIndex = ref(-1);
 watch(highlightedIndex, newIndex => {
-  if (newIndex !== -1) ensureHighlightVisible();
-  updateQuadIndex(newIndex);
-  emits('update-quad-info', newIndex + 1);
+  if (newIndex > -1 && newIndex < jsonPerPicArray.length) {
+    ensureHighlightVisible();
+    emits('update-quad-info', newIndex + 1);
+  } else {
+    emits('update-quad-info', 0);
+  }
 });
 
 function highlightLine(e, preElement) {
@@ -50,7 +55,10 @@ function highlightLine(e, preElement) {
   // 计算当前鼠标所在的行数
   const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight);
   // 计算对应的元素下标
-  highlightedIndex.value = Math.floor(hoveredLine / jsonPerObjLineNum);
+  highlightedIndex.value = Math.min(
+    jsonPerPicArray.length - 1,
+    Math.max(0, Math.floor(hoveredLine / jsonPerObjLineNum)),
+  );
 
   highlightedJson.value = jsonPerPicArray[highlightedIndex.value];
 }
@@ -73,35 +81,49 @@ function ensureHighlightVisible() {
   }
 }
 
-function updateLineHeight() {
+function scrollToBottom() {
+  const container = document.querySelector('.json-container');
+  if (container) {
+    container.scrollTop = container.scrollHeight - container.clientHeight;
+  }
+}
+function modifyJsonItem() {
+  updateJson();
+}
+//TODO 完善delete相关功能
+function deleteJsonItem() {
+  updateJsonView();
+  scrollToBottom();
+}
+
+function updateLightIndex(direction) {
+  if (direction === KEYS.NEXT) {
+    highlightedIndex.value = Math.min(highlightedIndex.value + 1, jsonPerPicArray.length);
+  } else if (direction === KEYS.PREVIOUS) {
+    highlightedIndex.value = Math.max(highlightedIndex.value - 1, -1);
+  }
+}
+function updateHighlightInfo() {
+  //updateLineHeight
   if (jsonView.value !== null) {
     const preElement = jsonView.value;
     const computedStyle = getComputedStyle(preElement);
     lineHeight = parseFloat(computedStyle.lineHeight);
   }
-}
-
-function updateFormattedJson() {
-  formattedJsonStrArray.value = getJsonPerPicStrArray();
   jsonPerObjLineNum = getJsonPerPicPerObjKeysNum() + 2; // Add "{"  "}" 2 line
+  highlightedIndex.value = -1;
+  highlightedJson.value = null;
+}
+function updateJson() {
+  formattedJsonStrArray.value = getJsonPerPicStrArray();
   const jsonArrayTmp = [];
   for (let i = 0; i < formattedJsonStrArray.value.length; i++)
     jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
   jsonPerPicArray = jsonArrayTmp;
-  highlightedJson.value = null;
-}
-
-function updateLightIndex(direction) {
-  if (direction === KEYS.NEXT) {
-    highlightedIndex.value = Math.min(highlightedIndex.value + 1, jsonPerPicArray.length - 1);
-  } else if (direction === KEYS.PREVIOUS) {
-    highlightedIndex.value = Math.max(highlightedIndex.value - 1, 0);
-  }
 }
 function updateJsonView() {
-  highlightedIndex.value = -1;
-  updateFormattedJson();
-  updateLineHeight();
+  updateJson();
+  updateHighlightInfo();
   emits('update-quad-info', -1, jsonPerPicArray.length);
 }
 </script>
