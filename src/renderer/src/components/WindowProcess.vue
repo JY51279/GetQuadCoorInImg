@@ -148,7 +148,7 @@ function initFromJson() {
 function deletePt(ptIndex) {
   if (ptIndex !== -1 && ptIndex < dotsCanvasCoord.value.length) {
     dotsCanvasCoord.value.splice(ptIndex, 1);
-    dotsRealCoord.value.splice(ptIndex, 1);
+    dotsRealCoord.splice(ptIndex, 1);
     drawZoomAndDots();
     return true;
   }
@@ -173,7 +173,7 @@ function getDotInfo(e) {
   transCanvas2RealInfo(realCoord, canvasCoord); // 得到原始图片对应坐标
   transReal2CanvasInfo(canvasCoord, realCoord); // 得到贴合后画布确切坐标
 
-  const existingDotIndex = dotsRealCoord.value.findIndex(
+  const existingDotIndex = dotsRealCoord.findIndex(
     realDot => Math.abs(realDot.x - realCoord.x) < 2 && Math.abs(realDot.y - realCoord.y) < 2,
   );
   // console.log('***********getDotInfo');
@@ -338,8 +338,8 @@ function drawZoomAndDots() {
   const zoomCtx = zoomView.value.getContext('2d');
   zoomCtx.drawImage(imageObj.value, realDot2GetZoom.value.x, realDot2GetZoom.value.y, 6, 6, 0, 0, 120, 120);
 
-  for (let i = 0; i < dotsRealCoord.value.length; ++i) {
-    drawDotInZoom(dotsRealCoord.value[i]);
+  for (let i = 0; i < dotsRealCoord.length; ++i) {
+    drawDotInZoom(dotsRealCoord[i]);
   }
 }
 
@@ -596,7 +596,12 @@ function clearOneDot(index) {
 
 // Click canvas to get dot
 const dotsCanvasCoord = ref([]);
-const dotsRealCoord = ref([]);
+const dotsRealCoord = reactive([]);
+
+watch(dotsRealCoord, newDotsRealCoord => {
+  setQuadInfo(newDotsRealCoord);
+});
+
 function toggleDot(e) {
   if (imageSrc.value == null || imageSrc.value == '' || !isNotLongPress) {
     return;
@@ -623,12 +628,9 @@ function toggleDot(e) {
     outputMessage('Already set 4 pts.');
   } else {
     // 否则，添加一个新的红点
-    dotsRealCoord.value.push({ x: realCoord.x, y: realCoord.y });
+    dotsRealCoord.push({ x: realCoord.x, y: realCoord.y });
     updateDotsCanvasCoord();
     drawDotInZoom(realCoord);
-    if (dotsRealCoord.value.length === 4) {
-      setQuadInfo(dotsRealCoord.value);
-    }
   }
 }
 
@@ -640,7 +642,7 @@ function resetPosition() {
 
 function clearDots() {
   dotsCanvasCoord.value = [];
-  dotsRealCoord.value = [];
+  dotsRealCoord.splice(0, dotsRealCoord.length);
   //outputMessage('clearDots Successfully.');
 }
 function performJsonAction(action) {
@@ -875,10 +877,10 @@ function updateZoomView(event) {
 
 function updateDotsCanvasCoord() {
   // 新增一个红点
-  const realDotsNum = dotsRealCoord.value.length;
+  const realDotsNum = dotsRealCoord.length;
   if (dotsCanvasCoord.value.length !== realDotsNum) {
     dotsCanvasCoord.value.push({ x: 0, y: 0 });
-    transReal2CanvasInfo(dotsCanvasCoord.value[realDotsNum - 1], dotsRealCoord.value[realDotsNum - 1]);
+    transReal2CanvasInfo(dotsCanvasCoord.value[realDotsNum - 1], dotsRealCoord[realDotsNum - 1]);
     if (scale.value >= gridLimit) {
       dotsCanvasCoord.value[realDotsNum - 1].x += 1;
       dotsCanvasCoord.value[realDotsNum - 1].y += 1;
@@ -888,7 +890,7 @@ function updateDotsCanvasCoord() {
   // 更新所有点的坐标
   else {
     for (let i = 0; i < realDotsNum; ++i) {
-      transReal2CanvasInfo(dotsCanvasCoord.value[i], dotsRealCoord.value[i]);
+      transReal2CanvasInfo(dotsCanvasCoord.value[i], dotsRealCoord[i]);
       if (scale.value >= gridLimit) {
         dotsCanvasCoord.value[i].x += 1;
         dotsCanvasCoord.value[i].y += 1;

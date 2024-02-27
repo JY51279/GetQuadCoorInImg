@@ -112,12 +112,9 @@ function resetCenterPtList() {
 let quadDots = [];
 let quadIndex = -1;
 export function setQuadInfo(realDots) {
-  if (realDots.length !== 4) {
-    //console.log('Not enough dots to obtain the quadInfo.');
-    return;
-  }
+  console.log(realDots);
   quadDots = realDots.slice();
-  setQuadDots2ClockWise(quadDots);
+  if (quadDots.length === 4) setQuadDots2ClockWise(quadDots);
 }
 
 export function updateQuadIndex(newIndex) {
