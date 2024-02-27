@@ -63,9 +63,9 @@
           <canvas id="zoom" ref="zoomView" class="zoom-style" width="120" height="120"></canvas>
         </div>
         <div>
-          <input v-model="selectedOption" type="checkbox" value="DBR" @click="checkClass" />DBR<br />
-          <input v-model="selectedOption" type="checkbox" value="DDN" @click="checkClass" />DDN<br />
-          <input v-model="selectedOption" type="checkbox" value="DLR" @click="checkClass" />DLR<br />
+          <input v-model="selectedOption" type="checkbox" :value="PRODUCTS.DBR" @click="checkClass" />DBR<br />
+          <input v-model="selectedOption" type="checkbox" :value="PRODUCTS.DDN" @click="checkClass" />DDN<br />
+          <input v-model="selectedOption" type="checkbox" :value="PRODUCTS.DLR" @click="checkClass" />DLR<br />
         </div>
         <div class="fileArea-style">
           <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
@@ -89,10 +89,14 @@
       <div class="button-group">
         <button class="button-style" @click="chooseJsonFile">Get JsonFile</button>
         <button class="button-style" @click="chooseImgFile">Get PicFile</button>
-        <button class="button-style" @click="saveDots">Save Dots</button>
-        <button class="button-style" @click="clearDots">Clear Dots</button>
+        <button class="button-style" @click="modifyJsonItem">Mod JsonItem</button>
+        <button class="button-style" @click="deleteJsonItem">Del JsonItem</button>
+        <button class="button-style" @click="addJsonItem">Add JsonItem</button>
+        <!--TODO 目前的布局放不下了才暂时注释了三个不咋重要的！！！
+          <button class="button-style" @click="clearDots">Clear Dots</button>
         <button class="button-style" @click="clearMessage">Clear Msgs</button>
         <button class="button-style" @click="resetPosition">Reset Pos</button>
+       -->
       </div>
     </div>
 
@@ -115,7 +119,7 @@ import {
   getJsonPicNum,
   getJsonFileInfo,
 } from '../utils/JsonProcess.js';
-import { KEYS } from '../utils/BasicFuncs.js';
+import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 const offsetCanvasLeft = 22;
@@ -487,7 +491,6 @@ onUnmounted(() => {
 });
 
 // 监听键盘事件
-// TODO 补全快捷键
 let isLogging = false;
 function handleKeyDown(e) {
   // 兼容不同浏览器的 keyCode 或者 code 属性
@@ -503,7 +506,13 @@ function handleKeyDown(e) {
     e.preventDefault(); // 阻止默认行为
     switch (e.key) {
       case 's':
-        saveDots(); // 执行保存操作
+        modifyJsonItem(); // 执行保存操作
+        break;
+      case 'd':
+        deleteJsonItem(); // 执行删除操作
+        break;
+      case 'a':
+        addJsonItem(); // 执行删除操作
         break;
       case 'c':
         clearDots();
@@ -634,15 +643,41 @@ function clearDots() {
   dotsRealCoord.value = [];
   //outputMessage('clearDots Successfully.');
 }
-
-function saveDots() {
-  let updateJsonRes = updateJson();
-  if (updateJsonRes !== true) {
+function performJsonAction(action) {
+  outputMessage('Start operate: ' + action);
+  let updateJsonRes = updateJson(action);
+  if (updateJsonRes !== KEYS.OPERATE_SUCCESS) {
     outputMessage(updateJsonRes);
     return;
   }
   saveJsonFile();
-  jsonView.value.modifyJsonItem();
+  switch (action) {
+    case KEYS.JSON_ADD:
+      jsonView.value.addJsonItem();
+      break;
+    case KEYS.JSON_DELETE:
+      jsonView.value.deleteJsonItem();
+      break;
+    case KEYS.JSON_MODIFY:
+      jsonView.value.modifyJsonItem();
+      break;
+  }
+}
+
+function addJsonItem() {
+  if (selectedOption.value[0] !== PRODUCTS.DDN) {
+    outputMessage("Can't add JSON item, the class is not 'DDN'.");
+    return;
+  }
+  performJsonAction(KEYS.JSON_ADD);
+}
+
+function deleteJsonItem() {
+  performJsonAction(KEYS.JSON_DELETE);
+}
+
+function modifyJsonItem() {
+  performJsonAction(KEYS.JSON_MODIFY);
 }
 
 function saveJsonFile() {
@@ -658,7 +693,7 @@ function saveJsonFile() {
 ipcRenderer.on('save-json-file-response', (event, response) => {
   try {
     if (response.success) {
-      outputMessage('JSON data output successful.');
+      outputMessage('Json saved.');
     } else {
       const errorMessage = response.error;
       console.error('Failed to save JSON file:', errorMessage);

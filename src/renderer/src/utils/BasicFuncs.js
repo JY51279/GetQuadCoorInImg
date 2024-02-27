@@ -2,9 +2,18 @@ import cloneDeep from 'lodash/cloneDeep';
 export const KEYS = {
   NEXT: 'next',
   PREVIOUS: 'previous',
+  JSON_MODIFY: 'Modify JSON content',
+  JSON_DELETE: 'Delete JSON content',
+  JSON_ADD: 'Add JSON content', // 仅在DDN使用
+  OPERATE_SUCCESS: 'Operate Success',
+  OPERATE_FAIL: 'Operate Fail',
   // 其他键...
 };
-
+export const PRODUCTS = {
+  DBR: 'DBR',
+  DDN: 'DDN',
+  DLR: 'DLR',
+};
 export function swap(arr, index1, index2) {
   [arr[index1], arr[index2]] = [arr[index2], arr[index1]];
 }

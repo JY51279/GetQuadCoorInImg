@@ -88,7 +88,6 @@ electron.app.whenReady().then(() => {
   electron.ipcMain.on("save-json-file", (event, data) => {
     const filePath = data.path;
     const content = data.str;
-    console.log("ipcMain.on  save-json-file");
     try {
       fs.writeFile(filePath, content, (err) => {
         if (err) {

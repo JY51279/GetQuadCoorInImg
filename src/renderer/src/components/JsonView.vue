@@ -24,10 +24,10 @@ defineExpose({
   updateJsonView,
   modifyJsonItem,
   deleteJsonItem,
+  addJsonItem,
 });
 const emits = defineEmits(['update-quad-info']);
 
-const highlightedJson = ref(null);
 let jsonPerPicArray = [];
 let jsonPerObjLineNum = -1;
 const formattedJsonStrArray = ref('');
@@ -59,8 +59,6 @@ function highlightLine(e, preElement) {
     jsonPerPicArray.length - 1,
     Math.max(0, Math.floor(hoveredLine / jsonPerObjLineNum)),
   );
-
-  highlightedJson.value = jsonPerPicArray[highlightedIndex.value];
 }
 
 function ensureHighlightVisible() {
@@ -88,9 +86,14 @@ function scrollToBottom() {
 function modifyJsonItem() {
   updateJson();
 }
-//TODO 完善delete相关功能
 function deleteJsonItem() {
-  updateJsonView();
+  updateJson();
+  highlightedIndex.value = -1;
+  //scrollToBottom();
+}
+function addJsonItem() {
+  updateJson();
+  highlightedIndex.value = -1;
   scrollToBottom();
 }
 
@@ -110,7 +113,6 @@ function updateHighlightInfo() {
   }
   jsonPerObjLineNum = getJsonPerPicPerObjKeysNum() + 2; // Add "{"  "}" 2 line
   highlightedIndex.value = -1;
-  highlightedJson.value = null;
 }
 function updateJson() {
   formattedJsonStrArray.value = getJsonPerPicStrArray();

@@ -6,7 +6,7 @@ import {
   transStr2Json,
   transJson2Str,
 } from './BasicFuncs.js';
-import { KEYS } from '../utils/BasicFuncs.js';
+import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
 export function resetJsonProcess(jsonData, classStr) {
   try {
     quadIndex = -1;
@@ -37,17 +37,17 @@ const rootKey = 'Picture';
 const imgKey = 'Image Source';
 const TotalClassKeys = [
   {
-    class: 'DBR',
+    class: PRODUCTS.DBR,
     key1: 'Barcode Info',
     key2: 'Barcode Location',
   },
   {
-    class: 'DDN',
+    class: PRODUCTS.DDN,
     key1: 'Quadrilateral Info',
     key2: 'Expected Quadrilateral Points',
   },
   {
-    class: 'DLR',
+    class: PRODUCTS.DLR,
     key1: 'Label Info',
     key2: 'Label Location',
   },
@@ -113,7 +113,7 @@ let quadDots = [];
 let quadIndex = -1;
 export function setQuadInfo(realDots) {
   if (realDots.length !== 4) {
-    window.alert('Not enough dots to obtain the quadInfo.');
+    //console.log('Not enough dots to obtain the quadInfo.');
     return;
   }
   quadDots = realDots.slice();
@@ -133,28 +133,74 @@ function TransQuadDots2Str(realDots) {
   return targetStr;
 }
 
-export function updateJson() {
-  let quadStr = TransQuadDots2Str(quadDots);
-  if (quadStr === '' || quadIndex === -1) {
-    return 'Failed to trans dots to string.';
+export function updateJson(action = KEYS.JSON_MODIFY) {
+  let result;
+  switch (action) {
+    case KEYS.JSON_MODIFY:
+      result = modifyJsonContent();
+      break;
+    case KEYS.JSON_DELETE:
+      result = deleteJsonContent();
+      break;
+    case KEYS.JSON_ADD:
+      result = addJsonContent();
+      break;
+    default:
+      console.log('Unknown action');
+      result = false;
   }
-  try {
-    jsonPerPicArray[quadIndex][classKeys.key2] = quadStr;
-    json[rootKey][imgIndex][classKeys.key1] = jsonPerPicArray;
-    //console.log('quadStr: ' + quadStr);
-    //console.log(json);
-    updateOtherVariablesFromJson();
-  } catch (err) {
-    return 'Failed to save string to json.';
+  if (result) {
+    resetCenterPtList();
   }
-  return true;
+  return result;
 }
 
-function updateOtherVariablesFromJson() {
-  jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
-  const quadPts = parsePointString2Array(jsonPerPicArray[quadIndex][classKeys.key2], separator);
-  const quadCenter = getQuadCenterPoint(quadPts);
-  centerPtList[quadIndex] = quadCenter;
+function modifyJsonContent() {
+  return operateJsonContent(() => {
+    let quadStr = TransQuadDots2Str(quadDots);
+    if (quadStr === '') {
+      return 'Failed to trans dots to string.';
+    }
+    if (quadIndex === -1) {
+      return 'Failed to find jsonItem.';
+    }
+    jsonPerPicArray[quadIndex][classKeys.key2] = quadStr;
+    return KEYS.OPERATE_SUCCESS;
+  }, 'Failed to modify jsonItem.');
+}
+
+function deleteJsonContent() {
+  return operateJsonContent(() => {
+    if (quadIndex === -1) {
+      return 'Failed to find jsonItem.';
+    }
+    jsonPerPicArray.splice(quadIndex, 1);
+    return KEYS.OPERATE_SUCCESS;
+  }, 'Failed to delete jsonItem.');
+}
+
+function addJsonContent() {
+  return operateJsonContent(() => {
+    let quadStr = TransQuadDots2Str(quadDots);
+    if (quadStr === '') {
+      return 'Failed to trans dots to string.';
+    }
+    jsonPerPicArray.push({ [classKeys.key2]: quadStr });
+    return KEYS.OPERATE_SUCCESS;
+  }, 'Failed to add jsonItem.');
+}
+
+function operateJsonContent(callback, errorMessage) {
+  try {
+    const result = callback();
+    if (result === KEYS.OPERATE_SUCCESS) {
+      json[rootKey][imgIndex][classKeys.key1] = jsonPerPicArray;
+    }
+    return result;
+  } catch (err) {
+    console.error(errorMessage);
+    return KEYS.OPERATE_FAIL;
+  }
 }
 
 export function getAdjacentImagePath(direction) {
