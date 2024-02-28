@@ -60,7 +60,6 @@ import jsonItems from './JsonView.vue';
 import imageItem from './ImageView.vue';
 import {
   resetJsonProcess,
-  resetPicJson,
   getAdjacentImagePath,
   updateQuadIndex,
   updateJson,
@@ -83,12 +82,6 @@ watch(quadInfo, newQuadInfo => {
 });
 
 const picInfo = ref({ picNum: 0, picTotalNum: 0 });
-function initFromJson() {
-  //TODO 修改这个 都放到json里 WindowProcess不应该处理这个
-  //TODO picInfo
-  resetPicJson(imgFilePath);
-  jsonView.value.updateJsonView();
-}
 
 const mouseCoord = { x: 0, y: 0 };
 const output = ref(null);
@@ -298,19 +291,19 @@ function clearMessage() {
 // Init Img
 const imageObj = ref(new Image());
 const imageSrc = ref('');
-function initProcessInfo() {
+let imgFilePath = '';
+function initProcessInfo(direction = '') {
   if (imageObj.value === null || imageObj.value.src === '') {
     outputMessage('initProcessInfo Error.');
     return;
   }
   imgContainerRef.value.initImgInfo();
-  initFromJson();
+  jsonView.value.initJsonInfo(imgFilePath, direction);
   picInfo.value = getJsonPicNum();
 }
 
 // Get files
-let imgFileName = ref(null);
-let imgFilePath = '';
+
 function chooseImgFile() {
   try {
     ipcRenderer.send('open-image-file-dialog');
@@ -318,15 +311,20 @@ function chooseImgFile() {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
   }
 }
+
+let openImgFileDirection = '';
 function changeImageByArrowKeys(direction) {
   const path = getAdjacentImagePath(direction);
+  openImgFileDirection = direction;
   loadImgFromPath(path);
 }
+
 function loadImgFromPath(path) {
   //console.log(path);
   ipcRenderer.send('open-pic-file', path);
 }
 
+let imgFileName = ref(null);
 ipcRenderer.on('open-pic-file-response', (e, response) => {
   try {
     if (response.success) {
@@ -341,7 +339,8 @@ ipcRenderer.on('open-pic-file-response', (e, response) => {
         //imageObj.value = new Image();
         imageObj.value.src = image.src;
         imageSrc.value = image.src;
-        initProcessInfo(); // 在图片加载完成后再调用 initProcessInfo 方法
+        initProcessInfo(openImgFileDirection); // 在图片加载完成后再调用
+        openImgFileDirection = '';
       };
     } else {
       // 处理读取文件失败的情况

@@ -14,14 +14,14 @@
 
 <script setup>
 import { ref, watch } from 'vue';
-import { getJsonPerPicStrArray, getJsonPerPicPerObjKeysNum } from '../utils/JsonProcess.js';
+import { getJsonPerPicStrArray, getJsonPerPicPerObjKeysNum, resetPicJson } from '../utils/JsonProcess.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 // eslint-disable-next-line no-unused-vars
 
 defineExpose({
   //暴露想要传递的值或方法
   updateLightIndex,
-  updateJsonView,
+  initJsonInfo,
   modifyJsonItem,
   deleteJsonItem,
   addJsonItem,
@@ -84,15 +84,15 @@ function scrollToBottom() {
   }
 }
 function modifyJsonItem() {
-  updateJson();
+  updateJsonPerPicArray();
 }
 function deleteJsonItem() {
-  updateJson();
+  updateJsonPerPicArray();
   highlightedIndex.value = -1;
   //scrollToBottom();
 }
 function addJsonItem() {
-  updateJson();
+  updateJsonPerPicArray();
   highlightedIndex.value = -1;
   scrollToBottom();
 }
@@ -114,15 +114,16 @@ function updateHighlightInfo() {
   jsonPerObjLineNum = getJsonPerPicPerObjKeysNum() + 2; // Add "{"  "}" 2 line
   highlightedIndex.value = -1;
 }
-function updateJson() {
+function updateJsonPerPicArray() {
   formattedJsonStrArray.value = getJsonPerPicStrArray();
   const jsonArrayTmp = [];
   for (let i = 0; i < formattedJsonStrArray.value.length; i++)
     jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
   jsonPerPicArray = jsonArrayTmp;
 }
-function updateJsonView() {
-  updateJson();
+function initJsonInfo(imgFilePath, direction = '') {
+  resetPicJson(imgFilePath, direction);
+  updateJsonPerPicArray();
   updateHighlightInfo();
   emits('update-quad-info', -1, jsonPerPicArray.length);
 }
