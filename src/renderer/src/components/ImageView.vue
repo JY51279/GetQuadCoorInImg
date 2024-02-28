@@ -76,10 +76,17 @@ defineExpose({
 
 const emits = defineEmits(['update-zoom-view', 'output-message', 'update-dots-real-coord']);
 
+// const props = defineProps({
+//   imageSrc: {
+//     type: String, // 指定类型为对象
+//     default: '', // 默认值为 null
+//   },
+// });
+
 const props = defineProps({
-  imageSrc: {
-    type: String, // 指定类型为对象
-    default: '', // 默认值为 null
+  imageObj: {
+    type: Object, // 指定类型为对象
+    default: null, // 默认值为 null
   },
 });
 
@@ -139,7 +146,7 @@ function updateImgData() {
 
   // 将图像绘制到Canvas上
   var ctxTmp = canvasTmp.getContext('2d');
-  ctxTmp.drawImage(imageObj.value, 0, 0);
+  ctxTmp.drawImage(props.imageObj, 0, 0);
 
   // 获取图像像素的颜色矩阵
   const imgPixelData = ctxTmp.getImageData(0, 0, canvasTmp.width, canvasTmp.height).data;
@@ -215,7 +222,7 @@ function drawCanvas() {
   if (scale.value < gridLimit) {
     initCanvasSettings();
     ctx.value.drawImage(
-      imageObj.value,
+      props.imageObj,
       sourceLTCoord.x,
       sourceLTCoord.y,
       sw,
@@ -280,7 +287,7 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
 }
 
 function updateViewPortDraw() {
-  if (props.imageSrc === '') return;
+  if (imageSrc === '') return;
   drawCanvas();
   updateDotsCanvasCoord();
 }
@@ -302,7 +309,7 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
     offsetY.value += deltaY;
 
     // auto Adapt Border
-    if (!(props.imageSrc === '')) {
+    if (!(imageSrc === '')) {
       if (Math.abs(newX) < Math.abs(oldX)) {
         if (Math.abs(offsetX.value) < autoAdaptBorderDis) offsetX.value = 0;
       } else if (Math.abs(newX) > Math.abs(oldX)) {
@@ -416,7 +423,7 @@ watch(dotsRealCoord, newDotsRealCoord => {
 });
 
 function toggleDot(e) {
-  if (props.imageSrc === '' || !isNotLongPress) {
+  if (imageSrc === '' || !isNotLongPress) {
     return;
   }
   // 如果红点在图片显示范围外，输出“The pt is not in the pic.”
@@ -462,19 +469,21 @@ function clearDots() {
 const initImgWidth = ref(0);
 const initImgHeight = ref(0);
 const ctx = ref(null);
-const imageObj = ref(null);
+//const imageObj = ref(null);
+let imageSrc = '';
 function initImgInfo() {
-  console.log(props.imageSrc);
+  console.log(props.imageObj);
   scale.value = 0;
   offsetX.value = 0;
   offsetY.value = 0;
   clearDots();
-  imageObj.value = new Image();
-  imageObj.value.src = props.imageSrc;
-  imageObj.value.onload = () => {
+  imageSrc = props.imageObj.src;
+  let img = new Image();
+  img.src = imageSrc;
+  img.onload = () => {
     // Update imgInfo
-    initImgWidth.value = imageObj.value.width;
-    initImgHeight.value = imageObj.value.height;
+    initImgWidth.value = img.width;
+    initImgHeight.value = img.height;
     updateImgData();
     // Update ctx
     if (ctx.value !== null && ctx.value !== null) {
@@ -483,15 +492,12 @@ function initImgInfo() {
     ctx.value = canvas.value.getContext('2d');
 
     // 计算初始缩放比例
-    const scaleValue = Math.min(
-      viewportWidth.value / imageObj.value.width,
-      viewportHeight.value / imageObj.value.height,
-    );
+    const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
     scale.value = scaleValue; //scale.value修改，自动调用watch scale
 
     console.log('scale:', scale);
-    console.log('img.width:', imageObj.value.width);
-    console.log('img.height:', imageObj.value.height);
+    console.log('img.width:', img.width);
+    console.log('img.height:', img.height);
   };
 }
 const scaleRange = 60;
@@ -516,7 +522,7 @@ function updateZoomView(e) {
   }
 }
 function updateRealDots2GetZoom(e) {
-  if (props.imageSrc === '') return;
+  if (imageSrc === '') return;
 
   let canvasCoord = {
     x: e.clientX,

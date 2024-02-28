@@ -3,7 +3,7 @@
   <div class="container">
     <imageItem
       ref="imgContainerRef"
-      :image-src="imageObj.src"
+      :image-obj="imageObj"
       @update-zoom-view="updateZoomView"
       @output-message="outputMessage"
       @update-dots-real-coord="updateDotsRealCoord"
@@ -323,7 +323,7 @@ function loadImgFile(event) {
   imgFileName.value = file.name;
   const reader = new FileReader();
   reader.onload = e => {
-    imageObj.value = new Image();
+    //imageObj.value = new Image();
     imageObj.value.src = e.target.result;
     imageSrc.value = e.target.result;
     initProcessInfo();
@@ -348,7 +348,7 @@ ipcRenderer.on('open-pic-file-response', (e, response) => {
       image.onload = () => {
         outputMessage('Load Pic......');
         imgFileName.value = response.picInfo.fileName;
-        imageObj.value = new Image();
+        //imageObj.value = new Image();
         imageObj.value.src = image.src;
         imageSrc.value = image.src;
         initProcessInfo(); // 在图片加载完成后再调用 initProcessInfo 方法
