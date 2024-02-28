@@ -6,18 +6,21 @@ const imgKey = 'Image Source';
 const TotalClassKeys = [
   {
     class: PRODUCTS.DBR,
-    key1: 'Barcode Info',
-    key2: 'Barcode Location',
+    targetKey: 'Barcode Info',
+    ItemsArray: 'Barcode Location',
+    ItemsCount: 'Barcode Count',
   },
   {
     class: PRODUCTS.DDN,
-    key1: 'Quadrilateral Info',
-    key2: 'Expected Quadrilateral Points',
+    targetKey: 'Quadrilateral Info',
+    ItemsArray: 'Expected Quadrilateral Points',
+    ItemsCount: 'Expected Quadrilateral Count',
   },
   {
     class: PRODUCTS.DLR,
-    key1: 'Label Info',
-    key2: 'Label Location',
+    targetKey: 'Label Info',
+    ItemsArray: 'Label Location',
+    ItemsCount: 'Label Count',
   },
 ];
 
@@ -55,14 +58,14 @@ export function resetPicJson(imgFilePath, direction = '') {
   }
 
   try {
-    jsonPerPicArray = json[rootKey][imgIndex][classKeys.key1];
+    jsonPerPicArray = json[rootKey][imgIndex][classKeys.targetKey];
     if (jsonPerPicArray.length > 0) jsonPerPicPerObjKeysNum = Object.keys(jsonPerPicArray[0]).length;
   } catch (err) {
     console.error('An error occurred while accessing the JSON array:', err);
   }
 }
 
-let classKeys = { class: '', key1: '', key2: '' };
+let classKeys = { class: '', targetKey: '', ItemsArray: '' };
 function resetClassKeys(classStr) {
   for (let i = 0; i < 3; ++i) {
     if (TotalClassKeys[i].class === classStr) {
@@ -157,7 +160,7 @@ function modifyJsonContent() {
     if (quadIndex === -1) {
       return 'Failed to find jsonItem.';
     }
-    jsonPerPicArray[quadIndex][classKeys.key2] = quadStr;
+    jsonPerPicArray[quadIndex][classKeys.ItemsArray] = quadStr;
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to modify jsonItem.');
 }
@@ -178,7 +181,7 @@ function addJsonContent() {
     if (quadStr === '') {
       return 'Failed to trans dots to string.';
     }
-    jsonPerPicArray.push({ [classKeys.key2]: quadStr });
+    jsonPerPicArray.push({ [classKeys.ItemsArray]: quadStr });
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to add jsonItem.');
 }
@@ -187,7 +190,8 @@ function operateJsonContent(callback, errorMessage) {
   try {
     const result = callback();
     if (result === KEYS.OPERATE_SUCCESS) {
-      json[rootKey][imgIndex][classKeys.key1] = jsonPerPicArray;
+      json[rootKey][imgIndex][classKeys.targetKey] = jsonPerPicArray;
+      json[rootKey][imgIndex][classKeys.ItemsCount] = jsonPerPicArray.length;
     }
     return result;
   } catch (err) {

@@ -64,6 +64,11 @@ function openPicFile(event, filePath) {
   const stream = fs.createReadStream(filePath, { encoding: "base64" });
   stream.on("data", (chunk) => {
     base64 += chunk;
+    if (base64.length > 1024 * 1024) {
+      const picInfo = { str: base64, fileName: "" };
+      event.reply("open-pic-file-response", { success: true, picInfo });
+      base64 = "";
+    }
   });
   stream.on("end", () => {
     try {

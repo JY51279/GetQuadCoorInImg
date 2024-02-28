@@ -72,12 +72,12 @@ function openPicFile(event, filePath) {
   const stream = fs.createReadStream(filePath, { encoding: 'base64' });
   stream.on('data', chunk => {
     base64 += chunk; //TODO 完成分段传输
-    // if (base64.length > 1024 * 1024) {
-    //   // 将数据分为多个部分发送
-    //   const picInfo = { str: base64, fileName: '' };
-    //   event.reply('open-pic-file-response', { success: true, picInfo });
-    //   base64 = '';
-    // }
+    if (base64.length > 1024 * 1024) {
+      // 将数据分为多个部分发送
+      const picInfo = { str: base64, fileName: '' };
+      event.reply('open-pic-file-response', { success: true, picInfo });
+      base64 = '';
+    }
   });
   stream.on('end', () => {
     try {

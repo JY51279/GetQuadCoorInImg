@@ -300,6 +300,7 @@ function initProcessInfo(direction = '') {
   imgContainerRef.value.initImgInfo();
   jsonView.value.initJsonInfo(imgFilePath, direction);
   picInfo.value = getJsonPicNum();
+  openImgFileDirection = '';
 }
 
 // Get files
@@ -319,8 +320,10 @@ function changeImageByArrowKeys(direction) {
   loadImgFromPath(path);
 }
 
+let imageSrcTmp = '';
 function loadImgFromPath(path) {
   //console.log(path);
+  imageSrcTmp = '';
   ipcRenderer.send('open-pic-file', path);
 }
 
@@ -328,8 +331,11 @@ let imgFileName = ref(null);
 ipcRenderer.on('open-pic-file-response', (e, response) => {
   try {
     if (response.success) {
+      imageSrcTmp += response.picInfo.str;
+      if (response.picInfo.fileName === '') return;
+
       const image = new Image();
-      image.src = response.picInfo.str;
+      image.src = imageSrcTmp;
 
       // 在图片加载完成后执行的操作
       image.onload = () => {
@@ -340,7 +346,6 @@ ipcRenderer.on('open-pic-file-response', (e, response) => {
         imageObj.value.src = image.src;
         imageSrc.value = image.src;
         initProcessInfo(openImgFileDirection); // 在图片加载完成后再调用
-        openImgFileDirection = '';
       };
     } else {
       // 处理读取文件失败的情况
