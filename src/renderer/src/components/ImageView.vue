@@ -188,6 +188,7 @@ function drawCanvas() {
     // console.log('minOff: (' + -initImgWidth.value * scale.value + ', ' + -initImgHeight.value * scale.value + ')');
     // console.log('scale: ' + scale.value);
     ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
+    outputMessage('The image is out of the visible area.');
     return;
   }
 
@@ -472,7 +473,7 @@ const ctx = ref(null);
 //const imageObj = ref(null);
 let imageSrc = '';
 function initImgInfo() {
-  console.log(props.imageObj);
+  //console.log(props.imageObj);
   scale.value = 0;
   offsetX.value = 0;
   offsetY.value = 0;
@@ -495,7 +496,7 @@ function initImgInfo() {
     const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
     scale.value = scaleValue; //scale.value修改，自动调用watch scale
 
-    console.log('scale:', scale);
+    console.log('scale:', scale.value);
     console.log('img.width:', img.width);
     console.log('img.height:', img.height);
   };
@@ -621,6 +622,9 @@ function transCanvas2RealInfo(targetCoord, canvasCoord, setScale = 0) {
 
 function updateRectanglePosition(rectCoord) {
   // 获取 .rectangle 元素
+  if (scale.value >= gridLimit) {
+    return;
+  }
   let rectangle = document.querySelector('.rectangle');
 
   // 更新 left 和 top 属性
