@@ -39,6 +39,63 @@ function createWindow() {
   mainWindow.webContents.openDevTools();
 }
 
+const imageExtensions = [
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'bmp',
+  'tiff',
+  'tif',
+  'webp',
+  'svg',
+  'svgz',
+  'ico',
+  'hdr',
+  'exr',
+  'pbm',
+  'pgm',
+  'ppm',
+  'pcx',
+  'tga',
+  'wbmp',
+  'xbm',
+  'xpm',
+];
+function openPicFile(event, filePath) {
+  // 获取文件类型
+  const extname = path.extname(filePath).slice(1);
+  const mimeType = `image/${extname}`;
+  // 组合 base64 数据和图片类型
+  const imageDataURI = `data:${mimeType};base64,`;
+  let base64 = imageDataURI;
+  const stream = fs.createReadStream(filePath, { encoding: 'base64' });
+  stream.on('data', chunk => {
+    base64 += chunk; //TODO 完成分段传输
+    // if (base64.length > 1024 * 1024) {
+    //   // 将数据分为多个部分发送
+    //   const picInfo = { str: base64, fileName: '' };
+    //   event.reply('open-pic-file-response', { success: true, picInfo });
+    //   base64 = '';
+    // }
+  });
+  stream.on('end', () => {
+    try {
+      // 将base64编码字符串发送给渲染进程
+      console.log('Suc Open Pic');
+      const fileName = path.basename(filePath);
+      const picInfo = { str: base64, path: filePath, fileName: fileName };
+      event.reply('open-pic-file-response', { success: true, picInfo });
+    } catch (error) {
+      // 发生异常时，向渲染进程回复错误信息
+      event.reply('open-pic-file-response', { success: false, error: error.message });
+    }
+  });
+  stream.on('error', err => {
+    // 发生错误时，向渲染进程回复错误信息
+    event.reply('open-pic-file-response', { success: false, error: err.message });
+  });
+}
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -52,45 +109,30 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window);
   });
-
-  // IPC test
+  //IPC test
   ipcMain.setMaxListeners(20);
-  ipcMain.on('open-pic-file', (event, filePath) => {
-    // 获取文件类型
-    const extname = path.extname(filePath).slice(1);
-    const mimeType = `image/${extname}`;
-    // 组合 base64 数据和图片类型
-    const imageDataURI = `data:${mimeType};base64,`;
-    let base64 = imageDataURI;
-    const stream = fs.createReadStream(filePath, { encoding: 'base64' });
-    stream.on('data', chunk => {
-      base64 += chunk;
-      // if (base64.length > 1024 * 1024) {
-      //   // 将数据分为多个部分发送
-      //   const picInfo = { str: base64, fileName: '' };
-      //   event.reply('open-pic-file-response', { success: true, picInfo });
-      //   base64 = '';
-      // }
-    });
-    stream.on('end', () => {
-      // 将base64编码字符串发送给渲染进程
-      //event.sender.send('pic-file-content', base64);
-      try {
-        // 将base64编码字符串发送给渲染进程
-        console.log('Suc Open Pic');
-        const fileName = path.basename(filePath);
-        const picInfo = { str: base64, fileName: fileName };
-        event.reply('open-pic-file-response', { success: true, picInfo });
-      } catch (error) {
-        // 发生异常时，向渲染进程回复错误信息
-        event.reply('open-pic-file-response', { success: false, error: error.message });
-      }
-    });
-    stream.on('error', err => {
-      // 发生错误时，向渲染进程回复错误信息
-      event.reply('open-pic-file-response', { success: false, error: err.message });
-    });
+  ipcMain.on('open-image-file-dialog', event => {
+    //console.log('ipcMain.on  open-json-file-dialog');
+    dialog
+      .showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'Image Files', extensions: imageExtensions }],
+      })
+      .then(result => {
+        if (!result.canceled && result.filePaths.length > 0) {
+          // 发送选中文件的路径到渲染进程
+          const filePath = result.filePaths[0];
+          openPicFile(event, filePath);
+        }
+      })
+      .catch(err => {
+        console.error('Error while opening image file dialog:', err);
+      });
   });
+  ipcMain.on('open-pic-file', (event, filePath) => {
+    openPicFile(event, filePath);
+  });
+
   ipcMain.on('open-json-file-dialog', event => {
     //console.log('ipcMain.on  open-json-file-dialog');
     dialog
@@ -116,7 +158,7 @@ app.whenReady().then(() => {
         }
       })
       .catch(err => {
-        console.error('Error while opening file dialog:', err);
+        console.error('Error while opening json file dialog:', err);
       });
   });
   ipcMain.on('save-json-file', (event, data) => {

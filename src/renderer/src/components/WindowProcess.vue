@@ -1,5 +1,4 @@
 <template>
-  <input ref="imgFileInput" type="file" accept="image/*" style="display: none" @change="loadImgFile" />
   <div class="container">
     <imageItem
       ref="imgContainerRef"
@@ -87,7 +86,7 @@ const picInfo = ref({ picNum: 0, picTotalNum: 0 });
 function initFromJson() {
   //TODO 修改这个 都放到json里 WindowProcess不应该处理这个
   //TODO picInfo
-  resetPicJson(imgFileName.value);
+  resetPicJson(imgFilePath);
   jsonView.value.updateJsonView();
 }
 
@@ -310,31 +309,21 @@ function initProcessInfo() {
 }
 
 // Get files
-const imgFileInput = ref(null);
 let imgFileName = ref(null);
+let imgFilePath = '';
 function chooseImgFile() {
-  imgFileInput.value.value = null;
-  imgFileInput.value.click();
-}
-function loadImgFile(event) {
-  //console.log(event.target);
-  outputMessage('Load Pic......');
-  const file = event.target.files[0];
-  imgFileName.value = file.name;
-  const reader = new FileReader();
-  reader.onload = e => {
-    //imageObj.value = new Image();
-    imageObj.value.src = e.target.result;
-    imageSrc.value = e.target.result;
-    initProcessInfo();
-  };
-  reader.readAsDataURL(file);
+  try {
+    ipcRenderer.send('open-image-file-dialog');
+  } catch (error) {
+    console.error('Error while sending IPC message open-image-file-dialog:', error);
+  }
 }
 function changeImageByArrowKeys(direction) {
   const path = getAdjacentImagePath(direction);
   loadImgFromPath(path);
 }
 function loadImgFromPath(path) {
+  //console.log(path);
   ipcRenderer.send('open-pic-file', path);
 }
 
@@ -348,6 +337,7 @@ ipcRenderer.on('open-pic-file-response', (e, response) => {
       image.onload = () => {
         outputMessage('Load Pic......');
         imgFileName.value = response.picInfo.fileName;
+        imgFilePath = response.picInfo.path;
         //imageObj.value = new Image();
         imageObj.value.src = image.src;
         imageSrc.value = image.src;
@@ -368,7 +358,7 @@ function chooseJsonFile() {
   try {
     ipcRenderer.send('open-json-file-dialog');
   } catch (error) {
-    console.error('Error while sending IPC message:', error);
+    console.error('Error while sending IPC message open-json-file-dialog:', error);
   }
 }
 

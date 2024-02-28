@@ -33,34 +33,73 @@ function createWindow() {
   }
   mainWindow.webContents.openDevTools();
 }
+const imageExtensions = [
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "bmp",
+  "tiff",
+  "tif",
+  "webp",
+  "svg",
+  "svgz",
+  "ico",
+  "hdr",
+  "exr",
+  "pbm",
+  "pgm",
+  "ppm",
+  "pcx",
+  "tga",
+  "wbmp",
+  "xbm",
+  "xpm"
+];
+function openPicFile(event, filePath) {
+  const extname = path.extname(filePath).slice(1);
+  const mimeType = `image/${extname}`;
+  const imageDataURI = `data:${mimeType};base64,`;
+  let base64 = imageDataURI;
+  const stream = fs.createReadStream(filePath, { encoding: "base64" });
+  stream.on("data", (chunk) => {
+    base64 += chunk;
+  });
+  stream.on("end", () => {
+    try {
+      console.log("Suc Open Pic");
+      const fileName = path.basename(filePath);
+      const picInfo = { str: base64, path: filePath, fileName };
+      event.reply("open-pic-file-response", { success: true, picInfo });
+    } catch (error) {
+      event.reply("open-pic-file-response", { success: false, error: error.message });
+    }
+  });
+  stream.on("error", (err) => {
+    event.reply("open-pic-file-response", { success: false, error: err.message });
+  });
+}
 electron.app.whenReady().then(() => {
   utils.electronApp.setAppUserModelId("com.electron");
   electron.app.on("browser-window-created", (_, window) => {
     utils.optimizer.watchWindowShortcuts(window);
   });
   electron.ipcMain.setMaxListeners(20);
-  electron.ipcMain.on("open-pic-file", (event, filePath) => {
-    const extname = path.extname(filePath).slice(1);
-    const mimeType = `image/${extname}`;
-    const imageDataURI = `data:${mimeType};base64,`;
-    let base64 = imageDataURI;
-    const stream = fs.createReadStream(filePath, { encoding: "base64" });
-    stream.on("data", (chunk) => {
-      base64 += chunk;
-    });
-    stream.on("end", () => {
-      try {
-        console.log("Suc Open Pic");
-        const fileName = path.basename(filePath);
-        const picInfo = { str: base64, fileName };
-        event.reply("open-pic-file-response", { success: true, picInfo });
-      } catch (error) {
-        event.reply("open-pic-file-response", { success: false, error: error.message });
+  electron.ipcMain.on("open-image-file-dialog", (event) => {
+    electron.dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "Image Files", extensions: imageExtensions }]
+    }).then((result) => {
+      if (!result.canceled && result.filePaths.length > 0) {
+        const filePath = result.filePaths[0];
+        openPicFile(event, filePath);
       }
+    }).catch((err) => {
+      console.error("Error while opening image file dialog:", err);
     });
-    stream.on("error", (err) => {
-      event.reply("open-pic-file-response", { success: false, error: err.message });
-    });
+  });
+  electron.ipcMain.on("open-pic-file", (event, filePath) => {
+    openPicFile(event, filePath);
   });
   electron.ipcMain.on("open-json-file-dialog", (event) => {
     electron.dialog.showOpenDialog({
@@ -82,7 +121,7 @@ electron.app.whenReady().then(() => {
         });
       }
     }).catch((err) => {
-      console.error("Error while opening file dialog:", err);
+      console.error("Error while opening json file dialog:", err);
     });
   });
   electron.ipcMain.on("save-json-file", (event, data) => {
