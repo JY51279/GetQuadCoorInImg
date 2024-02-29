@@ -83,6 +83,9 @@ defineExpose({
   clearDots,
   resetPosition,
   initImgInfo,
+  updateHighlightQuadIndex,
+  addShowQuadIndex,
+  clearShowQuadIndex,
 });
 
 const emits = defineEmits(['update-zoom-view', 'output-message', 'update-dots-real-coord']);
@@ -305,12 +308,23 @@ watch(highlightQuadIndex, newHighlightQuadIndex => {
   drawQuadLine(newHighlightQuadIndex);
 });
 
+function updateHighlightQuadIndex(newIndex) {
+  highlightQuadIndex.value = newIndex;
+}
+
 let showQuadIndex = reactive([]);
 // eslint-disable-next-line no-unused-vars
 watch(showQuadIndex, newShowQuadIndex => {
   drawShowQuads();
 });
 
+function addShowQuadIndex(newIndex) {
+  showQuadIndex.push(newIndex);
+}
+
+function clearShowQuadIndex() {
+  showQuadIndex.splice(0, showQuadIndex.length);
+}
 function drawCanvasForShowQuads() {
   drawShowQuads();
   if (highlightQuadIndex.value === -1) return;

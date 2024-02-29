@@ -79,6 +79,7 @@ function updateQuadInfo(quadNum = -1, quadTotal = -1) {
 }
 watch(quadInfo, newQuadInfo => {
   updateQuadIndex(newQuadInfo.quadNum - 1);
+  imgContainerRef.value.updateHighlightQuadIndex(newQuadInfo.quadNum - 1);
 });
 
 const picInfo = ref({ picNum: 0, picTotalNum: 0 });
@@ -135,10 +136,9 @@ const keyActions = {
     ctrl: () => resetPosition(),
   },
   q: {
-    //TODO
-    //q:加入到队列
-    //ctrl: 清空队列
-    //ctrl_shift: 把全部都加入队列
+    default: () => addHighlight2ShowQuads(),
+    ctrl: () => clearShowQuads(),
+    ctrl_shift: () => addAll2ShowQuads(),
   },
   ArrowLeft: {
     default: () => changeImageByArrowKeys(KEYS.PREVIOUS),
@@ -440,6 +440,21 @@ function initZoomSettings() {
   zoomCtx.webkitImageSmoothingEnabled = false;
   zoomCtx.msImageSmoothingEnabled = false;
   zoomCtx.fillStyle = 'rgb(255,0,0)'; // 设置颜色
+}
+
+// Show quad
+function addHighlight2ShowQuads() {
+  imgContainerRef.value.addShowQuadIndex(quadInfo.quadNum - 1);
+}
+function addAll2ShowQuads() {
+  imgContainerRef.value.clearShowQuadIndex();
+  for (let i = 0; i < quadInfo.quadTotal; ++i) {
+    imgContainerRef.value.addShowQuadIndex(i);
+  }
+}
+
+function clearShowQuads() {
+  imgContainerRef.value.clearShowQuadIndex();
 }
 </script>
 
