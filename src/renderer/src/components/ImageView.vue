@@ -5,9 +5,19 @@
       :width="viewportWidth + offsetCanvasLeft"
       :height="viewportHeight + offsetCanvasTop"
       :style="`transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px);
-                  transform-origin: 0% 0%;`"
+                  transform-origin: 0% 0%;
+                  position: fixed;`"
       @click="toggleDot"
       @mousemove="updateZoomView"
+    ></canvas>
+    <canvas
+      ref="canvas-for-quads"
+      :width="viewportWidth + offsetCanvasLeft"
+      :height="viewportHeight + offsetCanvasTop"
+      :style="`transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px);
+                  transform-origin: 0% 0%;
+                  position: fixed;
+                  pointer-events: none;`"
     ></canvas>
     <div
       v-for="dot in dotsCanvasCoord"
@@ -288,8 +298,25 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
 }
 
 // let quadsArray = [];
-// function drawQuad( 缩放indexList) {
-
+// let showQuadIndex = [];
+// function drawQuad(quadPoints) {
+//   if (quadPoints.length < 4) return;
+//   let quadPointsInCanvas = [
+//     { x: 0, y: 0 },
+//     { x: 0, y: 0 },
+//     { x: 0, y: 0 },
+//     { x: 0, y: 0 },
+//   ];
+//   for (let i = 0; i < 4; ++i) {
+//     transReal2CanvasInfo(quadPointsInCanvas[i], quadPoints[i]);
+//   }
+//   ctx.value.beginPath();
+//   ctx.value.moveTo(quadPointsInCanvas[0].x, quadPointsInCanvas[0].y);
+//   ctx.value.lineTo(quadPointsInCanvas[1].x, quadPointsInCanvas[1].y);
+//   ctx.value.lineTo(quadPointsInCanvas[2].x, quadPointsInCanvas[2].y);
+//   ctx.value.lineTo(quadPointsInCanvas[3].x, quadPointsInCanvas[3].y);
+//   ctx.value.closePath();
+//   ctx.value.stroke();
 // }
 function updateViewPortDraw() {
   if (imageSrc === '') return;
