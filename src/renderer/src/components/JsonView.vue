@@ -26,7 +26,7 @@ defineExpose({
   deleteJsonItem,
   addJsonItem,
 });
-const emits = defineEmits(['update-quad-info']);
+const emits = defineEmits(['update-quad-info', 'update-quad-str-array']);
 
 let jsonPerPicArray = [];
 let jsonPerObjLineNum = -1;
@@ -120,6 +120,7 @@ function updateJsonPerPicArray() {
   for (let i = 0; i < formattedJsonStrArray.value.length; i++)
     jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
   jsonPerPicArray = jsonArrayTmp;
+  emits('update-quad-str-array');
 }
 function initJsonInfo(imgFilePath, direction = '') {
   resetPicJson(imgFilePath, direction);

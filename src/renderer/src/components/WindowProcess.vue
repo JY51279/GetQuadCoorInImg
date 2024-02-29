@@ -50,7 +50,11 @@
       </div>
     </div>
 
-    <jsonItems ref="jsonView" @update-quad-info="updateQuadInfo"></jsonItems>
+    <jsonItems
+      ref="jsonView"
+      @update-quad-info="updateQuadInfo"
+      @update-quad-str-array="updateShowQuadsArray"
+    ></jsonItems>
   </div>
 </template>
 
@@ -65,6 +69,7 @@ import {
   updateJson,
   getJsonPicNum,
   getJsonFileInfo,
+  getJsonPerPicPointsArray,
 } from '../utils/JsonProcess.js';
 import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
 
@@ -79,7 +84,7 @@ function updateQuadInfo(quadNum = -1, quadTotal = -1) {
 }
 watch(quadInfo, newQuadInfo => {
   updateQuadIndex(newQuadInfo.quadNum - 1);
-  imgContainerRef.value.updateHighlightQuadIndex(newQuadInfo.quadNum - 1);
+  imgContainerRef.value.resetHighlightQuadIndex(newQuadInfo.quadNum - 1);
 });
 
 const picInfo = ref({ picNum: 0, picTotalNum: 0 });
@@ -455,6 +460,11 @@ function addAll2ShowQuads() {
 
 function clearShowQuads() {
   imgContainerRef.value.clearShowQuadIndex();
+}
+
+function updateShowQuadsArray() {
+  const newShowQuadArray = getJsonPerPicPointsArray();
+  imgContainerRef.value.resetQuadsArray(newShowQuadArray);
 }
 </script>
 

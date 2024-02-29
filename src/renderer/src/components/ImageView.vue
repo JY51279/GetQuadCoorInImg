@@ -83,9 +83,10 @@ defineExpose({
   clearDots,
   resetPosition,
   initImgInfo,
-  updateHighlightQuadIndex,
+  resetHighlightQuadIndex,
   addShowQuadIndex,
   clearShowQuadIndex,
+  resetQuadsArray,
 });
 
 const emits = defineEmits(['update-zoom-view', 'output-message', 'update-dots-real-coord']);
@@ -308,7 +309,7 @@ watch(highlightQuadIndex, newHighlightQuadIndex => {
   drawQuadLine(newHighlightQuadIndex);
 });
 
-function updateHighlightQuadIndex(newIndex) {
+function resetHighlightQuadIndex(newIndex) {
   highlightQuadIndex.value = newIndex;
 }
 
@@ -325,21 +326,30 @@ function addShowQuadIndex(newIndex) {
 function clearShowQuadIndex() {
   showQuadIndex.splice(0, showQuadIndex.length);
 }
+
+let quadsArray = [];
+function resetQuadsArray(newQuadArray) {
+  console.log('resetQuadsArray');
+  console.log('newQuadArray' + newQuadArray);
+  quadsArray = newQuadArray;
+}
+
 function drawCanvasForShowQuads() {
   drawShowQuads();
   if (highlightQuadIndex.value === -1) return;
-  drawQuadLine(highlightQuadIndex.value);
+  drawQuadLine(quadsArray[highlightQuadIndex.value]);
 }
-
-let quadsArray = [];
 function drawShowQuads() {
   for (let i = 0; i < showQuadIndex.length; ++i) {
     drawQuadLine(quadsArray[showQuadIndex[i]]);
   }
 }
 function drawQuadLine(quadRealPoints) {
+  console.log('drawQuadLine');
+  console.log('quadRealPoints: ' + quadRealPoints);
   if (quadRealPoints.length < 4 || scale.value < 1) return;
   const { outerQuadPoints, innerQuadPoints } = getQuads2Draw(quadRealPoints);
+  console.log('outerQuadPoints: ' + outerQuadPoints + '/n innerQuadPoints: ' + innerQuadPoints);
   drawQuad(outerQuadPoints);
   clearQuad(innerQuadPoints);
 }
@@ -401,6 +411,7 @@ function getQuads2Draw(quadRealPoints) {
     { x: 0, y: 0 },
     { x: 0, y: 0 },
   ];
+  console.log('quadRealPoints: ' + quadRealPoints);
   for (let i = 0; i < 4; ++i) {
     transReal2CanvasInfo(quadPointsLTInCanvas[i], quadRealPoints[i]);
     //ctxQuad.fillRect(quadPointsLTInCanvas[i].x, quadPointsLTInCanvas[i].y, scale.value, scale.value);

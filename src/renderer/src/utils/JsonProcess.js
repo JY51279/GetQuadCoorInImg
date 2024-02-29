@@ -1,4 +1,10 @@
-import { setQuadDots2ClockWise, serializePointArray2String, transStr2Json, transJson2Str } from './BasicFuncs.js';
+import {
+  setQuadDots2ClockWise,
+  serializePointArray2String,
+  transStr2Json,
+  transJson2Str,
+  parsePointString2Array,
+} from './BasicFuncs.js';
 import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
 
 const rootKey = 'Picture';
@@ -94,6 +100,12 @@ export function getJsonPicNum() {
   return { picNum: imgIndex + 1, picTotalNum: json[rootKey].length };
 }
 
+export function getJsonPerPicPointsArray() {
+  let jsonPerPicPointsArray = [];
+  for (let i = 0; i < jsonPerPicArray.length; i++)
+    jsonPerPicPointsArray.push(parsePointString2Array(transJson2Str(jsonPerPicArray[i])));
+  return jsonPerPicPointsArray;
+}
 export function getJsonPerPicStrArray() {
   let jsonPerPicStrArray = [];
   for (let i = 0; i < jsonPerPicArray.length; i++) jsonPerPicStrArray.push(transJson2Str(jsonPerPicArray[i]));
