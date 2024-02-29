@@ -11,7 +11,7 @@
       @mousemove="updateZoomView"
     ></canvas>
     <canvas
-      ref="canvas-for-quads"
+      ref="canvasForShowQuads"
       :width="viewportWidth + offsetCanvasLeft"
       :height="viewportHeight + offsetCanvasTop"
       :style="`transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px);
@@ -68,6 +68,7 @@
 import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
 import cloneDeep from 'lodash/cloneDeep';
+import { getOuterInnerQuads } from '../utils/ImageProcess.js';
 
 import { setQuadInfo } from '../utils/JsonProcess.js';
 
@@ -104,6 +105,7 @@ const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
 const imgContainerRef = ref(null);
 const canvas = ref(null);
+const canvasForShowQuads = ref(null);
 const scale = ref(1);
 
 function outputMessage(message) {
@@ -297,31 +299,107 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
   }
 }
 
-// let quadsArray = [];
-// let showQuadIndex = [];
-// function drawQuad(quadPoints) {
-//   if (quadPoints.length < 4) return;
-//   let quadPointsInCanvas = [
-//     { x: 0, y: 0 },
-//     { x: 0, y: 0 },
-//     { x: 0, y: 0 },
-//     { x: 0, y: 0 },
-//   ];
-//   for (let i = 0; i < 4; ++i) {
-//     transReal2CanvasInfo(quadPointsInCanvas[i], quadPoints[i]);
-//   }
-//   ctx.value.beginPath();
-//   ctx.value.moveTo(quadPointsInCanvas[0].x, quadPointsInCanvas[0].y);
-//   ctx.value.lineTo(quadPointsInCanvas[1].x, quadPointsInCanvas[1].y);
-//   ctx.value.lineTo(quadPointsInCanvas[2].x, quadPointsInCanvas[2].y);
-//   ctx.value.lineTo(quadPointsInCanvas[3].x, quadPointsInCanvas[3].y);
-//   ctx.value.closePath();
-//   ctx.value.stroke();
-// }
+const highlightQuadIndex = ref(-1);
+// eslint-disable-next-line no-unused-vars
+watch(highlightQuadIndex, newHighlightQuadIndex => {
+  drawQuadLine(newHighlightQuadIndex);
+});
+
+let showQuadIndex = reactive([]);
+// eslint-disable-next-line no-unused-vars
+watch(showQuadIndex, newShowQuadIndex => {
+  drawShowQuads();
+});
+
+function drawCanvasForShowQuads() {
+  drawShowQuads();
+  if (highlightQuadIndex.value === -1) return;
+  drawQuadLine(highlightQuadIndex.value);
+}
+
+let quadsArray = [];
+function drawShowQuads() {
+  for (let i = 0; i < showQuadIndex.length; ++i) {
+    drawQuadLine(quadsArray[showQuadIndex[i]]);
+  }
+}
+function drawQuadLine(quadRealPoints) {
+  if (quadRealPoints.length < 4 || scale.value < 1) return;
+  const { outerQuadPoints, innerQuadPoints } = getQuads2Draw(quadRealPoints);
+  drawQuad(outerQuadPoints);
+  clearQuad(innerQuadPoints);
+}
+
+function drawQuad(quadPoints) {
+  if (quadPoints.length < 4 || scale.value < 1) return;
+  const ctxQuad = canvasForShowQuads.value.getContext('2d');
+  ctxQuad.save();
+
+  ctxQuad.strokeStyle = 'black';
+  ctxQuad.lineWidth = 1;
+  ctxQuad.beginPath();
+  ctxQuad.moveTo(quadPoints[0].x, quadPoints[0].y);
+  ctxQuad.lineTo(quadPoints[1].x, quadPoints[1].y);
+  ctxQuad.lineTo(quadPoints[2].x, quadPoints[2].y);
+  ctxQuad.lineTo(quadPoints[3].x, quadPoints[3].y);
+  ctxQuad.closePath();
+  ctxQuad.stroke();
+
+  ctxQuad.fillStyle = 'green';
+  ctxQuad.globalAlpha = 0.5;
+  ctxQuad.fill();
+
+  ctxQuad.restore();
+}
+function clearQuad(quadPoints) {
+  if (quadPoints.length < 4) return;
+
+  const ctxQuad = canvasForShowQuads.value.getContext('2d');
+  // 保存当前上下文状态
+  ctxQuad.save();
+
+  // 创建四边形路径
+  ctxQuad.beginPath();
+  ctxQuad.moveTo(quadPoints[0].x, quadPoints[0].y);
+  ctxQuad.lineTo(quadPoints[1].x, quadPoints[1].y);
+  ctxQuad.lineTo(quadPoints[2].x, quadPoints[2].y);
+  ctxQuad.lineTo(quadPoints[3].x, quadPoints[3].y);
+  ctxQuad.closePath();
+
+  // 使用路径剪切
+  ctxQuad.clip();
+
+  // 清除指定矩形区域的内容
+  const minX = Math.min(quadPoints[0].x, quadPoints[1].x, quadPoints[2].x, quadPoints[3].x);
+  const minY = Math.min(quadPoints[0].y, quadPoints[1].y, quadPoints[2].y, quadPoints[3].y);
+  const maxX = Math.max(quadPoints[0].x, quadPoints[1].x, quadPoints[2].x, quadPoints[3].x);
+  const maxY = Math.max(quadPoints[0].y, quadPoints[1].y, quadPoints[2].y, quadPoints[3].y);
+  ctxQuad.clearRect(minX, minY, maxX - minX, maxY - minY);
+
+  // 恢复之前的上下文状态
+  ctxQuad.restore();
+}
+
+function getQuads2Draw(quadRealPoints) {
+  let quadPointsLTInCanvas = [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
+  for (let i = 0; i < 4; ++i) {
+    transReal2CanvasInfo(quadPointsLTInCanvas[i], quadRealPoints[i]);
+    //ctxQuad.fillRect(quadPointsLTInCanvas[i].x, quadPointsLTInCanvas[i].y, scale.value, scale.value);
+  }
+  const { outerQuadPoints, innerQuadPoints } = getOuterInnerQuads(quadPointsLTInCanvas, scale.value);
+  return { outerQuadPoints, innerQuadPoints };
+}
+
 function updateViewPortDraw() {
   if (imageSrc === '') return;
   drawCanvas();
   updateDotsCanvasCoord();
+  drawCanvasForShowQuads();
 }
 
 // Move
@@ -678,7 +756,7 @@ async function updateViewSize() {
 }
 
 function initCanvasSettings() {
-  if (canvas.value === null || canvas.value === null) return;
+  if (canvas.value === null || canvas.value === null || scale.value >= gridLimit) return;
   if (ctx.value === null || ctx.value === null) {
     ctx.value = canvas.value.getContext('2d');
   }

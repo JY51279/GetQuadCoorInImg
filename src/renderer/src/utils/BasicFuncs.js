@@ -18,6 +18,43 @@ export function swap(arr, index1, index2) {
   [arr[index1], arr[index2]] = [arr[index2], arr[index1]];
 }
 
+//***********************Point*************************/
+// 计算两点之间的欧氏距离
+function distance(point1, point2) {
+  const dx = point1.x - point2.x;
+  const dy = point1.y - point2.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+export function getNearestOrFarthestPoint(points, target, findNearest = true) {
+  // 初始化最小/最大距离和对应的点的下标
+  let minDistance = Infinity;
+  let maxDistance = -Infinity;
+  let nearestIndex = -1;
+  let farthestIndex = -1;
+
+  // 遍历点的数组
+  for (let i = 0; i < points.length; i++) {
+    // 计算当前点到目标点的距离
+    const dist = distance(points[i], target);
+
+    // 更新最近点的信息
+    if (dist < minDistance) {
+      minDistance = dist;
+      nearestIndex = i;
+    }
+
+    // 更新最远点的信息
+    if (dist > maxDistance) {
+      maxDistance = dist;
+      farthestIndex = i;
+    }
+  }
+
+  // 返回最近或最远点的下标
+  return findNearest ? nearestIndex : farthestIndex;
+}
+
 // 以左上点为0号点顺时针排序
 export function setQuadDots2ClockWise(dotsArray) {
   const leftUpId = calcLeftUpPtIndex(dotsArray);
@@ -85,6 +122,7 @@ export function parsePointString2Array(str, separator) {
   return points;
 }
 
+//***********************Json*************************/
 export function transStr2Json(jsonStr) {
   var json = JSON.parse(jsonStr);
   return json;
