@@ -328,25 +328,24 @@ function loadImgFromPath(path) {
 }
 
 let imgFileName = ref(null);
-ipcRenderer.on('open-pic-file-response', (e, response) => {
+ipcRenderer.on('open-pic-file-response', async (e, response) => {
   try {
     if (response.success) {
       imageSrcTmp += response.picInfo.str;
       if (response.picInfo.fileName === '') return;
 
-      const image = new Image();
-      image.src = imageSrcTmp;
+      outputMessage('Load Pic......');
+      await new Promise((resolve, reject) => {
+        imageObj.value = new Image();
+        imageObj.value.onload = () => resolve(imageObj.value);
+        imageObj.value.onerror = reject;
+        imageObj.value.src = imageSrcTmp;
+      });
 
-      // 在图片加载完成后执行的操作
-      image.onload = () => {
-        outputMessage('Load Pic......');
-        imgFileName.value = response.picInfo.fileName;
-        imgFilePath = response.picInfo.path;
-        //imageObj.value = new Image();
-        imageObj.value.src = image.src;
-        imageSrc.value = image.src;
-        initProcessInfo(openImgFileDirection); // 在图片加载完成后再调用
-      };
+      imgFileName.value = response.picInfo.fileName;
+      imgFilePath = response.picInfo.path;
+      imageSrc.value = imageSrcTmp;
+      initProcessInfo(openImgFileDirection);
     } else {
       // 处理读取文件失败的情况
       const errorMessage = response.error;
