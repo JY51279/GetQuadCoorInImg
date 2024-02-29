@@ -113,7 +113,6 @@ export function getJsonFileInfo() {
 let quadDots = [];
 let quadIndex = -1;
 export function setQuadInfo(realDots) {
-  console.log(realDots);
   quadDots = realDots.slice();
   if (quadDots.length === 4) setQuadDots2ClockWise(quadDots);
 }

@@ -287,6 +287,10 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
   }
 }
 
+// let quadsArray = [];
+// function drawQuad( 缩放indexList) {
+
+// }
 function updateViewPortDraw() {
   if (imageSrc === '') return;
   drawCanvas();

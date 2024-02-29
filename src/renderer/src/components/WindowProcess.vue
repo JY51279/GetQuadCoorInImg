@@ -111,65 +111,70 @@ onUnmounted(() => {
 
 // 监听键盘事件
 let isLogging = false;
+const keyActions = {
+  w: {
+    default: () => jsonView.value.updateLightIndex(KEYS.PREVIOUS),
+  },
+  s: {
+    default: () => jsonView.value.updateLightIndex(KEYS.NEXT),
+    ctrl: () => modifyJsonItem(),
+  },
+  d: {
+    default: () => changeImageByArrowKeys(KEYS.NEXT),
+    ctrl: () => deleteJsonItem(),
+  },
+  a: {
+    default: () => changeImageByArrowKeys(KEYS.PREVIOUS),
+    ctrl: () => addJsonItem(),
+  },
+  c: {
+    default: () => clearMessage(),
+    ctrl: () => clearDots(),
+  },
+  r: {
+    ctrl: () => resetPosition(),
+  },
+  q: {
+    //TODO
+    //q:加入到队列
+    //ctrl: 清空队列
+    //ctrl_shift: 把全部都加入队列
+  },
+  ArrowLeft: {
+    default: () => changeImageByArrowKeys(KEYS.PREVIOUS),
+  },
+  ArrowRight: {
+    default: () => changeImageByArrowKeys(KEYS.NEXT),
+  },
+  ArrowUp: {
+    default: () => jsonView.value.updateLightIndex(KEYS.PREVIOUS),
+  },
+  ArrowDown: {
+    default: () => jsonView.value.updateLightIndex(KEYS.NEXT),
+  },
+};
+
 function handleKeyDown(e) {
-  // 兼容不同浏览器的 keyCode 或者 code 属性
   const keyCode = e.keyCode || e.code;
+
   if (!isLogging && keyCode >= 48 && keyCode <= 57) {
-    // 按下了键盘上侧的数字键
     const digit = keyCode - 48;
-    //console.log(`Pressed number: ${digit}`);
     clearOneDot(digit - 1);
+    return;
   }
 
-  if (e.ctrlKey) {
-    e.preventDefault(); // 阻止默认行为
-    switch (e.key) {
-      case 's':
-        modifyJsonItem(); // 执行保存操作
-        break;
-      case 'd':
-        deleteJsonItem(); // 执行删除操作
-        break;
-      case 'a':
-        addJsonItem(); // 执行删除操作
-        break;
-      case 'c':
-        clearDots();
-        break;
-      case 'r':
-        resetPosition();
-        break;
-      case 'm':
-        clearMessage();
-        break;
-      default:
-        return; // 不执行后续代码
-    }
-  } else {
-    switch (e.key) {
-      case 'ArrowLeft':
-      case 'a':
-        e.preventDefault();
-        changeImageByArrowKeys(KEYS.PREVIOUS);
-        break;
-      case 'ArrowRight':
-      case 'd':
-        e.preventDefault();
-        changeImageByArrowKeys(KEYS.NEXT);
-        break;
-      case 'ArrowUp':
-      case 'w':
-        e.preventDefault();
-        jsonView.value.updateLightIndex(KEYS.PREVIOUS);
-        break;
-      case 'ArrowDown':
-      case 's':
-        e.preventDefault();
-        jsonView.value.updateLightIndex(KEYS.NEXT);
-        break;
-      default:
-        return; // 不执行后续代码
-    }
+  const action = keyActions[e.key];
+  if (!action) return;
+
+  if (e.ctrlKey && e.shiftKey && action.ctrl_shift) {
+    e.preventDefault();
+    action.ctrl_shift();
+  } else if (e.ctrlKey && action.ctrl) {
+    e.preventDefault();
+    action.ctrl();
+  } else if (action.default) {
+    e.preventDefault();
+    action.default();
   }
 }
 function handleKeyUp() {
