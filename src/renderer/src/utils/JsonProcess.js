@@ -60,18 +60,24 @@ export function resetPicJson(imgFilePath, direction = '') {
   resetImgIndex(imgFilePath, direction);
 
   if (imgIndex === -1) {
-    window.alert('Unable to retrieve the image from the JSON file.');
+    window.alert('The loaded image file does not match the dataset file.');
+    return false;
   }
 
   try {
+    if (!Object.prototype.hasOwnProperty.call(json[rootKey][imgIndex], classKeys.targetKey)) {
+      window.alert('The selected product type does not match the dataset type.');
+      return false;
+    }
     jsonPerPicArray = json[rootKey][imgIndex][classKeys.targetKey];
     if (jsonPerPicArray.length > 0) jsonPerPicPerObjKeysNum = Object.keys(jsonPerPicArray[0]).length;
+    return true;
   } catch (err) {
     console.error('An error occurred while accessing the JSON array:', err);
   }
 }
 
-let classKeys = { class: '', targetKey: '', ItemKey: '' };
+let classKeys = {};
 function resetClassKeys(classStr) {
   for (let i = 0; i < 3; ++i) {
     if (TotalClassKeys[i].class === classStr) {

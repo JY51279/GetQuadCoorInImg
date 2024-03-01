@@ -54,6 +54,7 @@
       ref="jsonView"
       @update-quad-info="updateQuadInfo"
       @update-quad-str-array="updateShowQuadsArray"
+      @output-message="outputMessage"
     ></jsonItems>
   </div>
 </template>
@@ -319,8 +320,10 @@ function initProcessInfo(direction = '') {
 
 // Get files
 
+let imageSrcTmp = '';
 function chooseImgFile() {
   try {
+    imageSrcTmp = '';
     ipcRenderer.send('open-image-file-dialog');
   } catch (error) {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
@@ -334,7 +337,6 @@ function changeImageByArrowKeys(direction) {
   loadImgFromPath(path);
 }
 
-let imageSrcTmp = '';
 function loadImgFromPath(path) {
   //console.log(path);
   imageSrcTmp = '';
@@ -349,12 +351,14 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
       if (response.picInfo.fileName === '') return;
 
       outputMessage('Load Pic......');
+      imgContainerRef.value.changeMouseState(true);
       await new Promise((resolve, reject) => {
         imageObj.value = new Image();
         imageObj.value.onload = () => resolve(imageObj.value);
         imageObj.value.onerror = reject;
         imageObj.value.src = imageSrcTmp;
       });
+      imgContainerRef.value.changeMouseState(false);
 
       imgFileName.value = response.picInfo.fileName;
       imgFilePath = response.picInfo.path;
@@ -410,25 +414,31 @@ watch(dotsRealCoord, newDotsRealCoord => {
 // Update Zoom
 const zoomView = ref(null);
 function updateZoomView() {
+  if (!imageObj.value || !imageObj.value.complete) return;
   drawZoomAndDots();
 }
 function drawZoomAndDots() {
-  if (imgContainerRef.value.realDot2GetZoom.x === -1) return;
-  const zoomCtx = zoomView.value.getContext('2d');
-  zoomCtx.drawImage(
-    imageObj.value,
-    imgContainerRef.value.realDot2GetZoom.x,
-    imgContainerRef.value.realDot2GetZoom.y,
-    6,
-    6,
-    0,
-    0,
-    120,
-    120,
-  );
+  try {
+    if (!imageObj.value || !imageObj.value.complete || imgContainerRef.value.realDot2GetZoom.x === -1) return;
+    const zoomCtx = zoomView.value.getContext('2d');
+    zoomCtx.drawImage(
+      imageObj.value,
+      imgContainerRef.value.realDot2GetZoom.x,
+      imgContainerRef.value.realDot2GetZoom.y,
+      6,
+      6,
+      0,
+      0,
+      120,
+      120,
+    );
 
-  for (let i = 0; i < dotsRealCoord.length; ++i) {
-    drawDotInZoom(dotsRealCoord[i]);
+    for (let i = 0; i < dotsRealCoord.length; ++i) {
+      drawDotInZoom(dotsRealCoord[i]);
+    }
+  } catch (err) {
+    console.log(imageObj.value);
+    console.error('An error occurred:', err);
   }
 }
 

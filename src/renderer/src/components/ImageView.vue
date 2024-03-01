@@ -7,8 +7,8 @@
       :style="`transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px);
                   transform-origin: 0% 0%;
                   position: fixed;`"
-      @click="toggleDot"
-      @mousemove="updateZoomView"
+      @click="isDisabledMouse ? null : toggleDot"
+      @mousemove="isDisabledMouse ? null : updateZoomView"
     ></canvas>
     <canvas
       ref="canvasForShowQuads"
@@ -30,7 +30,7 @@
                 left: ${dot.x}px;
                 z-index: 9998;
               `"
-      @click="deleteDot"
+      @click="isDisabledMouse ? null : deleteDot"
     ></div>
     <div
       v-if="scale < gridLimit"
@@ -87,6 +87,7 @@ defineExpose({
   addShowQuadIndex,
   clearShowQuadIndex,
   resetQuadsArray,
+  changeMouseState,
 });
 
 const emits = defineEmits(['update-zoom-view', 'output-message', 'update-dots-real-coord']);
@@ -155,6 +156,7 @@ function getDotInfo(e) {
 
 let imgPixelData2D = [];
 function updateImgData() {
+  if (!props.imageObj) return;
   // 创建一个Canvas对象
   let canvasTmp = document.createElement('canvas');
   canvasTmp.width = initImgWidth.value;
@@ -189,7 +191,7 @@ const sourceLTCoord = { x: 0, y: 0 };
 const sourceRBCoord = { x: 0, y: 0 };
 const gridLimit = 10;
 function drawCanvas() {
-  if (canvas.value === null || canvas.value === null) {
+  if (canvas.value === null || canvas.value === null || props.imageObj === null) {
     outputMessage('drawCanvas canvas Error.');
     return;
   }
@@ -433,12 +435,17 @@ function updateViewPortDraw() {
 }
 
 // Move
+const isDisabledMouse = ref(false);
+function changeMouseState(newState = false) {
+  isDisabledMouse.value = newState;
+}
 const autoAdaptBorderDis = 10;
 const offsetX = ref(0);
 const offsetY = ref(0);
 const { x, y } = useMouse();
 const { pressed } = useMousePressed({ target: imgContainerRef });
 watch([x, y], ([newX, newY], [oldX, oldY]) => {
+  if (isDisabledMouse.value) return;
   if (pressed.value) {
     //console.log(`Mouse moved from (${oldX}, ${oldY}) to (${newX}, ${newY})`);
     const deltaX = newX - oldX;
@@ -612,7 +619,7 @@ const ctx = ref(null);
 const ctxQuad = ref(null);
 //const imageObj = ref(null);
 let imageSrc = '';
-function initImgInfo() {
+async function initImgInfo() {
   //console.log(props.imageObj);
   scale.value = 0;
   offsetX.value = 0;
@@ -620,29 +627,33 @@ function initImgInfo() {
   clearDots();
   imageSrc = props.imageObj.src;
   let img = new Image();
-  img.src = imageSrc;
-  img.onload = () => {
-    // Update imgInfo
-    initImgWidth.value = img.width;
-    initImgHeight.value = img.height;
-    updateImgData();
-    // Update ctx
-    if (ctx.value !== null && ctx.value !== null) {
-      ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
-    }
-    if (ctxQuad.value !== null && ctxQuad.value !== null) {
-      ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
-    }
-    ctx.value = canvas.value.getContext('2d');
-    ctxQuad.value = canvasForShowQuads.value.getContext('2d');
-    // 计算初始缩放比例
-    const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
-    scale.value = scaleValue; //scale.value修改，自动调用watch scale
+  changeMouseState(true);
+  await new Promise((resolve, reject) => {
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = imageSrc;
+  });
+  changeMouseState(false);
 
-    console.log('scale:', scale.value);
-    console.log('img.width:', img.width);
-    console.log('img.height:', img.height);
-  };
+  initImgWidth.value = img.width;
+  initImgHeight.value = img.height;
+  updateImgData();
+  // Update ctx
+  if (ctx.value !== null && ctx.value !== null) {
+    ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
+  }
+  if (ctxQuad.value !== null && ctxQuad.value !== null) {
+    ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
+  }
+  ctx.value = canvas.value.getContext('2d');
+  ctxQuad.value = canvasForShowQuads.value.getContext('2d');
+  // 计算初始缩放比例
+  const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
+  scale.value = scaleValue; //scale.value修改，自动调用watch scale
+
+  console.log('scale:', scale.value);
+  console.log('img.width:', img.width);
+  console.log('img.height:', img.height);
 }
 const scaleRange = 60;
 const onWheel = event => {
@@ -659,6 +670,9 @@ const onWheel = event => {
 };
 
 function updateZoomView(e) {
+  if (!props.imageObj || imageSrc === '' || !props.imageObj.complete) {
+    return;
+  }
   let rectCoord = updateRealDots2GetZoom(e);
   if (rectCoord) {
     updateRectanglePosition(rectCoord);

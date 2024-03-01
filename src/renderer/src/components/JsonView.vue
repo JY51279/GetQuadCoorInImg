@@ -26,7 +26,7 @@ defineExpose({
   deleteJsonItem,
   addJsonItem,
 });
-const emits = defineEmits(['update-quad-info', 'update-quad-str-array']);
+const emits = defineEmits(['update-quad-info', 'update-quad-str-array', 'output-message']);
 
 let jsonPerPicArray = [];
 let jsonPerObjLineNum = -1;
@@ -34,6 +34,10 @@ const formattedJsonStrArray = ref('');
 
 let lineHeight = 0;
 const jsonView = ref(null);
+
+function outputMessage(message) {
+  emits('output-message', message);
+}
 
 const highlightedIndex = ref(-1);
 watch(highlightedIndex, newIndex => {
@@ -123,7 +127,12 @@ function updateJsonPerPicArray() {
   emits('update-quad-str-array');
 }
 function initJsonInfo(imgFilePath, direction = '') {
-  resetPicJson(imgFilePath, direction);
+  if (!resetPicJson(imgFilePath, direction)) {
+    outputMessage(
+      '**********Please check the input files and ensure the selected product type is correct. Then, try again.***********',
+    );
+    return;
+  }
   updateJsonPerPicArray();
   updateHighlightInfo();
   emits('update-quad-info', -1, jsonPerPicArray.length);
