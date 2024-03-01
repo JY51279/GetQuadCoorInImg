@@ -326,7 +326,9 @@ watch(showQuadIndex, newShowQuadIndex => {
 });
 
 function addShowQuadIndex(newIndex) {
-  showQuadIndex.push(newIndex);
+  if (!showQuadIndex.includes(newIndex)) {
+    showQuadIndex.push(newIndex);
+  }
 }
 
 function clearShowQuadIndex() {
@@ -334,36 +336,49 @@ function clearShowQuadIndex() {
 }
 
 function drawCanvasForShowQuads() {
+  if (ctxQuad.value === null || ctxQuad.value === null) {
+    console.log('Failed to draw canvas for show quads');
+    return;
+  }
   ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
   drawShowQuads();
   if (highlightQuadIndex.value === -1) return;
-  drawQuadLine(quadsArray[highlightQuadIndex.value]);
+  drawQuadLine(quadsArray[highlightQuadIndex.value], true);
 }
 function drawShowQuads() {
   for (let i = 0; i < showQuadIndex.length; ++i) {
+    if (showQuadIndex[i] === highlightQuadIndex.value) continue;
     drawQuadLine(quadsArray[showQuadIndex[i]]);
   }
 }
-function drawQuadLine(quadRealPoints) {
-  if (quadRealPoints.length < 4 || scale.value < 1) return;
-  const { outerQuadPoints, innerQuadPoints } = getQuads2Draw(quadRealPoints);
-  drawQuad(outerQuadPoints);
-  clearQuad(innerQuadPoints);
-}
-
-function drawQuad(quadPoints) {
-  if (quadPoints.length < 4 || scale.value < 1) {
+function drawQuadLine(quadRealPoints, isHighlight = false) {
+  if (quadRealPoints.length < 4) {
     console.log('Failed to draw quad');
     return;
   }
-  ctxQuad.value.save();
+  const { outerQuadPoints, innerQuadPoints } = getQuads2Draw(quadRealPoints);
+  drawQuad(outerQuadPoints, isHighlight);
+  clearQuad(innerQuadPoints);
+}
 
+function drawQuad(quadPoints, isHighlight = false) {
+  if (quadPoints.length < 4) {
+    console.log('Failed to draw quad');
+    return;
+  }
+  //Draw highlighted quads with a yellow color, otherwise use green.
+  let fillColor = 'green';
+  if (isHighlight) {
+    fillColor = 'yellow';
+  }
+
+  ctxQuad.value.save();
   ctxQuad.value.strokeStyle = 'black';
   ctxQuad.value.lineWidth = 1;
   drawPath(ctxQuad.value, quadPoints);
   ctxQuad.value.stroke();
 
-  ctxQuad.value.fillStyle = 'green';
+  ctxQuad.value.fillStyle = fillColor;
   ctxQuad.value.globalAlpha = 0.5;
   ctxQuad.value.fill();
 
@@ -405,7 +420,6 @@ function getQuads2Draw(quadRealPoints) {
 
   for (let i = 0; i < 4; ++i) {
     transReal2CanvasInfo(quadPointsLTInCanvas[i], quadRealPoints[i]);
-    //ctxQuad.fillRect(quadPointsLTInCanvas[i].x, quadPointsLTInCanvas[i].y, scale.value, scale.value);
   }
   const { outerQuadPoints, innerQuadPoints } = getOuterInnerQuads(quadPointsLTInCanvas, scale.value);
   return { outerQuadPoints, innerQuadPoints };

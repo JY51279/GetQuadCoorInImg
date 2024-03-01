@@ -143,7 +143,9 @@ const keyActions = {
   q: {
     default: () => addHighlight2ShowQuads(),
     ctrl: () => clearShowQuads(),
-    ctrl_shift: () => addAll2ShowQuads(),
+  },
+  Q: {
+    ctrl_shift: () => addAll2ShowQuads(), // shift + q ==> Q
   },
   ArrowLeft: {
     default: () => changeImageByArrowKeys(KEYS.PREVIOUS),
@@ -167,12 +169,14 @@ function handleKeyDown(e) {
     clearOneDot(digit - 1);
     return;
   }
-
+  //console.log(e.key);
   const action = keyActions[e.key];
+  //console.log(keyActions[e.key]);
   if (!action) return;
 
   if (e.ctrlKey && e.shiftKey && action.ctrl_shift) {
     e.preventDefault();
+    //console.log(action.ctrl_shift);
     action.ctrl_shift();
   } else if (e.ctrlKey && action.ctrl) {
     e.preventDefault();
@@ -452,7 +456,7 @@ function addHighlight2ShowQuads() {
   imgContainerRef.value.addShowQuadIndex(quadInfo.quadNum - 1);
 }
 function addAll2ShowQuads() {
-  imgContainerRef.value.clearShowQuadIndex();
+  console.log('Here!');
   for (let i = 0; i < quadInfo.quadTotal; ++i) {
     imgContainerRef.value.addShowQuadIndex(i);
   }
