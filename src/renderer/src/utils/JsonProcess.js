@@ -13,19 +13,19 @@ const TotalClassKeys = [
   {
     class: PRODUCTS.DBR,
     targetKey: 'Barcode Info',
-    ItemsArray: 'Barcode Location',
+    ItemKey: 'Barcode Location',
     ItemsCount: 'Barcode Count',
   },
   {
     class: PRODUCTS.DDN,
     targetKey: 'Quadrilateral Info',
-    ItemsArray: 'Expected Quadrilateral Points',
+    ItemKey: 'Expected Quadrilateral Points',
     ItemsCount: 'Expected Quadrilateral Count',
   },
   {
     class: PRODUCTS.DLR,
     targetKey: 'Label Info',
-    ItemsArray: 'Label Location',
+    ItemKey: 'Label Location',
     ItemsCount: 'Label Count',
   },
 ];
@@ -71,7 +71,7 @@ export function resetPicJson(imgFilePath, direction = '') {
   }
 }
 
-let classKeys = { class: '', targetKey: '', ItemsArray: '' };
+let classKeys = { class: '', targetKey: '', ItemKey: '' };
 function resetClassKeys(classStr) {
   for (let i = 0; i < 3; ++i) {
     if (TotalClassKeys[i].class === classStr) {
@@ -102,8 +102,11 @@ export function getJsonPicNum() {
 
 export function getJsonPerPicPointsArray() {
   let jsonPerPicPointsArray = [];
-  for (let i = 0; i < jsonPerPicArray.length; i++)
-    jsonPerPicPointsArray.push(parsePointString2Array(transJson2Str(jsonPerPicArray[i])));
+  for (let i = 0; i < jsonPerPicArray.length; i++) {
+    const strTmp = jsonPerPicArray[i][classKeys.ItemKey];
+    const pointsTmp = parsePointString2Array(strTmp, separator);
+    jsonPerPicPointsArray.push(pointsTmp);
+  }
   return jsonPerPicPointsArray;
 }
 export function getJsonPerPicStrArray() {
@@ -171,7 +174,7 @@ function modifyJsonContent() {
     if (quadIndex === -1) {
       return 'Failed to find jsonItem.';
     }
-    jsonPerPicArray[quadIndex][classKeys.ItemsArray] = quadStr;
+    jsonPerPicArray[quadIndex][classKeys.ItemKey] = quadStr;
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to modify jsonItem.');
 }
@@ -192,7 +195,7 @@ function addJsonContent() {
     if (quadStr === '') {
       return 'Failed to trans dots to string.';
     }
-    jsonPerPicArray.push({ [classKeys.ItemsArray]: quadStr });
+    jsonPerPicArray.push({ [classKeys.ItemKey]: quadStr });
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to add jsonItem.');
 }

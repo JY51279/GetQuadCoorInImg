@@ -26,7 +26,7 @@ function distance(point1, point2) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-export function getNearestOrFarthestPoint(points, target, findNearest = true) {
+export function getNearestOrFarthestPointIndex(points, target, findNearest = true) {
   // 初始化最小/最大距离和对应的点的下标
   let minDistance = Infinity;
   let maxDistance = -Infinity;
@@ -106,19 +106,20 @@ export function getQuadCenterPoint(dotsArray) {
 }
 
 function getCenterPt(targetPt, point1, point2) {
-  targetPt = { x: 0, y: 0 };
   targetPt.x = (point1.x + point2.x) / 2;
   targetPt.y = (point1.y + point2.y) / 2;
 }
 
 export function parsePointString2Array(str, separator) {
+  if (!separator) {
+    console.log('parsePointString2Array: separator is null');
+    return null;
+  }
   const points = [];
   const coords = str.split(separator).map(Number);
-
   for (let i = 0; i < coords.length; i += 2) {
     points.push({ x: coords[i], y: coords[i + 1] });
   }
-
   return points;
 }
 
