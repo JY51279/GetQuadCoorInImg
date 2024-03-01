@@ -317,14 +317,8 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
 let quadsArray = [];
 function resetQuadsArray(newQuadArray) {
   quadsArray = newQuadArray;
-  if (ctxQuad.value) {
-    console.log('1111');
-    //console log quadsArray
-    for (let i = 0; i < quadsArray.length; i++) {
-      console.log(quadsArray[i]);
-    }
-    drawCanvasForShowQuads();
-  }
+  clearShowQuadIndex();
+  indices2Show.value = '';
 }
 
 const highlightQuadIndex = ref(-1);
