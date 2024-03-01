@@ -391,6 +391,7 @@ ipcRenderer.on('choose-json-file-response', (e, response) => {
       jsonData = response.jsonInfo;
       jsonFileName.value = jsonData.fileName;
       resetJsonProcess(jsonData, selectedOption.value[0]);
+      if (imgFilePath !== '') initProcessInfo();
       outputMessage('JSON data input successful.');
     } else {
       // 处理读取文件失败的情况

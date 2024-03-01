@@ -131,7 +131,6 @@ function initJsonInfo(imgFilePath, direction = '') {
     outputMessage(
       '**********Please check the input files and ensure the selected product type is correct. Then, try again.***********',
     );
-    return;
   }
   updateJsonPerPicArray();
   updateHighlightInfo();

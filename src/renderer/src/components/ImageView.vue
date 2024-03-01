@@ -6,9 +6,9 @@
       :height="viewportHeight + offsetCanvasTop"
       :style="`transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px);
                   transform-origin: 0% 0%;
-                  position: fixed;`"
-      @click="isDisabledMouse ? null : toggleDot"
-      @mousemove="isDisabledMouse ? null : updateZoomView"
+                  position: absolute;`"
+      @click="toggleDot"
+      @mousemove="updateZoomView"
     ></canvas>
     <canvas
       ref="canvasForShowQuads"
@@ -16,7 +16,7 @@
       :height="viewportHeight + offsetCanvasTop"
       :style="`transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px);
                   transform-origin: 0% 0%;
-                  position: fixed;
+                  position: absolute;
                   pointer-events: none;`"
     ></canvas>
     <div
@@ -30,7 +30,7 @@
                 left: ${dot.x}px;
                 z-index: 9998;
               `"
-      @click="isDisabledMouse ? null : deleteDot"
+      @click="deleteDot"
     ></div>
     <div
       v-if="scale < gridLimit"
@@ -128,6 +128,7 @@ function deletePt(ptIndex) {
 
 // Delete Dot in canvas
 function deleteDot(e) {
+  if (isDisabledMouse.value) return;
   const { existingDotIndex } = getDotInfo(e);
   if (!deletePt(existingDotIndex)) {
     outputMessage('Error delete the pt in canvas!');
@@ -570,7 +571,7 @@ watch(dotsRealCoord, newDotsRealCoord => {
 });
 
 function toggleDot(e) {
-  if (imageSrc === '' || !isNotLongPress) {
+  if (isDisabledMouse.value || imageSrc === '' || !isNotLongPress) {
     return;
   }
   // 如果红点在图片显示范围外，输出“The pt is not in the pic.”
@@ -620,6 +621,7 @@ const ctxQuad = ref(null);
 //const imageObj = ref(null);
 let imageSrc = '';
 async function initImgInfo() {
+  console.log('initImgInfo: ', props.imageObj);
   //console.log(props.imageObj);
   scale.value = 0;
   offsetX.value = 0;
@@ -634,7 +636,7 @@ async function initImgInfo() {
     img.src = imageSrc;
   });
   changeMouseState(false);
-
+  console.log(isDisabledMouse.value);
   initImgWidth.value = img.width;
   initImgHeight.value = img.height;
   updateImgData();
@@ -657,6 +659,9 @@ async function initImgInfo() {
 }
 const scaleRange = 60;
 const onWheel = event => {
+  if (isDisabledMouse.value) {
+    return;
+  }
   if (event.deltaY < 0) {
     if (scale.value < 0.9) scale.value += 0.1;
     else if (scale.value < scaleRange) scale.value = Math.floor(scale.value + 1);
@@ -670,7 +675,7 @@ const onWheel = event => {
 };
 
 function updateZoomView(e) {
-  if (!props.imageObj || imageSrc === '' || !props.imageObj.complete) {
+  if (isDisabledMouse.value || !props.imageObj || imageSrc === '') {
     return;
   }
   let rectCoord = updateRealDots2GetZoom(e);
