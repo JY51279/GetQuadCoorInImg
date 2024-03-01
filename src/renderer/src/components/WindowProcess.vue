@@ -315,9 +315,15 @@ function initProcessInfo(direction = '') {
   imgContainerRef.value.initImgInfo();
   jsonView.value.initJsonInfo(imgFilePath, direction);
   picInfo.value = getJsonPicNum();
+  initShowQuads();
   openImgFileDirection = '';
 }
 
+function initShowQuads() {
+  console.log('quadInfo: ', quadInfo.quadTotal);
+  clearShowQuads();
+  addAll2ShowQuads();
+}
 // Get files
 
 let imageSrcTmp = '';
@@ -467,7 +473,6 @@ function addHighlight2ShowQuads() {
   imgContainerRef.value.addShowQuadIndex(quadInfo.quadNum - 1);
 }
 function addAll2ShowQuads() {
-  console.log('Here!');
   for (let i = 0; i < quadInfo.quadTotal; ++i) {
     imgContainerRef.value.addShowQuadIndex(i);
   }

@@ -123,6 +123,28 @@ export function parsePointString2Array(str, separator) {
   return points;
 }
 
+export function isPointInPolygon(point, polygon) {
+  setQuadDots2ClockWise(polygon);
+  let inside = true;
+  for (let end = 0, start = polygon.length - 1; end < polygon.length; start = end++) {
+    const line = [polygon[start], polygon[end]];
+    if (!isPointRightOfLine(point, line)) {
+      inside = false;
+      break;
+    }
+  }
+  return inside;
+}
+
+export function isPointRightOfLine(point, line) {
+  let x = point.x,
+    y = point.y;
+  let xi = line[0].x,
+    yi = line[0].y;
+  let xj = line[1].x,
+    yj = line[1].y;
+  return (xj - xi) * (y - yi) - (yj - yi) * (x - xi) > 0;
+}
 //***********************Json*************************/
 export function transStr2Json(jsonStr) {
   var json = JSON.parse(jsonStr);

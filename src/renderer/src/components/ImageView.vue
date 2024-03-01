@@ -20,6 +20,13 @@
                   pointer-events: none;`"
     ></canvas>
     <div
+      v-if="indices2Show"
+      class="str-right-mouse"
+      :style="{ position: 'absolute', top: `${mouseCoord.y - 20}px`, left: `${mouseCoord.x - 5}px` }"
+    >
+      {{ indices2Show }}
+    </div>
+    <div
       v-for="dot in dotsCanvasCoord"
       :key="dot.id"
       class="dot"
@@ -71,6 +78,7 @@ import cloneDeep from 'lodash/cloneDeep';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 
 import { setQuadInfo } from '../utils/JsonProcess.js';
+import { isPointInPolygon } from '../utils/BasicFuncs.js';
 
 const dotsRealCoord = reactive([]);
 const realDot2GetZoom = ref({ x: -1, y: -1 });
@@ -309,7 +317,14 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
 let quadsArray = [];
 function resetQuadsArray(newQuadArray) {
   quadsArray = newQuadArray;
-  if (ctxQuad.value) drawCanvasForShowQuads();
+  if (ctxQuad.value) {
+    console.log('1111');
+    //console log quadsArray
+    for (let i = 0; i < quadsArray.length; i++) {
+      console.log(quadsArray[i]);
+    }
+    drawCanvasForShowQuads();
+  }
 }
 
 const highlightQuadIndex = ref(-1);
@@ -338,11 +353,13 @@ function clearShowQuadIndex() {
   showQuadIndex.splice(0, showQuadIndex.length);
 }
 
+const outerQuadArray = [];
 function drawCanvasForShowQuads() {
   if (ctxQuad.value === null || ctxQuad.value === null) {
     console.log('Failed to draw canvas for show quads');
     return;
   }
+  outerQuadArray.splice(0, outerQuadArray.length);
   ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
   drawShowQuads();
   if (highlightQuadIndex.value === -1) return;
@@ -355,11 +372,14 @@ function drawShowQuads() {
   }
 }
 function drawQuadLine(quadRealPoints, isHighlight = false) {
+  console.log('drawQuadLine');
+  console.log('quadRealPoints', quadRealPoints);
   if (quadRealPoints.length < 4) {
     console.log('Failed to draw quad');
     return;
   }
   const { outerQuadPoints, innerQuadPoints } = getQuads2Draw(quadRealPoints);
+  if (!isHighlight) outerQuadArray.push(outerQuadPoints);
   drawQuad(outerQuadPoints, isHighlight);
   clearQuad(innerQuadPoints);
 }
@@ -435,11 +455,12 @@ function updateViewPortDraw() {
   drawCanvasForShowQuads();
 }
 
-// Move
 const isDisabledMouse = ref(false);
 function changeMouseState(newState = false) {
   isDisabledMouse.value = newState;
 }
+
+// Move
 const autoAdaptBorderDis = 10;
 const offsetX = ref(0);
 const offsetY = ref(0);
@@ -448,36 +469,52 @@ const { pressed } = useMousePressed({ target: imgContainerRef });
 watch([x, y], ([newX, newY], [oldX, oldY]) => {
   if (isDisabledMouse.value) return;
   if (pressed.value) {
-    //console.log(`Mouse moved from (${oldX}, ${oldY}) to (${newX}, ${newY})`);
-    const deltaX = newX - oldX;
-    const deltaY = newY - oldY;
-    if (deltaX === 0 && deltaY === 0) return;
-
-    offsetX.value += deltaX;
-    offsetY.value += deltaY;
-
-    // auto Adapt Border
-    if (!(imageSrc === '')) {
-      if (Math.abs(newX) < Math.abs(oldX)) {
-        if (Math.abs(offsetX.value) < autoAdaptBorderDis) offsetX.value = 0;
-      } else if (Math.abs(newX) > Math.abs(oldX)) {
-        if (Math.abs(offsetX.value + initImgWidth.value * scale.value - viewportWidth.value) < autoAdaptBorderDis)
-          offsetX.value = viewportWidth.value - initImgWidth.value * scale.value;
-      }
-
-      if (Math.abs(newY) < Math.abs(oldY)) {
-        if (Math.abs(offsetY.value) < autoAdaptBorderDis) offsetY.value = 0;
-      } else if (Math.abs(newY) > Math.abs(oldY)) {
-        if (Math.abs(offsetY.value + initImgHeight.value * scale.value - viewportHeight.value) < autoAdaptBorderDis)
-          offsetY.value = viewportHeight.value - initImgHeight.value * scale.value;
-      }
-    }
-    updateViewPortDraw();
+    updateOffsetMoved(oldX, oldY, newX, newY);
+  } else {
+    getMouseInRectIndices();
   }
 });
 
+function updateOffsetMoved(oldX, oldY, newX, newY) {
+  //console.log(`Mouse moved from (${oldX}, ${oldY}) to (${newX}, ${newY})`);
+  const deltaX = newX - oldX;
+  const deltaY = newY - oldY;
+  if (deltaX === 0 && deltaY === 0) return;
+
+  offsetX.value += deltaX;
+  offsetY.value += deltaY;
+
+  // auto Adapt Border
+  if (!(imageSrc === '')) {
+    if (Math.abs(newX) < Math.abs(oldX)) {
+      if (Math.abs(offsetX.value) < autoAdaptBorderDis) offsetX.value = 0;
+    } else if (Math.abs(newX) > Math.abs(oldX)) {
+      if (Math.abs(offsetX.value + initImgWidth.value * scale.value - viewportWidth.value) < autoAdaptBorderDis)
+        offsetX.value = viewportWidth.value - initImgWidth.value * scale.value;
+    }
+
+    if (Math.abs(newY) < Math.abs(oldY)) {
+      if (Math.abs(offsetY.value) < autoAdaptBorderDis) offsetY.value = 0;
+    } else if (Math.abs(newY) > Math.abs(oldY)) {
+      if (Math.abs(offsetY.value + initImgHeight.value * scale.value - viewportHeight.value) < autoAdaptBorderDis)
+        offsetY.value = viewportHeight.value - initImgHeight.value * scale.value;
+    }
+  }
+  updateViewPortDraw();
+}
+
+const indices2Show = ref('');
+function getMouseInRectIndices() {
+  indices2Show.value = '';
+  for (let i = 0; i < outerQuadArray.length; ++i) {
+    if (isPointInPolygon(mouseCoord, outerQuadArray[i])) {
+      const showNum = showQuadIndex[i] + 1;
+      indices2Show.value += showNum + ' ';
+    }
+  }
+}
 // Scale
-function updateOffset(oldScale, newScale) {
+function updateOffsetScaled(oldScale, newScale) {
   if (oldScale < 1 || newScale < 1) return;
 
   // Judge: Mouse in rendered area
@@ -514,7 +551,7 @@ function updateOffset(oldScale, newScale) {
 watch(scale, (newScale, oldScale) => {
   //console.log('scale:', newScale);
   if (newScale === 0) return;
-  else updateOffset(oldScale, newScale);
+  else updateOffsetScaled(oldScale, newScale);
   updateViewPortDraw();
 });
 
@@ -540,7 +577,7 @@ watch(pressed, newVal => {
   }
 });
 
-const mouseCoord = { x: 0, y: 0 };
+const mouseCoord = reactive({ x: 0, y: 0 });
 onMounted(() => {
   console.log('onMountedIMG...');
   updateViewSize();
@@ -621,7 +658,6 @@ const ctxQuad = ref(null);
 //const imageObj = ref(null);
 let imageSrc = '';
 async function initImgInfo() {
-  console.log('initImgInfo: ', props.imageObj);
   //console.log(props.imageObj);
   scale.value = 0;
   offsetX.value = 0;
@@ -854,5 +890,14 @@ function initCanvasSettings() {
   /* 透明的背景色 */
   pointer-events: none;
   /* 忽略鼠标事件 */
+}
+
+.str-right-mouse {
+  font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
+  color: #fffb00; /* 文字颜色为深灰色 */
+  font-size: 16px; /* 文字大小为 16px */
+  line-height: 1.5; /* 行高为 1.5 */
+  text-shadow: 2px 2px 3px rgba(0, 0, 0, 0.3); /* 增强的文字阴影 */
+  font-weight: bold; /* 加粗文字 */
 }
 </style>
