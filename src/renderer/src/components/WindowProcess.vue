@@ -53,7 +53,7 @@
     <jsonItems
       ref="jsonView"
       @update-quad-info="updateQuadInfo"
-      @update-quad-str-array="updateShowQuadsArray"
+      @init-show-quads="initShowQuads"
       @output-message="outputMessage"
     ></jsonItems>
   </div>
@@ -85,6 +85,7 @@ function updateQuadInfo(quadNum = -1, quadTotal = -1) {
 }
 watch(quadInfo, newQuadInfo => {
   updateQuadIndex(newQuadInfo.quadNum - 1);
+  initShowQuads();
   imgContainerRef.value.resetHighlightQuadIndex(newQuadInfo.quadNum - 1);
 });
 
@@ -315,12 +316,12 @@ function initProcessInfo(direction = '') {
   imgContainerRef.value.initImgInfo();
   jsonView.value.initJsonInfo(imgFilePath, direction);
   picInfo.value = getJsonPicNum();
-  initShowQuads();
   openImgFileDirection = '';
 }
 
 function initShowQuads() {
-  console.log('quadInfo: ', quadInfo.quadTotal);
+  const newShowQuadArray = getJsonPerPicPointsArray();
+  imgContainerRef.value.resetQuadsArray(newShowQuadArray);
   clearShowQuads();
   addAll2ShowQuads();
 }
@@ -481,11 +482,6 @@ function addAll2ShowQuads() {
 function clearShowQuads() {
   imgContainerRef.value.clearShowQuadIndex();
 }
-
-function updateShowQuadsArray() {
-  const newShowQuadArray = getJsonPerPicPointsArray();
-  imgContainerRef.value.resetQuadsArray(newShowQuadArray);
-}
 </script>
 
 <style scoped>
@@ -527,7 +523,10 @@ function updateShowQuadsArray() {
   row-gap: 10px;
 }
 .fileInfo-style {
-  font-size: 15px;
+  font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
+  color: #000000; /* 文字颜色为深灰色 */
+  font-size: 15px; /* 文字大小为 16px */
+  line-height: 1.5; /* 行高为 1.5 */
   word-wrap: break-word;
 }
 .dotsArea-style {

@@ -319,6 +319,7 @@ function resetQuadsArray(newQuadArray) {
   quadsArray = newQuadArray;
   clearShowQuadIndex();
   indices2Show.value = '';
+  drawCanvasForShowQuads();
 }
 
 const highlightQuadIndex = ref(-1);

@@ -26,7 +26,7 @@ defineExpose({
   deleteJsonItem,
   addJsonItem,
 });
-const emits = defineEmits(['update-quad-info', 'update-quad-str-array', 'output-message']);
+const emits = defineEmits(['update-quad-info', 'init-show-quads', 'output-message']);
 
 let jsonPerPicArray = [];
 let jsonPerObjLineNum = -1;
@@ -92,7 +92,7 @@ function modifyJsonItem() {
 }
 function deleteJsonItem() {
   updateJsonPerPicArray();
-  highlightedIndex.value = -1;
+  highlightedIndex.value = Math.min(highlightedIndex.value, jsonPerPicArray.length - 1);
   //scrollToBottom();
 }
 function addJsonItem() {
@@ -124,7 +124,6 @@ function updateJsonPerPicArray() {
   for (let i = 0; i < formattedJsonStrArray.value.length; i++)
     jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
   jsonPerPicArray = jsonArrayTmp;
-  emits('update-quad-str-array');
 }
 function initJsonInfo(imgFilePath, direction = '') {
   if (!resetPicJson(imgFilePath, direction)) {
@@ -135,6 +134,7 @@ function initJsonInfo(imgFilePath, direction = '') {
   updateJsonPerPicArray();
   updateHighlightInfo();
   emits('update-quad-info', -1, jsonPerPicArray.length);
+  emits('init-show-quads');
 }
 </script>
 
