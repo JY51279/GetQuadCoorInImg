@@ -145,7 +145,7 @@ const keyActions = {
     ctrl: () => resetPosition(),
   },
   q: {
-    default: () => addHighlight2ShowQuads(),
+    default: () => toggleHighlight2ShowQuads(),
     ctrl: () => clearShowQuads(),
   },
   Q: {
@@ -260,6 +260,7 @@ function performJsonAction(action) {
       jsonView.value.modifyJsonItem();
       break;
   }
+  clearDots();
 }
 
 function addJsonItem() {
@@ -474,8 +475,8 @@ function initZoomSettings() {
 }
 
 // Show quad
-function addHighlight2ShowQuads() {
-  imgContainerRef.value.addShowQuadIndex(quadInfo.quadNum - 1);
+function toggleHighlight2ShowQuads() {
+  imgContainerRef.value.toggleShowQuadIndex(quadInfo.quadNum - 1);
 }
 function addAll2ShowQuads() {
   for (let i = 0; i < quadInfo.quadTotal; ++i) {

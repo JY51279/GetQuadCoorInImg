@@ -92,6 +92,7 @@ defineExpose({
   resetPosition,
   initImgInfo,
   resetHighlightQuadIndex,
+  toggleShowQuadIndex,
   addShowQuadIndex,
   clearShowQuadIndex,
   resetQuadsArray,
@@ -331,10 +332,24 @@ watch(showQuadIndex, newShowQuadIndex => {
   drawCanvasForShowQuads();
 });
 
+function toggleShowQuadIndex(newIndex) {
+  if (newIndex < 0 || newIndex > quadsArray.length) {
+    console.log('newIndex out of range: ', newIndex);
+    outputMessage('newIndex out of range.');
+    return;
+  }
+  let index = showQuadIndex.indexOf(newIndex);
+  if (index === -1) {
+    addShowQuadIndex(newIndex);
+  } else {
+    showQuadIndex.splice(index, 1);
+  }
+}
+
 function addShowQuadIndex(newIndex) {
   if (newIndex < 0 || newIndex > quadsArray.length) {
-    console.log('HighlightIndex out of range: ', newIndex);
-    outputMessage('HighlightIndex out of range.');
+    console.log('newIndex out of range: ', newIndex);
+    outputMessage('newIndex out of range.');
     return;
   }
   if (!showQuadIndex.includes(newIndex)) {
