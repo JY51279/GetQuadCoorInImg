@@ -1,5 +1,11 @@
 <template>
-  <div ref="imgContainerRef" class="image-container" @wheel.prevent="onWheel">
+  <div
+    ref="imgContainerRef"
+    class="image-container"
+    @mouseenter="mouseEntered"
+    @mouseleave="mouseLeft"
+    @wheel.prevent="onWheel"
+  >
     <canvas
       ref="canvas"
       :width="viewportWidth + offsetCanvasLeft"
@@ -97,9 +103,15 @@ defineExpose({
   clearShowQuadIndex,
   resetQuadsArray,
   changeMouseState,
+  toggleMode,
 });
 
-const emits = defineEmits(['update-zoom-view', 'output-message', 'update-dots-real-coord']);
+const emits = defineEmits([
+  'update-zoom-view',
+  'output-message',
+  'update-dots-real-coord',
+  'update-json-highlight-index',
+]);
 
 const props = defineProps({
   imageObj: {
@@ -490,10 +502,19 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
   if (isDisabledMouse.value) return;
   if (pressed.value) {
     updateOffsetMoved(oldX, oldY, newX, newY);
-  } else {
+  } else if (mouseIsOverContainer.value === true) {
     getMouseInRectIndices();
   }
 });
+
+const mouseIsOverContainer = ref(false);
+const mouseEntered = () => {
+  mouseIsOverContainer.value = true;
+};
+
+const mouseLeft = () => {
+  mouseIsOverContainer.value = false;
+};
 
 function updateOffsetMoved(oldX, oldY, newX, newY) {
   //console.log(`Mouse moved from (${oldX}, ${oldY}) to (${newX}, ${newY})`);
@@ -526,18 +547,42 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
 const indices2Show = ref('');
 function getMouseInRectIndices() {
   indices2Show.value = '';
+  const separator = ' ';
   let i = 0;
   for (i = 0; i < showQuadIndex.length; ++i) {
     if (isPointInPolygon(mouseCoord, outerQuadArray[i])) {
       const showNum = showQuadIndex[i] + 1;
-      indices2Show.value += showNum + ' ';
+      indices2Show.value += showNum + separator;
     }
   }
 
   //Made sure that the highlighted outerQuad is drawn last.
   if (showQuadIndex.length < outerQuadArray.length && isPointInPolygon(mouseCoord, outerQuadArray[i])) {
     const highlightNum = highlightQuadIndex.value + 1;
-    indices2Show.value += highlightNum + ' ';
+    indices2Show.value += highlightNum + separator;
+  }
+  indices2Show.value = indices2Show.value.trimEnd();
+
+  updateJsonHighlightIndex(indices2Show.value, separator);
+}
+
+function updateJsonHighlightIndex(indicesArray, separator) {
+  if (!isOverviewMode) return;
+  const indicesNumberArray = indicesArray.split(separator).map(Number);
+  if (indicesNumberArray.length !== 1) {
+    emits('update-json-highlight-index', -1);
+    return;
+  }
+  const targetIndex = indicesNumberArray[0] - 1;
+  emits('update-json-highlight-index', targetIndex);
+}
+let isOverviewMode = false;
+function toggleMode() {
+  isOverviewMode = !isOverviewMode;
+  if (isOverviewMode) {
+    outputMessage('Enter Overview Mode');
+  } else {
+    outputMessage('Quit Overview Mode');
   }
 }
 // Scale

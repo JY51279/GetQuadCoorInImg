@@ -25,6 +25,7 @@ defineExpose({
   modifyJsonItem,
   deleteJsonItem,
   addJsonItem,
+  updateHighlightedIndex,
 });
 const emits = defineEmits(['update-quad-info', 'init-show-quads', 'output-message']);
 
@@ -48,6 +49,9 @@ watch(highlightedIndex, newIndex => {
     emits('update-quad-info', 0);
   }
 });
+function updateHighlightedIndex(newIndex) {
+  highlightedIndex.value = Math.min(jsonPerPicArray.length - 1, Math.max(-1, newIndex));
+}
 
 function highlightLine(e, preElement) {
   if (jsonPerObjLineNum === -1) return;
@@ -59,14 +63,7 @@ function highlightLine(e, preElement) {
   // 计算当前鼠标所在的行数
   const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight);
   // 计算对应的元素下标
-  try {
-    highlightedIndex.value = Math.min(
-      jsonPerPicArray.length - 1,
-      Math.max(0, Math.floor(hoveredLine / jsonPerObjLineNum)),
-    );
-  } catch (e) {
-    console.log(e);
-  }
+  updateHighlightedIndex(Math.floor(hoveredLine / jsonPerObjLineNum));
 }
 
 function ensureHighlightVisible() {

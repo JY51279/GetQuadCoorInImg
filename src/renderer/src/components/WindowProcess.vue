@@ -6,6 +6,7 @@
       @update-zoom-view="updateZoomView"
       @output-message="outputMessage"
       @update-dots-real-coord="updateDotsRealCoord"
+      @update-json-highlight-index="updateJsonHighlightIndex"
     ></imageItem>
     <div class="tool-container">
       <div>
@@ -163,6 +164,9 @@ const keyActions = {
   },
   ArrowDown: {
     default: () => jsonView.value.updateLightIndex(KEYS.NEXT),
+  },
+  Tab: {
+    default: () => toggleMode(),
   },
 };
 
@@ -387,6 +391,7 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
       imgFilePath = response.picInfo.path;
       imageSrc.value = imageSrcTmp;
       initProcessInfo(openImgFileDirection);
+      outputMessage('Load Pic Successfully.');
     } else {
       // 处理读取文件失败的情况
       const errorMessage = response.error;
@@ -418,7 +423,6 @@ ipcRenderer.on('choose-json-file-response', async (e, response) => {
       await updateClass(defaultClass);
       resetJsonProcess(jsonData, selectedOption.value[0]);
       if (imgFilePath !== '') initProcessInfo();
-      outputMessage('JSON data input successful.');
     } else {
       // 处理读取文件失败的情况
       const errorMessage = response.error;
@@ -500,6 +504,14 @@ function addAll2ShowQuads() {
 
 function clearShowQuads() {
   imgContainerRef.value.clearShowQuadIndex();
+}
+
+function toggleMode() {
+  imgContainerRef.value.toggleMode();
+}
+
+function updateJsonHighlightIndex(newIndex) {
+  jsonView.value.updateHighlightedIndex(newIndex);
 }
 </script>
 
