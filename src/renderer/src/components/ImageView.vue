@@ -311,13 +311,13 @@ let quadsArray = [];
 function resetQuadsArray(newQuadArray) {
   quadsArray = newQuadArray;
   clearShowQuadIndex();
-  indices2Show.value = '';
   drawCanvasForShowQuads();
 }
 
 const highlightQuadIndex = ref(-1);
 // eslint-disable-next-line no-unused-vars
 watch(highlightQuadIndex, newHighlightQuadIndex => {
+  moveHighlightToEnd();
   drawCanvasForShowQuads();
 });
 
@@ -332,17 +332,25 @@ watch(showQuadIndex, newShowQuadIndex => {
 });
 
 function addShowQuadIndex(newIndex) {
+  if (newIndex < 0 || newIndex > quadsArray.length) {
+    console.log('HighlightIndex out of range: ', newIndex);
+    outputMessage('HighlightIndex out of range.');
+    return;
+  }
   if (!showQuadIndex.includes(newIndex)) {
     showQuadIndex.push(newIndex);
-    //To make sure the highlight outerQuad will draw at last.
-    let index = showQuadIndex.indexOf(highlightQuadIndex.value);
-    if (index !== -1) {
-      showQuadIndex.splice(index, 1);
-      showQuadIndex.push(highlightQuadIndex.value);
-    }
+    moveHighlightToEnd();
   }
 }
 
+//To make sure the highlight outerQuad will draw at last.
+function moveHighlightToEnd() {
+  let index = showQuadIndex.indexOf(highlightQuadIndex.value);
+  if (index !== -1) {
+    showQuadIndex.splice(index, 1);
+    showQuadIndex.push(highlightQuadIndex.value);
+  }
+}
 function clearShowQuadIndex() {
   showQuadIndex.splice(0, showQuadIndex.length);
 }
@@ -353,12 +361,14 @@ function drawCanvasForShowQuads() {
     console.log('Failed to draw canvas for show quads');
     return;
   }
+
   outerQuadArray.splice(0, outerQuadArray.length);
   indices2Show.value = '';
   ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
   drawShowQuads();
-  if (highlightQuadIndex.value === -1) return;
-  drawQuadLine(quadsArray[highlightQuadIndex.value], true);
+  if (!(highlightQuadIndex.value === -1 || highlightQuadIndex.value >= quadsArray.length))
+    drawQuadLine(quadsArray[highlightQuadIndex.value], true);
+  getMouseInRectIndices();
 }
 function drawShowQuads() {
   for (let i = 0; i < showQuadIndex.length; ++i) {
