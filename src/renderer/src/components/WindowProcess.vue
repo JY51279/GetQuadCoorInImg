@@ -71,6 +71,7 @@ import {
   getJsonPicNum,
   getJsonFileInfo,
   getJsonPerPicPointsArray,
+  getDefaultProductType,
 } from '../utils/JsonProcess.js';
 import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
 
@@ -214,16 +215,26 @@ async function outputMessage(message) {
 /******click */
 // Click checkbox to check the class
 const selectedOption = ref(['DBR']);
-const classTotalStr = ['DBR', 'DDN', 'DLR'];
+const classTotalStr = Object.values(PRODUCTS);
 function checkClass() {
-  setTimeout(function () {
-    if (selectedOption.value.length === 0) {
-      selectedOption.value.push(classTotalStr[0]);
-    }
-    if (selectedOption.value.length > 1) {
-      selectedOption.value.splice(0, 1);
-    }
-  }, 1);
+  return new Promise(resolve => {
+    setTimeout(function () {
+      if (selectedOption.value.length === 0) {
+        selectedOption.value.push(classTotalStr[0]);
+      }
+      if (selectedOption.value.length > 1) {
+        selectedOption.value.splice(0, 1);
+      }
+      resolve();
+    }, 1);
+  });
+}
+async function updateClass(inputType) {
+  if (inputType === '' || !classTotalStr.includes(inputType)) {
+    return;
+  }
+  selectedOption.value.push(inputType);
+  await checkClass();
 }
 
 // Click button
@@ -396,12 +407,15 @@ function chooseJsonFile() {
 }
 
 let jsonFileName = ref(null);
-ipcRenderer.on('choose-json-file-response', (e, response) => {
+ipcRenderer.on('choose-json-file-response', async (e, response) => {
   try {
     if (response.success) {
       let jsonData = { str: '', path: '', fileName: '' };
       jsonData = response.jsonInfo;
       jsonFileName.value = jsonData.fileName;
+      jsonData.path = jsonData.path.replace(/[\\/]/g, '/');
+      const defaultClass = getDefaultProductType(jsonData.path);
+      await updateClass(defaultClass);
       resetJsonProcess(jsonData, selectedOption.value[0]);
       if (imgFilePath !== '') initProcessInfo();
       outputMessage('JSON data input successful.');

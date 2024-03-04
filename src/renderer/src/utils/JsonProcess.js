@@ -241,3 +241,19 @@ export function getAdjacentImagePath(direction) {
   let newIndex = getAdjacentImageIndex(direction);
   return json[rootKey][newIndex][imgKey]; // 返回对应图片的地址
 }
+
+export function getDefaultProductType(jsonPath) {
+  jsonPath = jsonPath.replace(/[\\/]/g, '/');
+  const pathArray = jsonPath.split('/');
+  const productType = Object.values(PRODUCTS);
+
+  let targetIndex = -1;
+  for (let i = 0; i < pathArray.length; i++) {
+    if (productType.includes(pathArray[i])) {
+      if (targetIndex === -1) targetIndex = i;
+      else return ''; //  There are many product types in the condition, so the real product type can’t be determined.
+    }
+  }
+  if (targetIndex === -1) return '';
+  return pathArray[targetIndex];
+}
