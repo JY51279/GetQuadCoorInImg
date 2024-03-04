@@ -100,13 +100,6 @@ defineExpose({
 
 const emits = defineEmits(['update-zoom-view', 'output-message', 'update-dots-real-coord']);
 
-// const props = defineProps({
-//   imageSrc: {
-//     type: String, // 指定类型为对象
-//     default: '', // 默认值为 null
-//   },
-// });
-
 const props = defineProps({
   imageObj: {
     type: Object, // 指定类型为对象
@@ -341,6 +334,12 @@ watch(showQuadIndex, newShowQuadIndex => {
 function addShowQuadIndex(newIndex) {
   if (!showQuadIndex.includes(newIndex)) {
     showQuadIndex.push(newIndex);
+    //To make sure the highlight outerQuad will draw at last.
+    let index = showQuadIndex.indexOf(highlightQuadIndex.value);
+    if (index !== -1) {
+      showQuadIndex.splice(index, 1);
+      showQuadIndex.push(highlightQuadIndex.value);
+    }
   }
 }
 
@@ -355,6 +354,7 @@ function drawCanvasForShowQuads() {
     return;
   }
   outerQuadArray.splice(0, outerQuadArray.length);
+  indices2Show.value = '';
   ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
   drawShowQuads();
   if (highlightQuadIndex.value === -1) return;
@@ -367,14 +367,12 @@ function drawShowQuads() {
   }
 }
 function drawQuadLine(quadRealPoints, isHighlight = false) {
-  console.log('drawQuadLine');
-  console.log('quadRealPoints', quadRealPoints);
   if (quadRealPoints.length < 4) {
     console.log('Failed to draw quad');
     return;
   }
   const { outerQuadPoints, innerQuadPoints } = getQuads2Draw(quadRealPoints);
-  if (!isHighlight) outerQuadArray.push(outerQuadPoints);
+  outerQuadArray.push(outerQuadPoints);
   drawQuad(outerQuadPoints, isHighlight);
   clearQuad(innerQuadPoints);
 }
@@ -386,12 +384,14 @@ function drawQuad(quadPoints, isHighlight = false) {
   }
   //Draw highlighted quads with a yellow color, otherwise use green.
   let fillColor = 'green';
+  let strokeColor = 'black';
   if (isHighlight) {
     fillColor = 'yellow';
+    strokeColor = 'red';
   }
 
   ctxQuad.value.save();
-  ctxQuad.value.strokeStyle = 'black';
+  ctxQuad.value.strokeStyle = strokeColor;
   ctxQuad.value.lineWidth = 1;
   drawPath(ctxQuad.value, quadPoints);
   ctxQuad.value.stroke();
@@ -501,11 +501,18 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
 const indices2Show = ref('');
 function getMouseInRectIndices() {
   indices2Show.value = '';
-  for (let i = 0; i < outerQuadArray.length; ++i) {
+  let i = 0;
+  for (i = 0; i < showQuadIndex.length; ++i) {
     if (isPointInPolygon(mouseCoord, outerQuadArray[i])) {
       const showNum = showQuadIndex[i] + 1;
       indices2Show.value += showNum + ' ';
     }
+  }
+
+  //Made sure that the highlighted outerQuad is drawn last.
+  if (showQuadIndex.length < outerQuadArray.length && isPointInPolygon(mouseCoord, outerQuadArray[i])) {
+    const highlightNum = highlightQuadIndex.value + 1;
+    indices2Show.value += highlightNum + ' ';
   }
 }
 // Scale

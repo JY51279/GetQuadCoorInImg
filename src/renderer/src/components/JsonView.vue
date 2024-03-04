@@ -59,10 +59,14 @@ function highlightLine(e, preElement) {
   // 计算当前鼠标所在的行数
   const hoveredLine = Math.floor((invisibleHeight + offsetY) / lineHeight);
   // 计算对应的元素下标
-  highlightedIndex.value = Math.min(
-    jsonPerPicArray.length - 1,
-    Math.max(0, Math.floor(hoveredLine / jsonPerObjLineNum)),
-  );
+  try {
+    highlightedIndex.value = Math.min(
+      jsonPerPicArray.length - 1,
+      Math.max(0, Math.floor(hoveredLine / jsonPerObjLineNum)),
+    );
+  } catch (e) {
+    console.log(e);
+  }
 }
 
 function ensureHighlightVisible() {
@@ -124,6 +128,8 @@ function updateJsonPerPicArray() {
   for (let i = 0; i < formattedJsonStrArray.value.length; i++)
     jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
   jsonPerPicArray = jsonArrayTmp;
+  emits('update-quad-info', -1, jsonPerPicArray.length);
+  emits('init-show-quads');
 }
 function initJsonInfo(imgFilePath, direction = '') {
   if (!resetPicJson(imgFilePath, direction)) {
@@ -133,8 +139,6 @@ function initJsonInfo(imgFilePath, direction = '') {
   }
   updateJsonPerPicArray();
   updateHighlightInfo();
-  emits('update-quad-info', -1, jsonPerPicArray.length);
-  emits('init-show-quads');
 }
 </script>
 

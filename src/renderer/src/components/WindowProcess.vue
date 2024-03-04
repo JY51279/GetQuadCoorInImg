@@ -85,12 +85,14 @@ function updateQuadInfo(quadNum = -1, quadTotal = -1) {
 }
 watch(quadInfo, newQuadInfo => {
   updateQuadIndex(newQuadInfo.quadNum - 1);
-  initShowQuads();
   imgContainerRef.value.resetHighlightQuadIndex(newQuadInfo.quadNum - 1);
 });
 
-const picInfo = ref({ picNum: 0, picTotalNum: 0 });
-
+const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
+// eslint-disable-next-line no-unused-vars
+watch(picInfo, newPicInfo => {
+  initShowQuads();
+});
 const mouseCoord = { x: 0, y: 0 };
 const output = ref(null);
 onMounted(() => {
@@ -315,7 +317,9 @@ function initProcessInfo(direction = '') {
   }
   imgContainerRef.value.initImgInfo();
   jsonView.value.initJsonInfo(imgFilePath, direction);
-  picInfo.value = getJsonPicNum();
+  const { picNum, picTotalNum } = getJsonPicNum();
+  picInfo.picNum = picNum;
+  picInfo.picTotalNum = picTotalNum;
   openImgFileDirection = '';
 }
 
