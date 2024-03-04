@@ -36,7 +36,10 @@ function createWindow() {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
-  mainWindow.webContents.openDevTools();
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools();
+  }
+  //mainWindow.webContents.openDevTools();
 }
 
 const imageExtensions = [
