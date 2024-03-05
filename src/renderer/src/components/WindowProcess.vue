@@ -57,6 +57,8 @@
       @init-show-quads="initShowQuads"
       @output-message="outputMessage"
     ></jsonItems>
+
+    <Help />
   </div>
 </template>
 
@@ -64,6 +66,7 @@
 import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import jsonItems from './JsonView.vue';
 import imageItem from './ImageView.vue';
+import Help from './Help.vue';
 import {
   resetJsonProcess,
   getAdjacentImagePath,
