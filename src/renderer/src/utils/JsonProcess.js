@@ -36,7 +36,7 @@ export function resetJsonProcess(jsonData, classStr) {
     resetJsonInfo(jsonData);
     resetClassKeys(classStr.toUpperCase());
   } catch (err) {
-    window.alert('Failed to retrieve JSON data for the picture. Please check the files and try again.');
+    window.alert('Failed to retrieve JSON data. Please check the class and try again.');
   }
 }
 

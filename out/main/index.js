@@ -31,7 +31,9 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path$1.join(__dirname, "../renderer/index.html"));
   }
-  mainWindow.webContents.openDevTools();
+  if (!electron.app.isPackaged) {
+    mainWindow.webContents.openDevTools();
+  }
 }
 const imageExtensions = [
   "jpg",

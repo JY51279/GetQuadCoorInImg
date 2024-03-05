@@ -51,12 +51,7 @@
       </div>
     </div>
 
-    <jsonItems
-      ref="jsonView"
-      @update-quad-info="updateQuadInfo"
-      @init-show-quads="initShowQuads"
-      @output-message="outputMessage"
-    ></jsonItems>
+    <jsonItems ref="jsonView" @update-quad-info="updateQuadInfo" @init-show-quads="initShowQuads"></jsonItems>
   </div>
 </template>
 
@@ -378,6 +373,7 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
       if (response.picInfo.fileName === '') return;
 
       outputMessage('Load Pic......');
+      imgContainerRef.value.resetIsImgFileLoading(true);
       imgContainerRef.value.changeMouseState(true);
       await new Promise((resolve, reject) => {
         imageObj.value = new Image();
@@ -391,6 +387,7 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
       imgFilePath = response.picInfo.path;
       imageSrc.value = imageSrcTmp;
       initProcessInfo(openImgFileDirection);
+      imgContainerRef.value.resetIsImgFileLoading(false);
       outputMessage('Load Pic Successfully.');
     } else {
       // 处理读取文件失败的情况

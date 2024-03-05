@@ -9,6 +9,11 @@
     >
       <span>{{ jsonItem }}</span>
     </div></pre>
+    <div v-if="hasPicJsonFailedFetched" class="loading-overlay">
+      Failed to get image data.<br />
+      Please check the input files and ensure the selected product type is correct.<br />
+      Then, try again.
+    </div>
   </div>
 </template>
 
@@ -27,7 +32,7 @@ defineExpose({
   addJsonItem,
   updateHighlightedIndex,
 });
-const emits = defineEmits(['update-quad-info', 'init-show-quads', 'output-message']);
+const emits = defineEmits(['update-quad-info', 'init-show-quads']);
 
 let jsonPerPicArray = [];
 let jsonPerObjLineNum = -1;
@@ -35,10 +40,6 @@ const formattedJsonStrArray = ref('');
 
 let lineHeight = 0;
 const jsonView = ref(null);
-
-function outputMessage(message) {
-  emits('output-message', message);
-}
 
 const highlightedIndex = ref(-1);
 watch(highlightedIndex, newIndex => {
@@ -128,12 +129,12 @@ function updateJsonPerPicArray() {
   emits('update-quad-info', -1, jsonPerPicArray.length);
   emits('init-show-quads');
 }
+
+const hasPicJsonFailedFetched = ref(false);
 function initJsonInfo(imgFilePath, direction = '') {
   if (!resetPicJson(imgFilePath, direction)) {
-    outputMessage(
-      '**********Please check the input files and ensure the selected product type is correct. Then, try again.***********',
-    );
-  }
+    hasPicJsonFailedFetched.value = true;
+  } else hasPicJsonFailedFetched.value = false;
   updateJsonPerPicArray();
   updateHighlightInfo();
 }
@@ -141,6 +142,7 @@ function initJsonInfo(imgFilePath, direction = '') {
 
 <style scoped>
 .json-container {
+  position: relative;
   width: calc(25%);
   /*20*2 + 120 + 2((1)*2) + 4(blankSpace)*/
   height: calc(100%);
@@ -157,5 +159,18 @@ function initJsonInfo(imgFilePath, direction = '') {
 }
 .json-item-container {
   display: inline-flex; /* 或者 display: inline-flex; */
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 </style>

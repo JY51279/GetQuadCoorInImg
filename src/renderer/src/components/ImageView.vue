@@ -25,6 +25,7 @@
                   position: absolute;
                   pointer-events: none;`"
     ></canvas>
+    <div v-if="isImgFileLoading" class="loading-overlay">Loading...</div>
     <div
       v-if="indices2Show"
       class="str-right-mouse"
@@ -104,6 +105,7 @@ defineExpose({
   resetQuadsArray,
   changeMouseState,
   toggleMode,
+  resetIsImgFileLoading,
 });
 
 const emits = defineEmits([
@@ -502,7 +504,7 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
   if (isDisabledMouse.value) return;
   if (pressed.value) {
     updateOffsetMoved(oldX, oldY, newX, newY);
-  } else if (mouseIsOverContainer.value === true) {
+  } else {
     getMouseInRectIndices();
   }
 });
@@ -546,6 +548,7 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
 
 const indices2Show = ref('');
 function getMouseInRectIndices() {
+  if (mouseIsOverContainer.value !== true) return;
   indices2Show.value = '';
   const separator = ' ';
   let i = 0;
@@ -928,6 +931,11 @@ function initCanvasSettings() {
   ctx.value.webkitImageSmoothingEnabled = false;
   ctx.value.msImageSmoothingEnabled = false;
 }
+
+const isImgFileLoading = ref(false);
+function resetIsImgFileLoading(newValue) {
+  isImgFileLoading.value = newValue;
+}
 </script>
 
 <style scoped>
@@ -971,5 +979,18 @@ function initCanvasSettings() {
   line-height: 1.5; /* 行高为 1.5 */
   text-shadow: 2px 2px 3px rgba(0, 0, 0, 0.3); /* 增强的文字阴影 */
   font-weight: bold; /* 加粗文字 */
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 </style>
