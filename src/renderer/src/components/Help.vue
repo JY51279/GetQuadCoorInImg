@@ -128,7 +128,6 @@ function dragStart(e) {
 
 function drag(e) {
   if (isDragging.value) {
-    console.log('drag');
     offsetX.value += e.clientX - oldMouseX;
     offsetY.value += e.clientY - oldMouseY;
     oldMouseX = e.clientX;

@@ -422,11 +422,11 @@ function drawQuad(quadPoints, isHighlight = false) {
     return;
   }
   //Draw highlighted quads with a yellow color, otherwise use green.
-  let fillColor = 'green';
-  let strokeColor = 'black';
+  let fillColor = '#00FF00'; // green
+  let strokeColor = '#000000'; // black
   if (isHighlight) {
-    fillColor = 'yellow';
-    strokeColor = 'red';
+    fillColor = '#0000FF'; // blue
+    strokeColor = '#FF0000'; // red
   }
 
   ctxQuad.value.save();
@@ -450,7 +450,7 @@ function clearQuad(quadPoints) {
   // 保存之前的上下文状态
   ctxQuad.value.save();
 
-  ctxQuad.value.strokeStyle = 'black';
+  ctxQuad.value.strokeStyle = '#FFFFFF'; //white
   ctxQuad.value.lineWidth = 1;
   drawPath(ctxQuad.value, quadPoints);
   ctxQuad.value.stroke();
