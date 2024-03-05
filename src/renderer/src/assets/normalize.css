@@ -18,6 +18,7 @@ Use a better box model (opinionated).
 html {
 	/* Improve consistency of default fonts in all browsers. (https://github.com/sindresorhus/modern-normalize/issues/3) */
 	font-family:
+		Consolas,
 		system-ui,
 		'Segoe UI',
 		Roboto,
@@ -88,9 +89,9 @@ kbd,
 samp,
 pre {
 	font-family:
+		Consolas,
 		ui-monospace,
 		SFMono-Regular,
-		Consolas,
 		'Liberation Mono',
 		Menlo,
 		monospace; /* 1 */

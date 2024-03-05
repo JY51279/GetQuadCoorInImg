@@ -552,8 +552,8 @@ function updateJsonHighlightIndex(newIndex) {
 }
 .fileInfo-style {
   font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
-  color: #000000; /* 文字颜色为深灰色 */
-  font-size: 15px; /* 文字大小为 16px */
+  color: #000000;
+  font-size: 15px;
   line-height: 1.5; /* 行高为 1.5 */
   word-wrap: break-word;
 }

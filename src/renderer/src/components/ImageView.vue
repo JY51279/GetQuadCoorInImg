@@ -974,10 +974,14 @@ function resetIsImgFileLoading(newValue) {
 
 .str-right-mouse {
   font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
-  color: #fffb00; /* 文字颜色为深灰色 */
-  font-size: 16px; /* 文字大小为 16px */
+  color: #000000;
+  font-size: 16px;
   line-height: 1.5; /* 行高为 1.5 */
-  text-shadow: 2px 2px 3px rgba(0, 0, 0, 0.3); /* 增强的文字阴影 */
+  text-shadow:
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff;
   font-weight: bold; /* 加粗文字 */
 }
 
