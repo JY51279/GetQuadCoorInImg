@@ -37,6 +37,9 @@
           <div v-for="(message, index) in outputMessages" :key="index">{{ message }}</div>
         </div>
       </div>
+      <div style="display: flex; justify-content: flex-end">
+        <Help />
+      </div>
       <div class="button-group">
         <button class="button-style" @click="chooseJsonFile">Get JsonFile</button>
         <button class="button-style" @click="chooseImgFile">Get PicFile</button>
@@ -527,6 +530,7 @@ function updateJsonHighlightIndex(newIndex) {
 }
 
 .tool-container {
+  position: relative;
   width: 122px;
   height: 100%;
   display: flex;
@@ -589,7 +593,6 @@ function updateJsonHighlightIndex(newIndex) {
   word-wrap: break-word;
   overflow-y: scroll;
 }
-
 .button-style {
   border-radius: 12px;
   background-color: #4caf50;
