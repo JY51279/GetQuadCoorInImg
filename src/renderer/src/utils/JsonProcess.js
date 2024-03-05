@@ -229,7 +229,7 @@ function getAdjacentImageIndex(direction) {
   if (direction === KEYS.NEXT) {
     newIndex = (imgIndex + 1) % totalImages; // 获取下一张图片的索引
   } else if (direction === KEYS.PREVIOUS) {
-    newIndex = (imgIndex - 1) % totalImages; // 获取上一张图片的索引
+    newIndex = Math.max(-1, imgIndex - 1) % totalImages; // 获取上一张图片的索引
   }
   if (newIndex < 0) {
     newIndex = totalImages - 1; // 处理索引小于0的情况

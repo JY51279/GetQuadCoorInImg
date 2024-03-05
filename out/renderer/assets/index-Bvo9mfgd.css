@@ -18,6 +18,7 @@ Use a better box model (opinionated).
 html {
 	/* Improve consistency of default fonts in all browsers. (https://github.com/sindresorhus/modern-normalize/issues/3) */
 	font-family:
+		Consolas,
 		system-ui,
 		'Segoe UI',
 		Roboto,
@@ -88,9 +89,9 @@ kbd,
 samp,
 pre {
 	font-family:
+		Consolas,
 		ui-monospace,
 		SFMono-Regular,
-		Consolas,
 		'Liberation Mono',
 		Menlo,
 		monospace; /* 1 */
@@ -273,7 +274,8 @@ summary {
 	display: list-item;
 }
 
-.json-container[data-v-92411622] {
+.json-container[data-v-964f1d33] {
+  position: relative;
   width: calc(25%);
   /*20*2 + 120 + 2((1)*2) + 4(blankSpace)*/
   height: calc(100%);
@@ -281,18 +283,30 @@ summary {
   overflow: auto;
   border: 2px solid gray;
 }
-.json-all-container[data-v-92411622] {
+.json-all-container[data-v-964f1d33] {
   display: inline-flex; /* 或者 display: inline-flex; */
   flex-direction: column;
 }
-.highlighted-line[data-v-92411622] {
+.highlighted-line[data-v-964f1d33] {
   background-color: #ffff006b; /* Yellow color with some transparency */
 }
-.json-item-container[data-v-92411622] {
+.json-item-container[data-v-964f1d33] {
   display: inline-flex; /* 或者 display: inline-flex; */
 }
+.loading-overlay[data-v-964f1d33] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
 
-.image-container[data-v-ebd8574f] {
+.image-container[data-v-90c8dde8] {
   background: url('../src/assets/bg.png') repeat;
   width: calc(75% - 170px);
   /* 20*2 + 122 + 4(blankSpace)*2 */
@@ -303,13 +317,13 @@ summary {
   overflow: hidden;
   border: 2px solid gray;
 }
-.dot[data-v-ebd8574f] {
+.dot[data-v-90c8dde8] {
   position: absolute;
   width: 1px;
   height: 1px;
   background-color: red;
 }
-.rectangle[data-v-ebd8574f] {
+.rectangle[data-v-90c8dde8] {
   position: absolute;
   width: 8px;
   /* 矩形的宽度 */
@@ -322,27 +336,132 @@ summary {
   pointer-events: none;
   /* 忽略鼠标事件 */
 }
-.str-right-mouse[data-v-ebd8574f] {
+.str-right-mouse[data-v-90c8dde8] {
   font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
-  color: #fffb00; /* 文字颜色为深灰色 */
-  font-size: 16px; /* 文字大小为 16px */
+  color: #000000;
+  font-size: 16px;
   line-height: 1.5; /* 行高为 1.5 */
-  text-shadow: 2px 2px 3px rgba(0, 0, 0, 0.3); /* 增强的文字阴影 */
+  text-shadow:
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff;
   font-weight: bold; /* 加粗文字 */
 }
+.loading-overlay[data-v-90c8dde8] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
 
-*[data-v-96ce30a3] {
+.helpIcon[data-v-748a32d6] {
+  margin-bottom: 10px;
+
+  width: 30px;
+
+  height: 30px;
+
+  cursor: pointer;
+}
+.helpContainer[data-v-748a32d6] {
+  position: fixed;
+
+  background-color: #f0f0f0; /* 淡灰色 */
+
+  border: 2px solid #333333; /* 深灰色 */
+
+  top: 50%;
+
+  left: 50%;
+
+  transform: translate(-50%, -50%);
+
+  width: 500px;
+
+  height: 500px;
+
+  border-radius: 8px;
+
+  z-index: 9999;
+
+  display: flex;
+
+  flex-direction: column;
+
+  padding: 20px;
+}
+.closeIcon[data-v-748a32d6] {
+  position: absolute;
+
+  top: 10px;
+
+  cursor: pointer;
+
+  right: 10px;
+
+  background-size: cover;
+
+  pointer-events: all;
+}
+.keyCombination[data-v-748a32d6] {
+  position: relative;
+
+  display: flex;
+
+  column-gap: 4px;
+
+  align-items: center;
+}
+.keyCombination > *[data-v-748a32d6] {
+  margin-bottom: 4px;
+}
+.keyText[data-v-748a32d6] {
+  position: absolute;
+
+  margin-left: 30%;
+}
+.key[data-v-748a32d6] {
+  border-radius: 4px;
+
+  padding: 4px;
+
+  font-size: 14px;
+
+  font-weight: 600;
+
+  background-color: rgb(220, 220, 220);
+
+  display: flex;
+
+  color: rgb(0, 0, 0);
+
+  border: 1px solid rgb(180, 180, 180);
+
+  justify-content: center;
+
+  align-items: center;
+}
+
+*[data-v-61e78553] {
   user-select: none;
 }
 /* 添加样式来高亮当前行 */
-.container[data-v-96ce30a3] {
+.container[data-v-61e78553] {
   display: flex;
   width: 100%;
   height: 100%;
   padding: 20px;
   background-color: white;
 }
-.tool-container[data-v-96ce30a3] {
+.tool-container[data-v-61e78553] {
+  position: relative;
   width: 122px;
   height: 100%;
   display: flex;
@@ -350,38 +469,38 @@ summary {
   margin-left: calc(75% - 130px);
   justify-content: space-between;
 }
-.zoomViewBox[data-v-96ce30a3] {
+.zoomViewBox[data-v-61e78553] {
   border: 1px dotted #333;
   margin-bottom: 10px;
   display: flex;
 }
-.zoom-style[data-v-96ce30a3] {
+.zoom-style[data-v-61e78553] {
   width: 120px;
   height: 120px;
   border: none;
 }
-.fileArea-style[data-v-96ce30a3] {
+.fileArea-style[data-v-61e78553] {
   margin-top: 10px;
   display: flex;
   flex-direction: column;
   row-gap: 10px;
 }
-.fileInfo-style[data-v-96ce30a3] {
+.fileInfo-style[data-v-61e78553] {
   font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
-  color: #000000; /* 文字颜色为深灰色 */
-  font-size: 15px; /* 文字大小为 16px */
+  color: #000000;
+  font-size: 15px;
   line-height: 1.5; /* 行高为 1.5 */
   word-wrap: break-word;
 }
-.dotsArea-style[data-v-96ce30a3] {
+.dotsArea-style[data-v-61e78553] {
   height: 100px;
   margin-top: 10px;
 }
-.dots[data-v-96ce30a3] {
+.dots[data-v-61e78553] {
   margin-top: 5px;
 }
 /* //#ff5f5f; */
-.button-delete-style[data-v-96ce30a3] {
+.button-delete-style[data-v-61e78553] {
   background-color: #4caf50; /* 设置按钮的背景颜色 */
   color: white; /* 设置按钮文字的颜色 */
   border: none; /* 移除按钮的边框 */
@@ -393,17 +512,17 @@ summary {
   height: 20px; /* 设置按钮的高度为 30 像素 */
   line-height: 5px; /* 设置文字的行高等于按钮的高度，实现文字的垂直居中 */
 }
-.button-delete-style[data-v-96ce30a3]:hover {
+.button-delete-style[data-v-61e78553]:hover {
   background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
 }
-.outputText-style[data-v-96ce30a3] {
+.outputText-style[data-v-61e78553] {
   height: 200px;
   font-size: 12px;
   margin-bottom: 10px;
   word-wrap: break-word;
   overflow-y: scroll;
 }
-.button-style[data-v-96ce30a3] {
+.button-style[data-v-61e78553] {
   border-radius: 12px;
   background-color: #4caf50;
   color: white;
@@ -416,10 +535,10 @@ summary {
   cursor: pointer;
   transition: background-color 0.3s ease;
 }
-.button-style[data-v-96ce30a3]:hover {
+.button-style[data-v-61e78553]:hover {
   background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
 }
-.button-group[data-v-96ce30a3] {
+.button-group[data-v-61e78553] {
   display: flex;
   flex-direction: column;
   row-gap: 10px;

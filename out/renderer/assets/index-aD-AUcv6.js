@@ -4898,6 +4898,11 @@ function cloneVNode(vnode, extraProps, mergeRef = false) {
 function createTextVNode(text = " ", flag = 0) {
   return createVNode(Text, null, text, flag);
 }
+function createStaticVNode(content, numberOfNodes) {
+  const vnode = createVNode(Static, null, content);
+  vnode.staticCount = numberOfNodes;
+  return vnode;
+}
 function createCommentVNode(text = "", asBlock = false) {
   return asBlock ? (openBlock(), createBlock(Comment, null, text)) : createVNode(Comment, null, text);
 }
@@ -6994,7 +6999,7 @@ function resetJsonProcess(jsonData, classStr) {
     resetJsonInfo(jsonData);
     resetClassKeys(classStr.toUpperCase());
   } catch (err) {
-    window.alert("Failed to retrieve JSON data for the picture. Please check the files and try again.");
+    window.alert("Failed to retrieve JSON data. Please check the class and try again.");
   }
 }
 let json = {};
@@ -7206,9 +7211,16 @@ const _export_sfc = (sfc, props) => {
   }
   return target;
 };
-const _sfc_main$3 = {
+const _withScopeId$1 = (n) => (pushScopeId("data-v-964f1d33"), n = n(), popScopeId(), n);
+const _hoisted_1$4 = {
+  key: 0,
+  class: "loading-overlay"
+};
+const _hoisted_2$2 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createBaseVNode("br", null, null, -1));
+const _hoisted_3$2 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createBaseVNode("br", null, null, -1));
+const _sfc_main$4 = {
   __name: "JsonView",
-  emits: ["update-quad-info", "init-show-quads", "output-message"],
+  emits: ["update-quad-info", "init-show-quads"],
   setup(__props, { expose: __expose, emit: __emit }) {
     __expose({
       //暴露想要传递的值或方法
@@ -7225,9 +7237,6 @@ const _sfc_main$3 = {
     const formattedJsonStrArray = ref("");
     let lineHeight = 0;
     const jsonView = ref(null);
-    function outputMessage(message) {
-      emits("output-message", message);
-    }
     const highlightedIndex = ref(-1);
     watch(highlightedIndex, (newIndex) => {
       if (newIndex > -1 && newIndex < jsonPerPicArray2.length) {
@@ -7304,12 +7313,12 @@ const _sfc_main$3 = {
       emits("update-quad-info", -1, jsonPerPicArray2.length);
       emits("init-show-quads");
     }
+    const hasPicJsonFailedFetched = ref(false);
     function initJsonInfo(imgFilePath, direction = "") {
       if (!resetPicJson(imgFilePath, direction)) {
-        outputMessage(
-          "**********Please check the input files and ensure the selected product type is correct. Then, try again.***********"
-        );
-      }
+        hasPicJsonFailedFetched.value = true;
+      } else
+        hasPicJsonFailedFetched.value = false;
       updateJsonPerPicArray();
       updateHighlightInfo();
     }
@@ -7334,12 +7343,19 @@ const _sfc_main$3 = {
               createTextVNode("\n    ")
             ], 2);
           }), 128))
-        ], 512)
+        ], 512),
+        hasPicJsonFailedFetched.value ? (openBlock(), createElementBlock("div", _hoisted_1$4, [
+          createTextVNode(" Failed to get image data."),
+          _hoisted_2$2,
+          createTextVNode(" Please check the input files and ensure the selected product type is correct."),
+          _hoisted_3$2,
+          createTextVNode(" Then, try again. ")
+        ])) : createCommentVNode("", true)
       ], 32);
     };
   }
 };
-const jsonItems = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["__scopeId", "data-v-92411622"]]);
+const jsonItems = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["__scopeId", "data-v-964f1d33"]]);
 function tryOnScopeDispose(fn) {
   if (getCurrentScope()) {
     onScopeDispose(fn);
@@ -7564,9 +7580,13 @@ function drawPath(ctx, quadPoints) {
   ctx.lineTo(quadPoints[3].x, quadPoints[3].y);
   ctx.closePath();
 }
-const _hoisted_1$2 = ["width", "height"];
+const _hoisted_1$3 = ["width", "height"];
 const _hoisted_2$1 = ["width", "height"];
 const _hoisted_3$1 = {
+  key: 0,
+  class: "loading-overlay"
+};
+const _hoisted_4$1 = {
   class: "scale",
   style: { "display": "flex", "position": "fixed", "left": "40px", "bottom": "25px", "width": "calc(50%)", "z-index": "9999" }
 };
@@ -7575,7 +7595,7 @@ const offsetCanvasTop = 22;
 const gridLimit = 10;
 const autoAdaptBorderDis = 10;
 const scaleRange = 60;
-const _sfc_main$2 = {
+const _sfc_main$3 = {
   __name: "ImageView",
   props: {
     imageObj: {
@@ -7609,7 +7629,8 @@ const _sfc_main$2 = {
       clearShowQuadIndex,
       resetQuadsArray,
       changeMouseState,
-      toggleMode
+      toggleMode,
+      resetIsImgFileLoading
     });
     const emits = __emit;
     const props = __props;
@@ -7847,11 +7868,11 @@ const _sfc_main$2 = {
         console.log("Failed to draw quad");
         return;
       }
-      let fillColor = "green";
-      let strokeColor = "black";
+      let fillColor = "#00FF00";
+      let strokeColor = "#000000";
       if (isHighlight) {
-        fillColor = "yellow";
-        strokeColor = "red";
+        fillColor = "#0000FF";
+        strokeColor = "#FF0000";
       }
       ctxQuad.value.save();
       ctxQuad.value.strokeStyle = strokeColor;
@@ -7869,7 +7890,7 @@ const _sfc_main$2 = {
         return;
       }
       ctxQuad.value.save();
-      ctxQuad.value.strokeStyle = "black";
+      ctxQuad.value.strokeStyle = "#FFFFFF";
       ctxQuad.value.lineWidth = 1;
       drawPath(ctxQuad.value, quadPoints);
       ctxQuad.value.stroke();
@@ -7914,7 +7935,7 @@ const _sfc_main$2 = {
         return;
       if (pressed.value) {
         updateOffsetMoved(oldX, oldY, newX, newY);
-      } else if (mouseIsOverContainer.value === true) {
+      } else {
         getMouseInRectIndices();
       }
     });
@@ -7952,6 +7973,8 @@ const _sfc_main$2 = {
     }
     const indices2Show = ref("");
     function getMouseInRectIndices() {
+      if (mouseIsOverContainer.value !== true)
+        return;
       indices2Show.value = "";
       const separator2 = " ";
       let i = 0;
@@ -8263,6 +8286,10 @@ const _sfc_main$2 = {
       ctx.value.webkitImageSmoothingEnabled = false;
       ctx.value.msImageSmoothingEnabled = false;
     }
+    const isImgFileLoading = ref(false);
+    function resetIsImgFileLoading(newValue) {
+      isImgFileLoading.value = newValue;
+    }
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock(Fragment, null, [
         createBaseVNode("div", {
@@ -8283,7 +8310,7 @@ const _sfc_main$2 = {
                   position: absolute;`),
             onClick: toggleDot,
             onMousemove: updateZoomView
-          }, null, 44, _hoisted_1$2),
+          }, null, 44, _hoisted_1$3),
           createBaseVNode("canvas", {
             ref_key: "canvasForShowQuads",
             ref: canvasForShowQuads,
@@ -8294,8 +8321,9 @@ const _sfc_main$2 = {
                   position: absolute;
                   pointer-events: none;`)
           }, null, 12, _hoisted_2$1),
+          isImgFileLoading.value ? (openBlock(), createElementBlock("div", _hoisted_3$1, "Loading...")) : createCommentVNode("", true),
           indices2Show.value ? (openBlock(), createElementBlock("div", {
-            key: 0,
+            key: 1,
             class: "str-right-mouse",
             style: normalizeStyle({ position: "absolute", top: `${mouseCoord.y - 20}px`, left: `${mouseCoord.x - 5}px` })
           }, toDisplayString(indices2Show.value), 5)) : createCommentVNode("", true),
@@ -8314,7 +8342,7 @@ const _sfc_main$2 = {
             }, null, 4);
           }), 128)),
           scale.value < gridLimit ? (openBlock(), createElementBlock("div", {
-            key: 1,
+            key: 2,
             class: "rectangle",
             style: normalizeStyle(`
                 transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px) scale(${scale.value});
@@ -8323,7 +8351,7 @@ const _sfc_main$2 = {
               `)
           }, null, 4)) : createCommentVNode("", true)
         ], 544),
-        createBaseVNode("div", _hoisted_3$1, [
+        createBaseVNode("div", _hoisted_4$1, [
           __props.imageObj ? withDirectives((openBlock(), createElementBlock("input", {
             key: 0,
             "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => scale.value = $event),
@@ -8361,8 +8389,74 @@ const _sfc_main$2 = {
     };
   }
 };
-const imageItem = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["__scopeId", "data-v-ebd8574f"]]);
-const _withScopeId = (n) => (pushScopeId("data-v-96ce30a3"), n = n(), popScopeId(), n);
+const imageItem = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["__scopeId", "data-v-90c8dde8"]]);
+const _imports_0 = "data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20height='24px'%20viewBox='0%200%2024%2024'%20width='24px'%20fill='%23000000'%3e%3cpath%20d='M0%200h24v24H0V0z'%20fill='none'/%3e%3cpath%20d='M11%2018h2v-2h-2v2zm1-16C6.48%202%202%206.48%202%2012s4.48%2010%2010%2010%2010-4.48%2010-10S17.52%202%2012%202zm0%2018c-4.41%200-8-3.59-8-8s3.59-8%208-8%208%203.59%208%208-3.59%208-8%208zm0-14c-2.21%200-4%201.79-4%204h2c0-1.1.9-2%202-2s2%20.9%202%202c0%202-3%201.75-3%205h2c0-2.25%203-2.5%203-5%200-2.21-1.79-4-4-4z'/%3e%3c/svg%3e";
+const _imports_1 = "data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20height='24px'%20viewBox='0%200%2024%2024'%20width='24px'%20fill='%23000000'%3e%3cpath%20d='M0%200h24v24H0V0z'%20fill='none'/%3e%3cpath%20d='M19%206.41L17.59%205%2012%2010.59%206.41%205%205%206.41%2010.59%2012%205%2017.59%206.41%2019%2012%2013.41%2017.59%2019%2019%2017.59%2013.41%2012%2019%206.41z'/%3e%3c/svg%3e";
+const _hoisted_1$2 = /* @__PURE__ */ createStaticVNode('<div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>w</div><div style="margin-left:1px;" data-v-748a32d6>/</div><div class="key" data-v-748a32d6>↑</div><div class="keyText" data-v-748a32d6>上一个Json项</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>s</div><div style="margin-left:1px;" data-v-748a32d6>/</div><div class="key" data-v-748a32d6>↓</div><div class="keyText" data-v-748a32d6>下一个Json项</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>a</div><div style="margin-left:1px;" data-v-748a32d6>/</div><div class="key" data-v-748a32d6>←</div><div class="keyText" data-v-748a32d6>上一张图片</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>d</div><div style="margin-left:1px;" data-v-748a32d6>/</div><div class="key" data-v-748a32d6>→</div><div class="keyText" data-v-748a32d6>下一张图片</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>s</div><div class="keyText" data-v-748a32d6>修改高亮Json项</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>d</div><div class="keyText" data-v-748a32d6>删除高亮Json项</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>a</div><div class="keyText" data-v-748a32d6>添加高亮Json项(DDN)</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>c</div><div class="keyText" data-v-748a32d6>清空信息</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>c</div><div class="keyText" data-v-748a32d6>清空标点</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>r</div><div class="keyText" data-v-748a32d6>重置图片位置</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>q</div><div class="keyText" data-v-748a32d6>高亮四边形是/否显示</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>q</div><div class="keyText" data-v-748a32d6>清空显示的四边形</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>Shift</div><div class="key" data-v-748a32d6>q</div><div class="keyText" data-v-748a32d6>显示所有四边形</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Tab</div><div class="keyText" data-v-748a32d6>切换模式</div></div>', 14);
+const _sfc_main$2 = {
+  __name: "Help",
+  setup(__props) {
+    const isShow = ref(false);
+    watch(isShow, (newIsShow) => {
+      if (newIsShow === false) {
+        offsetX.value = -250;
+        offsetY.value = -250;
+      }
+    });
+    let isDragging = ref(false);
+    const offsetX = ref(-250);
+    const offsetY = ref(-250);
+    let oldMouseX = 0;
+    let oldMouseY = 0;
+    function dragStart(e) {
+      isDragging.value = true;
+      document.querySelector(".helpContainer").style.cursor = "move";
+      oldMouseX = e.clientX;
+      oldMouseY = e.clientY;
+    }
+    function drag(e) {
+      if (isDragging.value) {
+        offsetX.value += e.clientX - oldMouseX;
+        offsetY.value += e.clientY - oldMouseY;
+        oldMouseX = e.clientX;
+        oldMouseY = e.clientY;
+      }
+    }
+    function dragEnd() {
+      isDragging.value = false;
+      document.querySelector(".helpContainer").style.cursor = "auto";
+    }
+    return (_ctx, _cache) => {
+      return openBlock(), createElementBlock(Fragment, null, [
+        createBaseVNode("img", {
+          class: "helpIcon",
+          src: _imports_0,
+          onClick: _cache[0] || (_cache[0] = ($event) => isShow.value = !isShow.value)
+        }),
+        isShow.value ? (openBlock(), createElementBlock("div", {
+          key: 0,
+          class: "helpContainer",
+          style: normalizeStyle(`transform: translate(${offsetX.value}px, ${offsetY.value}px);
+                  transform-origin: 0% 0%;
+                  `),
+          onMousedown: dragStart,
+          onMousemove: drag,
+          onMouseup: dragEnd,
+          onMouseleave: dragEnd
+        }, [
+          createBaseVNode("img", {
+            class: "closeIcon",
+            src: _imports_1,
+            onClick: _cache[1] || (_cache[1] = ($event) => isShow.value = false)
+          }),
+          _hoisted_1$2
+        ], 36)) : createCommentVNode("", true)
+      ], 64);
+    };
+  }
+};
+const Help = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["__scopeId", "data-v-748a32d6"]]);
+const _withScopeId = (n) => (pushScopeId("data-v-61e78553"), n = n(), popScopeId(), n);
 const _hoisted_1$1 = { class: "container" };
 const _hoisted_2 = { class: "tool-container" };
 const _hoisted_3 = { class: "zoomViewBox" };
@@ -8381,6 +8475,7 @@ const _hoisted_15 = { class: "fileInfo-style" };
 const _hoisted_16 = /* @__PURE__ */ _withScopeId(() => /* @__PURE__ */ createBaseVNode("br", null, null, -1));
 const _hoisted_17 = { class: "dotsArea-style" };
 const _hoisted_18 = ["onClick"];
+const _hoisted_19 = { style: { "display": "flex", "justify-content": "flex-end" } };
 const MAX_MESSAGES = 50;
 const _sfc_main$1 = {
   __name: "WindowProcess",
@@ -8645,6 +8740,7 @@ const _sfc_main$1 = {
           if (response.picInfo.fileName === "")
             return;
           outputMessage("Load Pic......");
+          imgContainerRef.value.resetIsImgFileLoading(true);
           imgContainerRef.value.changeMouseState(true);
           await new Promise((resolve, reject) => {
             imageObj.value = new Image();
@@ -8657,6 +8753,7 @@ const _sfc_main$1 = {
           imgFilePath = response.picInfo.path;
           imageSrc.value = imageSrcTmp;
           initProcessInfo(openImgFileDirection);
+          imgContainerRef.value.resetIsImgFileLoading(false);
           outputMessage("Load Pic Successfully.");
         } else {
           const errorMessage = response.error;
@@ -8863,6 +8960,9 @@ const _sfc_main$1 = {
               }), 128))
             ], 512)
           ]),
+          createBaseVNode("div", _hoisted_19, [
+            createVNode(Help)
+          ]),
           createBaseVNode("div", { class: "button-group" }, [
             createBaseVNode("button", {
               class: "button-style",
@@ -8890,14 +8990,13 @@ const _sfc_main$1 = {
           ref_key: "jsonView",
           ref: jsonView,
           onUpdateQuadInfo: updateQuadInfo,
-          onInitShowQuads: initShowQuads,
-          onOutputMessage: outputMessage
+          onInitShowQuads: initShowQuads
         }, null, 512)
       ]);
     };
   }
 };
-const WindowProcess = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-96ce30a3"]]);
+const WindowProcess = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-61e78553"]]);
 const _hoisted_1 = { style: { "width": "100%", "height": "100%" } };
 const _sfc_main = {
   __name: "App",
