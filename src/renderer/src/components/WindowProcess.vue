@@ -360,6 +360,8 @@ function chooseImgFile() {
 
 let openImgFileDirection = '';
 function changeImageByArrowKeys(direction) {
+  imgContainerRef.value.resetIsImgFileLoading(true);
+  imgContainerRef.value.changeMouseState(true);
   const path = getAdjacentImagePath(direction);
   openImgFileDirection = direction;
   loadImgFromPath(path);
@@ -373,9 +375,9 @@ function loadImgFromPath(path) {
 
 let imgFileName = ref(null);
 ipcRenderer.on('open-pic-file-response', async (e, response) => {
-  imgContainerRef.value.resetIsImgFileLoading(true);
-  imgContainerRef.value.changeMouseState(true);
   try {
+    imgContainerRef.value.resetIsImgFileLoading(true);
+    imgContainerRef.value.changeMouseState(true);
     if (response.success) {
       imageSrcTmp += response.picInfo.str;
       if (response.picInfo.fileName === '') return;
