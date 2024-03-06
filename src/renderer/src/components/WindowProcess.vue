@@ -386,12 +386,12 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
         imageObj.value.src = imageSrcTmp;
       });
       imgContainerRef.value.changeMouseState(false);
+      imgContainerRef.value.resetIsImgFileLoading(false);
 
       imgFileName.value = response.picInfo.fileName;
       imgFilePath = response.picInfo.path;
       imageSrc.value = imageSrcTmp;
       initProcessInfo(openImgFileDirection);
-      imgContainerRef.value.resetIsImgFileLoading(false);
       outputMessage('Load Pic Successfully.');
     } else {
       // 处理读取文件失败的情况

@@ -495,7 +495,6 @@ function changeMouseState(newState = false) {
 }
 
 // Move
-const autoAdaptBorderDis = 10;
 const offsetX = ref(0);
 const offsetY = ref(0);
 const { x, y } = useMouse();
@@ -518,31 +517,20 @@ const mouseLeft = () => {
   mouseIsOverContainer.value = false;
 };
 
+let deltaX = 0;
+let deltaY = 0;
+const minDelta2Move = 20;
 function updateOffsetMoved(oldX, oldY, newX, newY) {
   //console.log(`Mouse moved from (${oldX}, ${oldY}) to (${newX}, ${newY})`);
-  const deltaX = newX - oldX;
-  const deltaY = newY - oldY;
-  if (deltaX === 0 && deltaY === 0) return;
-
+  deltaX += newX - oldX;
+  deltaY += newY - oldY;
+  console.log(`deltaX: ${deltaX}, deltaY: ${deltaY}`);
+  if (Math.abs(deltaX) < minDelta2Move && Math.abs(deltaY) < minDelta2Move) return;
   offsetX.value += deltaX;
   offsetY.value += deltaY;
-
-  // auto Adapt Border
-  if (!(imageSrc === '')) {
-    if (Math.abs(newX) < Math.abs(oldX)) {
-      if (Math.abs(offsetX.value) < autoAdaptBorderDis) offsetX.value = 0;
-    } else if (Math.abs(newX) > Math.abs(oldX)) {
-      if (Math.abs(offsetX.value + initImgWidth.value * scale.value - viewportWidth.value) < autoAdaptBorderDis)
-        offsetX.value = viewportWidth.value - initImgWidth.value * scale.value;
-    }
-
-    if (Math.abs(newY) < Math.abs(oldY)) {
-      if (Math.abs(offsetY.value) < autoAdaptBorderDis) offsetY.value = 0;
-    } else if (Math.abs(newY) > Math.abs(oldY)) {
-      if (Math.abs(offsetY.value + initImgHeight.value * scale.value - viewportHeight.value) < autoAdaptBorderDis)
-        offsetY.value = viewportHeight.value - initImgHeight.value * scale.value;
-    }
-  }
+  console.log(`offsetX: ${offsetX.value}, offsetY: ${offsetY.value}`);
+  deltaX = 0;
+  deltaY = 0;
   updateViewPortDraw();
 }
 
