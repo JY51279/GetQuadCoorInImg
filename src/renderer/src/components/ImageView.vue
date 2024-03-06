@@ -587,6 +587,7 @@ function toggleMode() {
   } else {
     outputMessage('Quit Overview Mode');
   }
+  drawCanvasForShowQuads();
 }
 // Scale
 function updateOffsetScaled(oldScale, newScale) {

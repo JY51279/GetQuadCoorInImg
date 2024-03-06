@@ -1,0 +1,554 @@
+/*! modern-normalize v2.0.0 | MIT License | https://github.com/sindresorhus/modern-normalize */
+
+/*
+Document
+========
+*/
+
+/**
+Use a better box model (opinionated).
+*/
+
+*,
+::before,
+::after {
+	box-sizing: border-box;
+}
+
+html {
+	/* Improve consistency of default fonts in all browsers. (https://github.com/sindresorhus/modern-normalize/issues/3) */
+	font-family:
+		Consolas,
+		system-ui,
+		'Segoe UI',
+		Roboto,
+		Helvetica,
+		Arial,
+		sans-serif,
+		'Apple Color Emoji',
+		'Segoe UI Emoji';
+	line-height: 1.15; /* 1. Correct the line height in all browsers. */
+	-webkit-text-size-adjust: 100%; /* 2. Prevent adjustments of font size after orientation changes in iOS. */
+	-moz-tab-size: 4; /* 3. Use a more readable tab size (opinionated). */
+	tab-size: 4; /* 3 */
+}
+
+/*
+Sections
+========
+*/
+
+body {
+	margin: 0; /* Remove the margin in all browsers. */
+}
+
+/*
+Grouping content
+================
+*/
+
+/**
+1. Add the correct height in Firefox.
+2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)
+*/
+
+hr {
+	height: 0; /* 1 */
+	color: inherit; /* 2 */
+}
+
+/*
+Text-level semantics
+====================
+*/
+
+/**
+Add the correct text decoration in Chrome, Edge, and Safari.
+*/
+
+abbr[title] {
+	text-decoration: underline dotted;
+}
+
+/**
+Add the correct font weight in Edge and Safari.
+*/
+
+b,
+strong {
+	font-weight: bolder;
+}
+
+/**
+1. Improve consistency of default fonts in all browsers. (https://github.com/sindresorhus/modern-normalize/issues/3)
+2. Correct the odd 'em' font sizing in all browsers.
+*/
+
+code,
+kbd,
+samp,
+pre {
+	font-family:
+		Consolas,
+		ui-monospace,
+		SFMono-Regular,
+		'Liberation Mono',
+		Menlo,
+		monospace; /* 1 */
+	font-size: 1em; /* 2 */
+}
+
+/**
+Add the correct font size in all browsers.
+*/
+
+small {
+	font-size: 80%;
+}
+
+/**
+Prevent 'sub' and 'sup' elements from affecting the line height in all browsers.
+*/
+
+sub,
+sup {
+	font-size: 75%;
+	line-height: 0;
+	position: relative;
+	vertical-align: baseline;
+}
+
+sub {
+	bottom: -0.25em;
+}
+
+sup {
+	top: -0.5em;
+}
+
+/*
+Tabular data
+============
+*/
+
+/**
+1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)
+2. Correct table border color inheritance in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)
+*/
+
+table {
+	text-indent: 0; /* 1 */
+	border-color: inherit; /* 2 */
+}
+
+/*
+Forms
+=====
+*/
+
+/**
+1. Change the font styles in all browsers.
+2. Remove the margin in Firefox and Safari.
+*/
+
+button,
+input,
+optgroup,
+select,
+textarea {
+	font-family: inherit; /* 1 */
+	font-size: 100%; /* 1 */
+	line-height: 1.15; /* 1 */
+	margin: 0; /* 2 */
+}
+
+/**
+Remove the inheritance of text transform in Edge and Firefox.
+*/
+
+button,
+select {
+	text-transform: none;
+}
+
+/**
+Correct the inability to style clickable types in iOS and Safari.
+*/
+
+button,
+[type='button'],
+[type='reset'],
+[type='submit'] {
+	-webkit-appearance: button;
+}
+
+/**
+Remove the inner border and padding in Firefox.
+*/
+
+::-moz-focus-inner {
+	border-style: none;
+	padding: 0;
+}
+
+/**
+Restore the focus styles unset by the previous rule.
+*/
+
+:-moz-focusring {
+	outline: 1px dotted ButtonText;
+}
+
+/**
+Remove the additional ':invalid' styles in Firefox.
+See: https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737
+*/
+
+:-moz-ui-invalid {
+	box-shadow: none;
+}
+
+/**
+Remove the padding so developers are not caught out when they zero out 'fieldset' elements in all browsers.
+*/
+
+legend {
+	padding: 0;
+}
+
+/**
+Add the correct vertical alignment in Chrome and Firefox.
+*/
+
+progress {
+	vertical-align: baseline;
+}
+
+/**
+Correct the cursor style of increment and decrement buttons in Safari.
+*/
+
+::-webkit-inner-spin-button,
+::-webkit-outer-spin-button {
+	height: auto;
+}
+
+/**
+1. Correct the odd appearance in Chrome and Safari.
+2. Correct the outline style in Safari.
+*/
+
+[type='search'] {
+	-webkit-appearance: textfield; /* 1 */
+	outline-offset: -2px; /* 2 */
+}
+
+/**
+Remove the inner padding in Chrome and Safari on macOS.
+*/
+
+::-webkit-search-decoration {
+	-webkit-appearance: none;
+}
+
+/**
+1. Correct the inability to style clickable types in iOS and Safari.
+2. Change font properties to 'inherit' in Safari.
+*/
+
+::-webkit-file-upload-button {
+	-webkit-appearance: button; /* 1 */
+	font: inherit; /* 2 */
+}
+
+/*
+Interactive
+===========
+*/
+
+/*
+Add the correct display in Chrome and Safari.
+*/
+
+summary {
+	display: list-item;
+}
+
+.json-container[data-v-964f1d33] {
+  position: relative;
+  width: calc(25%);
+  /*20*2 + 120 + 2((1)*2) + 4(blankSpace)*/
+  height: calc(100%);
+  margin-left: auto;
+  overflow: auto;
+  border: 2px solid gray;
+}
+.json-all-container[data-v-964f1d33] {
+  display: inline-flex; /* 或者 display: inline-flex; */
+  flex-direction: column;
+}
+.highlighted-line[data-v-964f1d33] {
+  background-color: #ffff006b; /* Yellow color with some transparency */
+}
+.json-item-container[data-v-964f1d33] {
+  display: inline-flex; /* 或者 display: inline-flex; */
+}
+.loading-overlay[data-v-964f1d33] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.image-container[data-v-c454d0cc] {
+  background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAABHNCSVQICAgIfAhkiAAAAD5JREFUOE9j/A8EDESAt2/fEqGKgYFx1ECc4TQahjiDZggkmzdv3hCVU4SFhYnLKaMG4gyn0TDEnVMGfbIBAKTsa4tIltgrAAAAAElFTkSuQmCC') repeat;
+  width: calc(75% - 170px);
+  /* 20*2 + 122 + 4(blankSpace)*2 */
+  height: calc(100% - 40px);
+  top: 20px;
+  left: 20px;
+  position: fixed;
+  overflow: hidden;
+  border: 2px solid gray;
+}
+.dot[data-v-c454d0cc] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  background-color: red;
+}
+.rectangle[data-v-c454d0cc] {
+  position: absolute;
+  width: 8px;
+  /* 矩形的宽度 */
+  height: 8px;
+  /* 矩形的高度 */
+  border: 1px solid rgba(255, 0, 0, 0.5);
+  /* 红色的边界 */
+  background-color: transparent;
+  /* 透明的背景色 */
+  pointer-events: none;
+  /* 忽略鼠标事件 */
+}
+.str-right-mouse[data-v-c454d0cc] {
+  font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
+  color: #000000;
+  font-size: 16px;
+  line-height: 1.5; /* 行高为 1.5 */
+  text-shadow:
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff,
+    1px 1px 0 #fff;
+  font-weight: bold; /* 加粗文字 */
+}
+.loading-overlay[data-v-c454d0cc] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.helpIcon[data-v-3d6a88b4] {
+  margin-bottom: 10px;
+
+  width: 30px;
+
+  height: 30px;
+
+  cursor: pointer;
+}
+.helpContainer[data-v-3d6a88b4] {
+  position: fixed;
+
+  background-color: #f0f0f0; /* 淡灰色 */
+
+  border: 2px solid #333333; /* 深灰色 */
+
+  top: 50%;
+
+  left: 50%;
+
+  transform: translate(-50%, -50%);
+
+  width: 500px;
+
+  height: 500px;
+
+  border-radius: 8px;
+
+  z-index: 9999;
+
+  display: flex;
+
+  flex-direction: column;
+
+  padding: 20px;
+}
+.closeIcon[data-v-3d6a88b4] {
+  position: absolute;
+
+  top: 10px;
+
+  cursor: pointer;
+
+  right: 10px;
+
+  background-size: cover;
+
+  pointer-events: all;
+
+  z-index: 9999;
+}
+.keyCombination[data-v-3d6a88b4] {
+  position: relative;
+
+  display: flex;
+
+  column-gap: 4px;
+
+  align-items: center;
+}
+.keyCombination > *[data-v-3d6a88b4] {
+  margin-bottom: 4px;
+}
+.keyText[data-v-3d6a88b4] {
+  position: absolute;
+
+  margin-left: 30%;
+}
+.key[data-v-3d6a88b4] {
+  border-radius: 4px;
+
+  padding: 4px;
+
+  font-size: 14px;
+
+  font-weight: 600;
+
+  background-color: rgb(220, 220, 220);
+
+  display: flex;
+
+  color: rgb(0, 0, 0);
+
+  border: 1px solid rgb(180, 180, 180);
+
+  justify-content: center;
+
+  align-items: center;
+}
+
+*[data-v-42a77ae7] {
+  user-select: none;
+}
+/* 添加样式来高亮当前行 */
+.container[data-v-42a77ae7] {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  background-color: white;
+}
+.tool-container[data-v-42a77ae7] {
+  position: relative;
+  width: 122px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-left: calc(75% - 130px);
+  justify-content: space-between;
+}
+.zoomViewBox[data-v-42a77ae7] {
+  border: 1px dotted #333;
+  margin-bottom: 10px;
+  display: flex;
+}
+.zoom-style[data-v-42a77ae7] {
+  width: 120px;
+  height: 120px;
+  border: none;
+}
+.fileArea-style[data-v-42a77ae7] {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  row-gap: 10px;
+}
+.fileInfo-style[data-v-42a77ae7] {
+  font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
+  color: #000000;
+  font-size: 15px;
+  line-height: 1.5; /* 行高为 1.5 */
+  word-wrap: break-word;
+}
+.dotsArea-style[data-v-42a77ae7] {
+  height: 100px;
+  margin-top: 10px;
+}
+.dots[data-v-42a77ae7] {
+  margin-top: 5px;
+}
+/* //#ff5f5f; */
+.button-delete-style[data-v-42a77ae7] {
+  background-color: #4caf50; /* 设置按钮的背景颜色 */
+  color: white; /* 设置按钮文字的颜色 */
+  border: none; /* 移除按钮的边框 */
+  border-radius: 5px; /* 设置按钮的边框圆角 */
+  padding: 5px 5px; /* 设置按钮的内边距 */
+  cursor: pointer; /* 设置鼠标样式为手型 */
+  transition: background-color 0.3s ease; /* 添加过渡效果 */
+  width: 20px; /* 设置按钮的宽度为 30 像素 */
+  height: 20px; /* 设置按钮的高度为 30 像素 */
+  line-height: 5px; /* 设置文字的行高等于按钮的高度，实现文字的垂直居中 */
+}
+.button-delete-style[data-v-42a77ae7]:hover {
+  background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
+}
+.outputText-style[data-v-42a77ae7] {
+  height: 200px;
+  font-size: 12px;
+  margin-bottom: 10px;
+  word-wrap: break-word;
+  overflow-y: scroll;
+}
+.button-style[data-v-42a77ae7] {
+  border-radius: 12px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  padding: 8px 8px;
+  text-align: center;
+  text-decoration: none;
+  font-size: 15px;
+  width: calc(100%);
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+.button-style[data-v-42a77ae7]:hover {
+  background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
+}
+.button-group[data-v-42a77ae7] {
+  display: flex;
+  flex-direction: column;
+  row-gap: 10px;
+}
+
+#app,
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
