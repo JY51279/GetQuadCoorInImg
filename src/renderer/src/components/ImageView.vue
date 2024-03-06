@@ -940,7 +940,7 @@ function resetIsImgFileLoading(newValue) {
 
 <style scoped>
 .image-container {
-  background: url('../src/assets/bg.png') repeat;
+  background: url('../assets/bg.png') repeat;
   width: calc(75% - 170px);
   /* 20*2 + 122 + 4(blankSpace)*2 */
   height: calc(100% - 40px);

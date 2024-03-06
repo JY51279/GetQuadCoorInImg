@@ -7176,7 +7176,7 @@ function getAdjacentImageIndex(direction) {
   if (direction === KEYS.NEXT) {
     newIndex = (imgIndex + 1) % totalImages;
   } else if (direction === KEYS.PREVIOUS) {
-    newIndex = (imgIndex - 1) % totalImages;
+    newIndex = Math.max(-1, imgIndex - 1) % totalImages;
   }
   if (newIndex < 0) {
     newIndex = totalImages - 1;
@@ -8389,10 +8389,10 @@ const _sfc_main$3 = {
     };
   }
 };
-const imageItem = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["__scopeId", "data-v-90c8dde8"]]);
+const imageItem = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["__scopeId", "data-v-321a91e4"]]);
 const _imports_0 = "data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20height='24px'%20viewBox='0%200%2024%2024'%20width='24px'%20fill='%23000000'%3e%3cpath%20d='M0%200h24v24H0V0z'%20fill='none'/%3e%3cpath%20d='M11%2018h2v-2h-2v2zm1-16C6.48%202%202%206.48%202%2012s4.48%2010%2010%2010%2010-4.48%2010-10S17.52%202%2012%202zm0%2018c-4.41%200-8-3.59-8-8s3.59-8%208-8%208%203.59%208%208-3.59%208-8%208zm0-14c-2.21%200-4%201.79-4%204h2c0-1.1.9-2%202-2s2%20.9%202%202c0%202-3%201.75-3%205h2c0-2.25%203-2.5%203-5%200-2.21-1.79-4-4-4z'/%3e%3c/svg%3e";
 const _imports_1 = "data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20height='24px'%20viewBox='0%200%2024%2024'%20width='24px'%20fill='%23000000'%3e%3cpath%20d='M0%200h24v24H0V0z'%20fill='none'/%3e%3cpath%20d='M19%206.41L17.59%205%2012%2010.59%206.41%205%205%206.41%2010.59%2012%205%2017.59%206.41%2019%2012%2013.41%2017.59%2019%2019%2017.59%2013.41%2012%2019%206.41z'/%3e%3c/svg%3e";
-const _hoisted_1$2 = /* @__PURE__ */ createStaticVNode('<div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>w</div><div style="margin-left:1px;" data-v-748a32d6>/</div><div class="key" data-v-748a32d6>↑</div><div class="keyText" data-v-748a32d6>上一个Json项</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>s</div><div style="margin-left:1px;" data-v-748a32d6>/</div><div class="key" data-v-748a32d6>↓</div><div class="keyText" data-v-748a32d6>下一个Json项</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>a</div><div style="margin-left:1px;" data-v-748a32d6>/</div><div class="key" data-v-748a32d6>←</div><div class="keyText" data-v-748a32d6>上一张图片</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>d</div><div style="margin-left:1px;" data-v-748a32d6>/</div><div class="key" data-v-748a32d6>→</div><div class="keyText" data-v-748a32d6>下一张图片</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>s</div><div class="keyText" data-v-748a32d6>修改高亮Json项</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>d</div><div class="keyText" data-v-748a32d6>删除高亮Json项</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>a</div><div class="keyText" data-v-748a32d6>添加高亮Json项(DDN)</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>c</div><div class="keyText" data-v-748a32d6>清空信息</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>c</div><div class="keyText" data-v-748a32d6>清空标点</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>r</div><div class="keyText" data-v-748a32d6>重置图片位置</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>q</div><div class="keyText" data-v-748a32d6>高亮四边形是/否显示</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>q</div><div class="keyText" data-v-748a32d6>清空显示的四边形</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Ctrl</div><div class="key" data-v-748a32d6>Shift</div><div class="key" data-v-748a32d6>q</div><div class="keyText" data-v-748a32d6>显示所有四边形</div></div><div class="keyCombination" data-v-748a32d6><div class="key" data-v-748a32d6>Tab</div><div class="keyText" data-v-748a32d6>切换模式</div></div>', 14);
+const _hoisted_1$2 = /* @__PURE__ */ createStaticVNode('<div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>w</div><div style="margin-left:1px;" data-v-3d6a88b4>/</div><div class="key" data-v-3d6a88b4>↑</div><div class="keyText" data-v-3d6a88b4>上一个Json项</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>s</div><div style="margin-left:1px;" data-v-3d6a88b4>/</div><div class="key" data-v-3d6a88b4>↓</div><div class="keyText" data-v-3d6a88b4>下一个Json项</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>a</div><div style="margin-left:1px;" data-v-3d6a88b4>/</div><div class="key" data-v-3d6a88b4>←</div><div class="keyText" data-v-3d6a88b4>上一张图片</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>d</div><div style="margin-left:1px;" data-v-3d6a88b4>/</div><div class="key" data-v-3d6a88b4>→</div><div class="keyText" data-v-3d6a88b4>下一张图片</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>Ctrl</div><div class="key" data-v-3d6a88b4>s</div><div class="keyText" data-v-3d6a88b4>修改高亮Json项</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>Ctrl</div><div class="key" data-v-3d6a88b4>d</div><div class="keyText" data-v-3d6a88b4>删除高亮Json项</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>Ctrl</div><div class="key" data-v-3d6a88b4>a</div><div class="keyText" data-v-3d6a88b4>添加高亮Json项(DDN)</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>c</div><div class="keyText" data-v-3d6a88b4>清空信息</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>Ctrl</div><div class="key" data-v-3d6a88b4>c</div><div class="keyText" data-v-3d6a88b4>清空标点</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>Ctrl</div><div class="key" data-v-3d6a88b4>r</div><div class="keyText" data-v-3d6a88b4>重置图片位置</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>q</div><div class="keyText" data-v-3d6a88b4>高亮四边形是/否显示</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>Ctrl</div><div class="key" data-v-3d6a88b4>q</div><div class="keyText" data-v-3d6a88b4>清空显示的四边形</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>Ctrl</div><div class="key" data-v-3d6a88b4>Shift</div><div class="key" data-v-3d6a88b4>q</div><div class="keyText" data-v-3d6a88b4>显示所有四边形</div></div><div class="keyCombination" data-v-3d6a88b4><div class="key" data-v-3d6a88b4>Tab</div><div class="keyText" data-v-3d6a88b4>切换模式</div></div>', 14);
 const _sfc_main$2 = {
   __name: "Help",
   setup(__props) {
@@ -8455,8 +8455,8 @@ const _sfc_main$2 = {
     };
   }
 };
-const Help = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["__scopeId", "data-v-748a32d6"]]);
-const _withScopeId = (n) => (pushScopeId("data-v-61e78553"), n = n(), popScopeId(), n);
+const Help = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["__scopeId", "data-v-3d6a88b4"]]);
+const _withScopeId = (n) => (pushScopeId("data-v-42a77ae7"), n = n(), popScopeId(), n);
 const _hoisted_1$1 = { class: "container" };
 const _hoisted_2 = { class: "tool-container" };
 const _hoisted_3 = { class: "zoomViewBox" };
@@ -8749,11 +8749,11 @@ const _sfc_main$1 = {
             imageObj.value.src = imageSrcTmp;
           });
           imgContainerRef.value.changeMouseState(false);
+          imgContainerRef.value.resetIsImgFileLoading(false);
           imgFileName.value = response.picInfo.fileName;
           imgFilePath = response.picInfo.path;
           imageSrc.value = imageSrcTmp;
           initProcessInfo(openImgFileDirection);
-          imgContainerRef.value.resetIsImgFileLoading(false);
           outputMessage("Load Pic Successfully.");
         } else {
           const errorMessage = response.error;
@@ -8996,7 +8996,7 @@ const _sfc_main$1 = {
     };
   }
 };
-const WindowProcess = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-61e78553"]]);
+const WindowProcess = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["__scopeId", "data-v-42a77ae7"]]);
 const _hoisted_1 = { style: { "width": "100%", "height": "100%" } };
 const _sfc_main = {
   __name: "App",

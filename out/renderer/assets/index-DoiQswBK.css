@@ -306,8 +306,8 @@ summary {
   align-items: center;
 }
 
-.image-container[data-v-90c8dde8] {
-  background: url('../src/assets/bg.png') repeat;
+.image-container[data-v-321a91e4] {
+  background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAABHNCSVQICAgIfAhkiAAAAD5JREFUOE9j/A8EDESAt2/fEqGKgYFx1ECc4TQahjiDZggkmzdv3hCVU4SFhYnLKaMG4gyn0TDEnVMGfbIBAKTsa4tIltgrAAAAAElFTkSuQmCC') repeat;
   width: calc(75% - 170px);
   /* 20*2 + 122 + 4(blankSpace)*2 */
   height: calc(100% - 40px);
@@ -317,13 +317,13 @@ summary {
   overflow: hidden;
   border: 2px solid gray;
 }
-.dot[data-v-90c8dde8] {
+.dot[data-v-321a91e4] {
   position: absolute;
   width: 1px;
   height: 1px;
   background-color: red;
 }
-.rectangle[data-v-90c8dde8] {
+.rectangle[data-v-321a91e4] {
   position: absolute;
   width: 8px;
   /* 矩形的宽度 */
@@ -336,7 +336,7 @@ summary {
   pointer-events: none;
   /* 忽略鼠标事件 */
 }
-.str-right-mouse[data-v-90c8dde8] {
+.str-right-mouse[data-v-321a91e4] {
   font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
   color: #000000;
   font-size: 16px;
@@ -348,7 +348,7 @@ summary {
     1px 1px 0 #fff;
   font-weight: bold; /* 加粗文字 */
 }
-.loading-overlay[data-v-90c8dde8] {
+.loading-overlay[data-v-321a91e4] {
   position: absolute;
   top: 0;
   left: 0;
@@ -361,7 +361,7 @@ summary {
   align-items: center;
 }
 
-.helpIcon[data-v-748a32d6] {
+.helpIcon[data-v-3d6a88b4] {
   margin-bottom: 10px;
 
   width: 30px;
@@ -370,7 +370,7 @@ summary {
 
   cursor: pointer;
 }
-.helpContainer[data-v-748a32d6] {
+.helpContainer[data-v-3d6a88b4] {
   position: fixed;
 
   background-color: #f0f0f0; /* 淡灰色 */
@@ -397,7 +397,7 @@ summary {
 
   padding: 20px;
 }
-.closeIcon[data-v-748a32d6] {
+.closeIcon[data-v-3d6a88b4] {
   position: absolute;
 
   top: 10px;
@@ -409,8 +409,10 @@ summary {
   background-size: cover;
 
   pointer-events: all;
+
+  z-index: 9999;
 }
-.keyCombination[data-v-748a32d6] {
+.keyCombination[data-v-3d6a88b4] {
   position: relative;
 
   display: flex;
@@ -419,15 +421,15 @@ summary {
 
   align-items: center;
 }
-.keyCombination > *[data-v-748a32d6] {
+.keyCombination > *[data-v-3d6a88b4] {
   margin-bottom: 4px;
 }
-.keyText[data-v-748a32d6] {
+.keyText[data-v-3d6a88b4] {
   position: absolute;
 
   margin-left: 30%;
 }
-.key[data-v-748a32d6] {
+.key[data-v-3d6a88b4] {
   border-radius: 4px;
 
   padding: 4px;
@@ -449,18 +451,18 @@ summary {
   align-items: center;
 }
 
-*[data-v-61e78553] {
+*[data-v-42a77ae7] {
   user-select: none;
 }
 /* 添加样式来高亮当前行 */
-.container[data-v-61e78553] {
+.container[data-v-42a77ae7] {
   display: flex;
   width: 100%;
   height: 100%;
   padding: 20px;
   background-color: white;
 }
-.tool-container[data-v-61e78553] {
+.tool-container[data-v-42a77ae7] {
   position: relative;
   width: 122px;
   height: 100%;
@@ -469,38 +471,38 @@ summary {
   margin-left: calc(75% - 130px);
   justify-content: space-between;
 }
-.zoomViewBox[data-v-61e78553] {
+.zoomViewBox[data-v-42a77ae7] {
   border: 1px dotted #333;
   margin-bottom: 10px;
   display: flex;
 }
-.zoom-style[data-v-61e78553] {
+.zoom-style[data-v-42a77ae7] {
   width: 120px;
   height: 120px;
   border: none;
 }
-.fileArea-style[data-v-61e78553] {
+.fileArea-style[data-v-42a77ae7] {
   margin-top: 10px;
   display: flex;
   flex-direction: column;
   row-gap: 10px;
 }
-.fileInfo-style[data-v-61e78553] {
+.fileInfo-style[data-v-42a77ae7] {
   font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
   color: #000000;
   font-size: 15px;
   line-height: 1.5; /* 行高为 1.5 */
   word-wrap: break-word;
 }
-.dotsArea-style[data-v-61e78553] {
+.dotsArea-style[data-v-42a77ae7] {
   height: 100px;
   margin-top: 10px;
 }
-.dots[data-v-61e78553] {
+.dots[data-v-42a77ae7] {
   margin-top: 5px;
 }
 /* //#ff5f5f; */
-.button-delete-style[data-v-61e78553] {
+.button-delete-style[data-v-42a77ae7] {
   background-color: #4caf50; /* 设置按钮的背景颜色 */
   color: white; /* 设置按钮文字的颜色 */
   border: none; /* 移除按钮的边框 */
@@ -512,17 +514,17 @@ summary {
   height: 20px; /* 设置按钮的高度为 30 像素 */
   line-height: 5px; /* 设置文字的行高等于按钮的高度，实现文字的垂直居中 */
 }
-.button-delete-style[data-v-61e78553]:hover {
+.button-delete-style[data-v-42a77ae7]:hover {
   background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
 }
-.outputText-style[data-v-61e78553] {
+.outputText-style[data-v-42a77ae7] {
   height: 200px;
   font-size: 12px;
   margin-bottom: 10px;
   word-wrap: break-word;
   overflow-y: scroll;
 }
-.button-style[data-v-61e78553] {
+.button-style[data-v-42a77ae7] {
   border-radius: 12px;
   background-color: #4caf50;
   color: white;
@@ -535,10 +537,10 @@ summary {
   cursor: pointer;
   transition: background-color 0.3s ease;
 }
-.button-style[data-v-61e78553]:hover {
+.button-style[data-v-42a77ae7]:hover {
   background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
 }
-.button-group[data-v-61e78553] {
+.button-group[data-v-42a77ae7] {
   display: flex;
   flex-direction: column;
   row-gap: 10px;
