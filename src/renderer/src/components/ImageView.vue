@@ -740,13 +740,11 @@ async function initImgInfo() {
   clearDots();
   imageSrc = props.imageObj.src;
   let img = new Image();
-  changeMouseState(true);
   await new Promise((resolve, reject) => {
     img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = imageSrc;
   });
-  changeMouseState(false);
   console.log(isDisabledMouse.value);
   initImgWidth.value = img.width;
   initImgHeight.value = img.height;
@@ -767,6 +765,7 @@ async function initImgInfo() {
   console.log('scale:', scale.value);
   console.log('img.width:', img.width);
   console.log('img.height:', img.height);
+  await nextTick();
 }
 const scaleRange = 60;
 const onWheel = event => {

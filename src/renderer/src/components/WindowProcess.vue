@@ -331,6 +331,8 @@ function initProcessInfo(direction = '') {
     return;
   }
   imgContainerRef.value.initImgInfo();
+  imgContainerRef.value.resetIsImgFileLoading(false);
+  imgContainerRef.value.changeMouseState(false);
   jsonView.value.initJsonInfo(imgFilePath, direction);
   const { picNum, picTotalNum } = getJsonPicNum();
   picInfo.picNum = picNum;
@@ -371,22 +373,20 @@ function loadImgFromPath(path) {
 
 let imgFileName = ref(null);
 ipcRenderer.on('open-pic-file-response', async (e, response) => {
+  imgContainerRef.value.resetIsImgFileLoading(true);
+  imgContainerRef.value.changeMouseState(true);
   try {
     if (response.success) {
       imageSrcTmp += response.picInfo.str;
       if (response.picInfo.fileName === '') return;
 
       outputMessage('Load Pic......');
-      imgContainerRef.value.resetIsImgFileLoading(true);
-      imgContainerRef.value.changeMouseState(true);
       await new Promise((resolve, reject) => {
         imageObj.value = new Image();
         imageObj.value.onload = () => resolve(imageObj.value);
         imageObj.value.onerror = reject;
         imageObj.value.src = imageSrcTmp;
       });
-      imgContainerRef.value.changeMouseState(false);
-      imgContainerRef.value.resetIsImgFileLoading(false);
 
       imgFileName.value = response.picInfo.fileName;
       imgFilePath = response.picInfo.path;
@@ -424,6 +424,7 @@ ipcRenderer.on('choose-json-file-response', async (e, response) => {
       await updateClass(defaultClass);
       resetJsonProcess(jsonData, selectedOption.value[0]);
       if (imgFilePath !== '') initProcessInfo();
+      else changeImageByArrowKeys(KEYS.NEXT);
     } else {
       // 处理读取文件失败的情况
       const errorMessage = response.error;
