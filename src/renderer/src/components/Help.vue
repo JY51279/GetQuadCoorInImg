@@ -192,6 +192,8 @@ function dragEnd() {
   background-size: cover;
 
   pointer-events: all;
+
+  z-index: 9999;
 }
 
 .keyCombination {
