@@ -325,12 +325,12 @@ function clearMessage() {
 const imageObj = ref(new Image());
 const imageSrc = ref('');
 let imgFilePath = '';
-function initProcessInfo(direction = '') {
+async function initProcessInfo(direction = '') {
   if (imageObj.value === null || imageObj.value.src === '') {
     outputMessage('initProcessInfo Error.');
     return;
   }
-  imgContainerRef.value.initImgInfo();
+  await imgContainerRef.value.initImgInfo();
   imgContainerRef.value.resetIsImgFileLoading(false);
   imgContainerRef.value.changeMouseState(false);
   jsonView.value.initJsonInfo(imgFilePath, direction);
@@ -393,7 +393,7 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
       imgFileName.value = response.picInfo.fileName;
       imgFilePath = response.picInfo.path;
       imageSrc.value = imageSrcTmp;
-      initProcessInfo(openImgFileDirection);
+      await initProcessInfo(openImgFileDirection);
       outputMessage('Load Pic Successfully.');
     } else {
       // 处理读取文件失败的情况
@@ -425,7 +425,7 @@ ipcRenderer.on('choose-json-file-response', async (e, response) => {
       const defaultClass = getDefaultProductType(jsonData.path);
       await updateClass(defaultClass);
       resetJsonProcess(jsonData, selectedOption.value[0]);
-      if (imgFilePath !== '') initProcessInfo();
+      if (imgFilePath !== '') await initProcessInfo();
       else changeImageByArrowKeys(KEYS.NEXT);
     } else {
       // 处理读取文件失败的情况
