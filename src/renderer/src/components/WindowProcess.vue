@@ -72,6 +72,7 @@ import {
   getJsonFileInfo,
   getJsonPerPicPointsArray,
   getDefaultProductType,
+  resetJsonNoValue,
 } from '../utils/JsonProcess.js';
 import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
 
@@ -143,7 +144,8 @@ const keyActions = {
     ctrl: () => clearDots(),
   },
   r: {
-    ctrl: () => resetPosition(),
+    default: () => resetPosition(),
+    ctrl: () => resetJsonValue(),
   },
   q: {
     default: () => toggleHighlight2ShowQuads(),
@@ -291,6 +293,13 @@ function deleteJsonItem() {
 
 function modifyJsonItem() {
   performJsonAction(KEYS.JSON_MODIFY);
+}
+
+function resetJsonValue() {
+  if (resetJsonNoValue()) {
+    outputMessage('Reset No. successfully.');
+    saveJsonFile();
+  } else outputMessage('Reset No. failed!');
 }
 
 function saveJsonFile() {

@@ -72,9 +72,14 @@
     </div>
 
     <div class="keyCombination">
-      <div class="key">Ctrl</div>
       <div class="key">r</div>
       <div class="keyText">重置图片位置</div>
+    </div>
+
+    <div class="keyCombination">
+      <div class="key">Ctrl</div>
+      <div class="key">r</div>
+      <div class="keyText">重置数据No.值</div>
     </div>
 
     <div class="keyCombination">

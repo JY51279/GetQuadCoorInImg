@@ -260,3 +260,17 @@ export function getDefaultProductType(jsonPath) {
   if (targetIndex === -1) return '';
   return pathArray[targetIndex];
 }
+
+const noKey = 'No.';
+export function resetJsonNoValue() {
+  if (Object.keys(json).length === 0) {
+    return false;
+  }
+
+  let newNoValue = 0;
+  for (let i = 0; i < json[rootKey].length; i++) {
+    newNoValue++;
+    json[rootKey][i][noKey] = newNoValue.toString();
+  }
+  return true;
+}
