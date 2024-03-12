@@ -326,18 +326,24 @@ const imageObj = ref(new Image());
 const imageSrc = ref('');
 let imgFilePath = '';
 async function initProcessInfo(direction = '') {
-  if (imageObj.value === null || imageObj.value.src === '') {
-    outputMessage('initProcessInfo Error.');
-    return;
+  try {
+    if (imageObj.value === null || imageObj.value.src === KEYS.IMAGE_NULL_SRC) {
+      outputMessage('initProcessInfo Error.');
+    } else {
+      await imgContainerRef.value.initImgInfo();
+      imgContainerRef.value.changeMouseState(false);
+    }
+    imgContainerRef.value.resetIsImgFileLoading(false);
+    jsonView.value.initJsonInfo(imgFilePath, direction);
+    const { picNum, picTotalNum } = getJsonPicNum();
+    picInfo.picNum = picNum;
+    picInfo.picTotalNum = picTotalNum;
+    openImgFileDirection = '';
+  } catch (error) {
+    console.error(`Error name: ${error.name}`);
+    console.error(`Error message: ${error.message}`);
+    console.error(`Stack trace: ${error.stack}`);
   }
-  await imgContainerRef.value.initImgInfo();
-  imgContainerRef.value.resetIsImgFileLoading(false);
-  imgContainerRef.value.changeMouseState(false);
-  jsonView.value.initJsonInfo(imgFilePath, direction);
-  const { picNum, picTotalNum } = getJsonPicNum();
-  picInfo.picNum = picNum;
-  picInfo.picTotalNum = picTotalNum;
-  openImgFileDirection = '';
 }
 
 function initShowQuads() {
@@ -360,8 +366,6 @@ function chooseImgFile() {
 
 let openImgFileDirection = '';
 function changeImageByArrowKeys(direction) {
-  imgContainerRef.value.resetIsImgFileLoading(true);
-  imgContainerRef.value.changeMouseState(true);
   const path = getAdjacentImagePath(direction);
   openImgFileDirection = direction;
   loadImgFromPath(path);
@@ -375,34 +379,34 @@ function loadImgFromPath(path) {
 
 let imgFileName = ref(null);
 ipcRenderer.on('open-pic-file-response', async (e, response) => {
-  try {
-    imgContainerRef.value.resetIsImgFileLoading(true);
-    imgContainerRef.value.changeMouseState(true);
-    if (response.success) {
-      imageSrcTmp += response.picInfo.str;
-      if (response.picInfo.fileName === '') return;
+  imgContainerRef.value.resetIsImgFileLoading(true);
+  imgContainerRef.value.changeMouseState(true);
+  console.log('open-pic-file-response: ', response);
+  if (response.success) {
+    imageSrcTmp += response.picInfo.str;
+    if (response.picInfo.fileName === '') return;
 
-      outputMessage('Load Pic......');
-      await new Promise((resolve, reject) => {
-        imageObj.value = new Image();
-        imageObj.value.onload = () => resolve(imageObj.value);
-        imageObj.value.onerror = reject;
-        imageObj.value.src = imageSrcTmp;
-      });
+    await new Promise((resolve, reject) => {
+      imageObj.value = new Image();
+      imageObj.value.onload = () => resolve(imageObj.value);
+      imageObj.value.onerror = reject;
+      imageObj.value.src = imageSrcTmp;
+    });
 
-      imgFileName.value = response.picInfo.fileName;
-      imgFilePath = response.picInfo.path;
-      imageSrc.value = imageSrcTmp;
-      await initProcessInfo(openImgFileDirection);
-      outputMessage('Load Pic Successfully.');
-    } else {
-      // 处理读取文件失败的情况
-      const errorMessage = response.error;
-      console.error('Failed to open pic:', errorMessage);
-    }
-  } catch (error) {
-    console.error('An error occurred while processing pic file:', error);
-    console.log(response);
+    imgFileName.value = response.picInfo.fileName;
+    imgFilePath = response.picInfo.path;
+    imageSrc.value = imageSrcTmp;
+    await initProcessInfo(openImgFileDirection);
+    outputMessage('Load Pic Successfully.');
+  } else {
+    imageObj.value = null;
+    imgFileName.value = '';
+    imgFilePath = '';
+    imageSrc.value = '';
+    await initProcessInfo(openImgFileDirection);
+    const errorMessage = response.error;
+    outputMessage('Failed to open pic: ');
+    outputMessage(errorMessage);
   }
 });
 

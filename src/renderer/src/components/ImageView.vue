@@ -26,6 +26,7 @@
                   pointer-events: none;`"
     ></canvas>
     <div v-if="isImgFileLoading" class="loading-overlay">Loading...</div>
+    <div v-if="isImgFileLoadingFailed" class="loading-overlay">Failed to load image.</div>
     <div
       v-if="indices2Show"
       class="str-right-mouse"
@@ -935,6 +936,16 @@ function initCanvasSettings() {
 const isImgFileLoading = ref(false);
 function resetIsImgFileLoading(newValue) {
   isImgFileLoading.value = newValue;
+  if (isImgFileLoading.value === false && (props.imageObj === null || props.imageObj.src === '')) {
+    resetIsImgFileLoadingFailed(true);
+  } else {
+    resetIsImgFileLoadingFailed(false);
+  }
+}
+
+const isImgFileLoadingFailed = ref(false);
+function resetIsImgFileLoadingFailed(newValue) {
+  isImgFileLoadingFailed.value = newValue;
 }
 </script>
 

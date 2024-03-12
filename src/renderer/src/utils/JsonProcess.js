@@ -90,7 +90,10 @@ function resetClassKeys(classStr) {
 
 let imgIndex = -1;
 function resetImgIndex(imgPath, direction = '') {
-  if (direction !== '') {
+  if (imgPath === '') {
+    imgIndex = -1;
+    return;
+  } else if (direction !== '') {
     imgIndex = getAdjacentImageIndex(direction);
     return;
   }
