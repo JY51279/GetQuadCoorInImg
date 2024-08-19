@@ -31,12 +31,12 @@
           </div>
         </div>
       </div>
-      <div>
-        <!-- 输出区域 -->
-        <div ref="output" class="outputText-style">
-          <div v-for="(message, index) in outputMessages" :key="index">{{ message }}</div>
-        </div>
+
+      <!-- 输出区域 -->
+      <div ref="output" class="outputText-style">
+        <div v-for="(message, index) in outputMessages" :key="index">{{ message }}</div>
       </div>
+
       <div style="display: flex; justify-content: flex-end">
         <Help />
       </div>
@@ -605,6 +605,7 @@ function updateJsonHighlightIndex(newIndex) {
 .outputText-style {
   height: 200px;
   font-size: 12px;
+  margin-top: auto;
   margin-bottom: 10px;
   word-wrap: break-word;
   overflow-y: scroll;
