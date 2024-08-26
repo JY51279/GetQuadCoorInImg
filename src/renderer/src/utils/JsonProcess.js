@@ -154,7 +154,33 @@ export function updateQuadIndex(newIndex) {
 
 const separator = ' ';
 function TransQuadDots2Str(realDots) {
-  // 判断是否有两个元素，并补全另外两个点
+  // 判断是否为一个元素，并仅修改与当前点最近的点
+  if (realDots.length === 1) {
+    let p1 = realDots[0];
+    let dotsStr = jsonPerPicArray[quadIndex][classKeys.ItemKey];
+    let dotsArray = dotsStr.split(' ').map(Number);
+    let dots = [];
+    for (let i = 0; i < dotsArray.length; i += 2) {
+      dots.push({ x: dotsArray[i], y: dotsArray[i + 1] });
+    }
+
+    // 找到与 p1 最近的点
+    let closestIndex = 0;
+    let minDistance = Infinity;
+    for (let i = 0; i < dots.length; i++) {
+      let distance = Math.sqrt(Math.pow(dots[i].x - p1.x, 2) + Math.pow(dots[i].y - p1.y, 2));
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = i;
+      }
+    }
+
+    // 替换最近的点
+    dots[closestIndex] = p1;
+    realDots = [...dots];
+  }
+
+  // 判断是否为两个元素，并补全另外两个点
   if (realDots.length === 2) {
     let p1 = realDots[0];
     let p2 = realDots[1];
@@ -167,7 +193,7 @@ function TransQuadDots2Str(realDots) {
     realDots.push(p3, p4);
   }
 
-  // 判断是否有三个元素，并补全剩余的一点
+  // 判断是否为三个元素，并补全剩余的一点
   if (realDots.length === 3) {
     let p1 = realDots[0];
     let p2 = realDots[1];
