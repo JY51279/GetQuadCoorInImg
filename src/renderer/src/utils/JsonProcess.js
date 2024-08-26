@@ -151,6 +151,32 @@ export function updateQuadIndex(newIndex) {
 
 const separator = ' ';
 function TransQuadDots2Str(realDots) {
+  // 判断是否有两个元素，并补全另外两个点
+  if (realDots.length === 2) {
+    let p1 = realDots[0];
+    let p2 = realDots[1];
+
+    // 计算另外两个点
+    let p3 = { x: p1.x, y: p2.y };
+    let p4 = { x: p2.x, y: p1.y };
+
+    // 将新点添加到 realDots 中
+    realDots.push(p3, p4);
+  }
+
+  // 判断是否有三个元素，并补全剩余的一点
+  if (realDots.length === 3) {
+    let p1 = realDots[0];
+    let p2 = realDots[1];
+    let p3 = realDots[2];
+
+    // 计算第四个点
+    let p4 = { x: p1.x + (p3.x - p2.x), y: p1.y + (p3.y - p2.y) };
+
+    // 将新点添加到 realDots 中
+    realDots.push(p4);
+  }
+
   let targetStr = '';
   if (realDots.length !== 4) return targetStr;
   targetStr = serializePointArray2String(realDots, separator);
