@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 TestUpdateSets
 dist.zip
+out/renderer
+out
