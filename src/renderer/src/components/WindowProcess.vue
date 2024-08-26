@@ -73,6 +73,7 @@ import {
   getJsonPerPicPointsArray,
   getDefaultProductType,
   resetJsonNoValue,
+  getJsonImagePath,
 } from '../utils/JsonProcess.js';
 import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
 
@@ -332,7 +333,6 @@ function clearMessage() {
 
 // Init Img
 const imageObj = ref(new Image());
-const imageSrc = ref('');
 let imgFilePath = '';
 async function initProcessInfo(direction = '') {
   try {
@@ -344,6 +344,17 @@ async function initProcessInfo(direction = '') {
     }
     imgContainerRef.value.resetIsImgFileLoading(false);
     jsonView.value.initJsonInfo(imgFilePath, direction);
+
+    // 当读入新的Json时, imgFilePath !== getJsonImagePath, 重新载入新Json对应的图片
+    if (imgFilePath !== getJsonImagePath()) {
+      console.log('File path changed from: ' + imgFilePath);
+      imgFilePath = getJsonImagePath();
+      console.log('File path changed to: ' + imgFilePath);
+      openImgFileDirection = '';
+      loadImgFromPath(imgFilePath);
+      return;
+    }
+
     const { picNum, picTotalNum } = getJsonPicNum();
     picInfo.picNum = picNum;
     picInfo.picTotalNum = picTotalNum;
@@ -386,6 +397,15 @@ function loadImgFromPath(path) {
   ipcRenderer.send('open-pic-file', path);
 }
 
+async function reloadImageObj(src) {
+  await new Promise((resolve, reject) => {
+    imageObj.value = new Image();
+    imageObj.value.onload = () => resolve(imageObj.value);
+    imageObj.value.onerror = reject;
+    imageObj.value.src = src;
+  });
+}
+
 let imgFileName = ref(null);
 ipcRenderer.on('open-pic-file-response', async (e, response) => {
   imgContainerRef.value.resetIsImgFileLoading(true);
@@ -395,23 +415,16 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
     imageSrcTmp += response.picInfo.str;
     if (response.picInfo.fileName === '') return;
 
-    await new Promise((resolve, reject) => {
-      imageObj.value = new Image();
-      imageObj.value.onload = () => resolve(imageObj.value);
-      imageObj.value.onerror = reject;
-      imageObj.value.src = imageSrcTmp;
-    });
+    await reloadImageObj(imageSrcTmp);
 
     imgFileName.value = response.picInfo.fileName;
     imgFilePath = response.picInfo.path;
-    imageSrc.value = imageSrcTmp;
     await initProcessInfo(openImgFileDirection);
     outputMessage('Load Pic Successfully.');
   } else {
     imageObj.value = null;
     imgFileName.value = '';
     imgFilePath = '';
-    imageSrc.value = '';
     await initProcessInfo(openImgFileDirection);
     const errorMessage = response.error;
     outputMessage('Failed to open pic: ');

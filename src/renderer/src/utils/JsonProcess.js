@@ -53,6 +53,9 @@ function resetJsonInfo(jsonData) {
   }
   jsonImgPathList = pathList;
 }
+export function getJsonImagePath() {
+  return jsonImgPathList[imgIndex];
+}
 
 let jsonPerPicArray = [];
 let jsonPerPicPerObjKeysNum = 0;

@@ -132,9 +132,9 @@ function updateJsonPerPicArray() {
 
 const hasPicJsonFailedFetched = ref(false);
 function initJsonInfo(imgFilePath, direction = '') {
-  if (!resetPicJson(imgFilePath, direction)) {
-    hasPicJsonFailedFetched.value = true;
-  } else hasPicJsonFailedFetched.value = false;
+  if (!resetPicJson(imgFilePath, direction)) hasPicJsonFailedFetched.value = true;
+  else hasPicJsonFailedFetched.value = false;
+
   updateJsonPerPicArray();
   updateHighlightInfo();
 }
