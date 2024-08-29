@@ -347,9 +347,7 @@ async function initProcessInfo(direction = '') {
 
     // 当读入新的Json时, imgFilePath !== getJsonImagePath, 重新载入新Json对应的图片
     if (imgFilePath !== getJsonImagePath()) {
-      console.log('File path changed from: ' + imgFilePath);
       imgFilePath = getJsonImagePath();
-      console.log('File path changed to: ' + imgFilePath);
       openImgFileDirection = '';
       loadImgFromPath(imgFilePath);
       return;
@@ -418,7 +416,7 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
     await reloadImageObj(imageSrcTmp);
 
     imgFileName.value = response.picInfo.fileName;
-    imgFilePath = response.picInfo.path;
+    imgFilePath = response.picInfo.path.replace(/\\/g, '/');
     await initProcessInfo(openImgFileDirection);
     outputMessage('Load Pic Successfully.');
   } else {
