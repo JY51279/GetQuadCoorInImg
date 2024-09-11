@@ -56,8 +56,8 @@ export function getNearestOrFarthestPointIndex(points, target, findNearest = tru
 }
 
 // 以左上点为0号点顺时针排序
-export function setQuadDots2ClockWise(dotsArray) {
-  const leftUpId = calcLeftUpPtIndex(dotsArray);
+export function setQuadDots2ClockWise(dotsArray, barcodeType = '') {
+  const leftUpId = barcodeType === 'datamatrix' ? 0 : calcLeftUpPtIndex(dotsArray);
   if (leftUpId === -1) return false;
   if (leftUpId !== 0) swap(dotsArray, 0, leftUpId);
 
@@ -155,9 +155,9 @@ export function transJson2Str(json) {
   return jsonStr;
 }
 
-export function serializePointArray2String(points, separator) {
+export function serializePointArray2String(points, separator, barcodeType) {
   let pointsTmp = cloneDeep(points);
-  if (!setQuadDots2ClockWise(pointsTmp)) return '';
+  if (!setQuadDots2ClockWise(pointsTmp, barcodeType)) return '';
   const str = pointsTmp.map(item => `${item.x} ${item.y}`).join(separator);
   return str;
 }

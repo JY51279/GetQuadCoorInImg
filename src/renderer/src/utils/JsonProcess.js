@@ -29,6 +29,7 @@ const TotalClassKeys = [
     ItemsCount: 'Label Count',
   },
 ];
+// Special case: DBR "Barcode Type": "datamatrix"
 
 export function resetJsonProcess(jsonData, classStr) {
   try {
@@ -145,7 +146,7 @@ let quadDots = [];
 let quadIndex = -1;
 export function setQuadInfo(realDots) {
   quadDots = realDots.slice();
-  if (quadDots.length === 4) setQuadDots2ClockWise(quadDots);
+  if (quadDots.length === 4) setQuadDots2ClockWise(quadDots, jsonPerPicArray[quadIndex]['Barcode Type'] ?? '');
 }
 
 export function updateQuadIndex(newIndex) {
@@ -208,7 +209,8 @@ function TransQuadDots2Str(realDots) {
 
   let targetStr = '';
   if (realDots.length !== 4) return targetStr;
-  targetStr = serializePointArray2String(realDots, separator);
+  const barcodeType = jsonPerPicArray[quadIndex]['Barcode Type'];
+  targetStr = serializePointArray2String(realDots, separator, barcodeType ?? '');
   //console.log('targetStr: ' + targetStr);
   if (targetStr === '') return targetStr;
   return targetStr;
