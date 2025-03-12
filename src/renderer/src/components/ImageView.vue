@@ -592,7 +592,7 @@ function toggleMode() {
 }
 // Scale
 function updateOffsetScaled(oldScale, newScale) {
-  if (oldScale < 1 || newScale < 1) return;
+  // if (oldScale < 1 || newScale < 1) return;
 
   // Judge: Mouse in rendered area
   let canvasCoord = cloneDeep(mouseCoord);
