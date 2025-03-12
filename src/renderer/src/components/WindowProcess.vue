@@ -27,7 +27,7 @@
         <div class="dotsArea-style">
           <div v-for="(item, index) in dotsRealCoord" :key="index" class="dots">
             <span>({{ item.x }}, {{ item.y }})</span>
-            <button class="button-delete-style" @click="clearOneDot(index)">x</button>
+            <!-- <button class="button-delete-style" @click="clearOneDot(index)">x</button>-->
           </div>
         </div>
       </div>
