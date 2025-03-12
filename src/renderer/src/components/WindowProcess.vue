@@ -260,7 +260,7 @@ function clearDots() {
 // JSON Operations
 function performJsonAction(action) {
   outputMessage('Start operate: ' + action);
-  let updateJsonRes = updateJson(action);
+  let updateJsonRes = updateJson(action, initImageScale);
   if (updateJsonRes !== KEYS.OPERATE_SUCCESS) {
     outputMessage(updateJsonRes);
     return;
@@ -364,9 +364,10 @@ async function initProcessInfo(direction = '') {
   }
 }
 
+let initImageScale = 1; // Image scale at first to avoid too large image
 function initShowQuads() {
   const newShowQuadArray = getJsonPerPicPointsArray();
-  imgContainerRef.value.resetQuadsArray(newShowQuadArray);
+  imgContainerRef.value.resetQuadsArray(newShowQuadArray, initImageScale);
   clearShowQuads();
   addAll2ShowQuads();
 }
@@ -395,12 +396,49 @@ function loadImgFromPath(path) {
   ipcRenderer.send('open-pic-file', path);
 }
 
+// 常量：最大允许的宽高
+const MAX_DIMENSION = 4096;
 async function reloadImageObj(src) {
   await new Promise((resolve, reject) => {
-    imageObj.value = new Image();
-    imageObj.value.onload = () => resolve(imageObj.value);
-    imageObj.value.onerror = reject;
-    imageObj.value.src = src;
+    // 1) 先加载原图到临时 image
+    const originalImg = new Image();
+    originalImg.onload = () => {
+      const { width, height } = originalImg;
+      initImageScale = 1;
+      // 2) 如果原图都在4096以内，直接使用
+      if (width <= MAX_DIMENSION && height <= MAX_DIMENSION) {
+        imageObj.value = originalImg;
+        return resolve(imageObj.value);
+      }
+
+      // 3) 否则需要缩放
+      //    计算缩放比例：让宽或高中最大的那个恰好等于4096
+      // TODO 需要记住这个scale，后续所有读入的坐标计算都要额外乘上这个scale。（保存到json时除以scale）
+      initImageScale = MAX_DIMENSION / Math.max(width, height);
+      const newWidth = Math.floor(width * initImageScale);
+      const newHeight = Math.floor(height * initImageScale);
+
+      // 4) 在临时Canvas里绘制并缩放
+      const canvas = document.createElement('canvas');
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(originalImg, 0, 0, newWidth, newHeight);
+
+      // 5) 将canvas内容转成base64或blob给新的Image
+      const resizedDataUrl = canvas.toDataURL('image/png');
+
+      // 6) 用这份缩放后的数据来填充最终的 imageObj
+      imageObj.value = new Image();
+      imageObj.value.onload = () => {
+        resolve(imageObj.value);
+      };
+      imageObj.value.onerror = reject;
+
+      imageObj.value.src = resizedDataUrl;
+    };
+    originalImg.onerror = reject;
+    originalImg.src = src;
   });
 }
 

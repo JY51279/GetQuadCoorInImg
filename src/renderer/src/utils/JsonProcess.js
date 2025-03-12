@@ -146,7 +146,7 @@ let quadDots = [];
 let quadIndex = -1;
 export function setQuadInfo(realDots) {
   quadDots = realDots.slice();
-  if (quadDots.length === 4) setQuadDots2ClockWise(quadDots, jsonPerPicArray[quadIndex]['Barcode Type'] ?? '');
+  if (quadDots.length === 4) setQuadDots2ClockWise(quadDots, jsonPerPicArray[quadIndex]?.['Barcode Type'] ?? '');
 }
 
 export function updateQuadIndex(newIndex) {
@@ -154,7 +154,13 @@ export function updateQuadIndex(newIndex) {
 }
 
 const separator = ' ';
-function TransQuadDots2Str(realDots) {
+function TransQuadDots2Str(realDots, initImageScale) {
+  // 根据initImageScale缩放坐标
+  realDots.forEach(dot => {
+    dot.x = Math.round(dot.x / initImageScale);
+    dot.y = Math.round(dot.y / initImageScale);
+  });
+
   // 判断是否为一个元素，并仅修改与当前点最近的点
   if (realDots.length === 1) {
     let p1 = realDots[0];
@@ -216,17 +222,17 @@ function TransQuadDots2Str(realDots) {
   return targetStr;
 }
 
-export function updateJson(action = KEYS.JSON_MODIFY) {
+export function updateJson(action = KEYS.JSON_MODIFY, initImageScale) {
   let result;
   switch (action) {
     case KEYS.JSON_MODIFY:
-      result = modifyJsonContent();
+      result = modifyJsonContent(initImageScale);
       break;
     case KEYS.JSON_DELETE:
       result = deleteJsonContent();
       break;
     case KEYS.JSON_ADD:
-      result = addJsonContent();
+      result = addJsonContent(initImageScale);
       break;
     default:
       console.log('Unknown action');
@@ -235,9 +241,9 @@ export function updateJson(action = KEYS.JSON_MODIFY) {
   return result;
 }
 
-function modifyJsonContent() {
+function modifyJsonContent(initImageScale) {
   return operateJsonContent(() => {
-    let quadStr = TransQuadDots2Str(quadDots);
+    let quadStr = TransQuadDots2Str(quadDots, initImageScale);
     if (quadStr === '') {
       return 'Failed to trans dots to string.';
     }
@@ -259,9 +265,9 @@ function deleteJsonContent() {
   }, 'Failed to delete jsonItem.');
 }
 
-function addJsonContent() {
+function addJsonContent(initImageScale) {
   return operateJsonContent(() => {
-    let quadStr = TransQuadDots2Str(quadDots);
+    let quadStr = TransQuadDots2Str(quadDots, initImageScale);
     if (quadStr === '') {
       return 'Failed to trans dots to string.';
     }

@@ -324,8 +324,14 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
 }
 
 let quadsArray = [];
-function resetQuadsArray(newQuadArray) {
+function resetQuadsArray(newQuadArray, initImageScale) {
   quadsArray = newQuadArray;
+  quadsArray.forEach(quad => {
+    quad.forEach(dot => {
+      dot.x = Math.round(dot.x * initImageScale);
+      dot.y = Math.round(dot.y * initImageScale);
+    });
+  });
   clearShowQuadIndex();
   drawCanvasForShowQuads();
 }
