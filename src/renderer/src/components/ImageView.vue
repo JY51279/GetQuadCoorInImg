@@ -332,15 +332,15 @@ function resetQuadsArray(newQuadArray, initImageScale) {
       dot.y = Math.round(dot.y * initImageScale);
     });
   });
-  clearShowQuadIndex();
-  drawCanvasForShowQuads();
 }
 
 const highlightQuadIndex = ref(-1);
 // eslint-disable-next-line no-unused-vars
-watch(highlightQuadIndex, newHighlightQuadIndex => {
-  moveHighlightToEnd();
-  drawCanvasForShowQuads();
+watch(highlightQuadIndex, (newHighlightQuadIndex, oldHighlightQuadIndex) => {
+  if (oldHighlightQuadIndex === newHighlightQuadIndex) return;
+  if (moveHighlightToEnd()) return; // drawCanvas when showIndexArray changed
+  console.log(2, 'drawCanvasForShowQuads');
+  drawCanvasForShowQuads(); // highlightQuadIndex is not in the showIndex
 });
 
 function resetHighlightQuadIndex(newIndex) {
@@ -349,7 +349,8 @@ function resetHighlightQuadIndex(newIndex) {
 
 let showQuadIndex = reactive([]);
 // eslint-disable-next-line no-unused-vars
-watch(showQuadIndex, newShowQuadIndex => {
+watch(showQuadIndex, () => {
+  console.log(3, 'drawCanvasForShowQuads');
   drawCanvasForShowQuads();
 });
 
@@ -385,7 +386,9 @@ function moveHighlightToEnd() {
   if (index !== -1) {
     showQuadIndex.splice(index, 1);
     showQuadIndex.push(highlightQuadIndex.value);
+    return true; // highlight outerQuad is in showQuadIndex
   }
+  return false; // highlight outerQuad is not in showQuadIndex
 }
 function clearShowQuadIndex() {
   showQuadIndex.splice(0, showQuadIndex.length);
@@ -397,7 +400,6 @@ function drawCanvasForShowQuads() {
     console.log('Failed to draw canvas for show quads');
     return;
   }
-
   outerQuadArray.splice(0, outerQuadArray.length);
   indices2Show.value = '';
   ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
@@ -435,10 +437,10 @@ function drawQuad(quadPoints, isHighlight = false) {
     fillColor = '#0000FF'; // blue
     strokeColor = '#FF0000'; // red
   }
-
   ctxQuad.value.save();
   ctxQuad.value.strokeStyle = strokeColor;
   ctxQuad.value.lineWidth = 1;
+  console.log('@@@@', quadPoints);
   drawPath(ctxQuad.value, quadPoints);
   ctxQuad.value.stroke();
 
@@ -459,6 +461,7 @@ function clearQuad(quadPoints) {
 
   ctxQuad.value.strokeStyle = '#FFFFFF'; //white
   ctxQuad.value.lineWidth = 1;
+  console.log('####', quadPoints);
   drawPath(ctxQuad.value, quadPoints);
   ctxQuad.value.stroke();
 
@@ -481,7 +484,6 @@ function getQuads2Draw(quadRealPoints) {
     { x: 0, y: 0 },
     { x: 0, y: 0 },
   ];
-
   for (let i = 0; i < 4; ++i) {
     transReal2CanvasInfo(quadPointsLTInCanvas[i], quadRealPoints[i]);
   }
@@ -493,6 +495,7 @@ function updateViewPortDraw() {
   if (imageSrc === '') return;
   drawCanvas();
   updateDotsCanvasCoord();
+  console.log(4, 'drawCanvasForShowQuads');
   drawCanvasForShowQuads();
 }
 
@@ -526,7 +529,6 @@ const mouseLeft = () => {
 };
 
 function updateOffsetMoved(oldX, oldY, newX, newY) {
-  //console.log(`Mouse moved from (${oldX}, ${oldY}) to (${newX}, ${newY})`);
   const deltaX = newX - oldX;
   const deltaY = newY - oldY;
   if (deltaX === 0 && deltaY === 0) return;
@@ -555,7 +557,7 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
 
 const indices2Show = ref('');
 function getMouseInRectIndices() {
-  if (mouseIsOverContainer.value !== true) return;
+  if (mouseIsOverContainer.value !== true || outerQuadArray.length === 0) return;
   indices2Show.value = '';
   const separator = ' ';
   let i = 0;
@@ -594,12 +596,15 @@ function toggleMode() {
   } else {
     outputMessage('Quit Overview Mode');
   }
+  console.log(5, 'drawCanvasForShowQuads');
   drawCanvasForShowQuads();
 }
 // Scale
 function updateOffsetScaled(oldScale, newScale) {
-  // if (oldScale < 1 || newScale < 1) return;
+  // Scale source is "InitImgInfo"
+  if (oldScale === 0) return;
 
+  // Scale source is "OnWheel"
   // Judge: Mouse in rendered area
   let canvasCoord = cloneDeep(mouseCoord);
   let realCoord = { x: 0, y: 0 };
@@ -632,7 +637,6 @@ function updateOffsetScaled(oldScale, newScale) {
 }
 
 watch(scale, (newScale, oldScale) => {
-  //console.log('scale:', newScale);
   if (newScale === 0) return;
   else updateOffsetScaled(oldScale, newScale);
   updateViewPortDraw();
@@ -741,39 +745,41 @@ const ctxQuad = ref(null);
 //const imageObj = ref(null);
 let imageSrc = '';
 async function initImgInfo() {
-  //console.log(props.imageObj);
   scale.value = 0;
   offsetX.value = 0;
   offsetY.value = 0;
   clearDots();
-  imageSrc = props.imageObj.src;
-  let img = new Image();
-  await new Promise((resolve, reject) => {
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = imageSrc;
-  });
-  console.log(isDisabledMouse.value);
-  initImgWidth.value = img.width;
-  initImgHeight.value = img.height;
-  updateImgData();
-  // Update ctx
-  if (ctx.value !== null && ctx.value !== null) {
-    ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
-  }
-  if (ctxQuad.value !== null && ctxQuad.value !== null) {
-    ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
-  }
-  ctx.value = canvas.value.getContext('2d');
-  ctxQuad.value = canvasForShowQuads.value.getContext('2d');
-  // 计算初始缩放比例
-  const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
-  scale.value = scaleValue; //scale.value修改，自动调用watch scale
+  try {
+    imageSrc = props.imageObj.src;
+    let img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = imageSrc;
+    });
 
-  console.log('scale:', scale.value);
-  console.log('img.width:', img.width);
-  console.log('img.height:', img.height);
-  await nextTick();
+    initImgWidth.value = img.width;
+    initImgHeight.value = img.height;
+    updateImgData();
+    // Update ctx
+    if (ctx.value !== null && ctx.value !== null) {
+      ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
+    }
+    if (ctxQuad.value !== null && ctxQuad.value !== null) {
+      ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
+    }
+    ctx.value = canvas.value.getContext('2d');
+    ctxQuad.value = canvasForShowQuads.value.getContext('2d');
+    // 计算初始缩放比例
+    const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
+    scale.value = scaleValue; //scale.value修改，自动调用watch scale
+    console.log('scale:', scale.value);
+    console.log('img.width:', img.width);
+    console.log('img.height:', img.height);
+    await nextTick();
+  } catch (error) {
+    console.error('Error in event handler:', error);
+  }
 }
 const scaleRange = 60;
 const onWheel = event => {
@@ -849,6 +855,10 @@ function updateDotsCanvasCoord() {
 }
 
 function transScaled2RealInfo(targetCoord, scaledCoord) {
+  if (scale.value === 0) {
+    outputMessage('Failed transScaled2RealInfo: scale==0.');
+    return;
+  }
   targetCoord.x = Math.floor(scaledCoord.x / scale.value);
   targetCoord.y = Math.floor(scaledCoord.y / scale.value);
 }

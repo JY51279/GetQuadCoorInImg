@@ -92,10 +92,6 @@ watch(quadInfo, newQuadInfo => {
 });
 
 const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
-// eslint-disable-next-line no-unused-vars
-watch(picInfo, newPicInfo => {
-  initShowQuads();
-});
 const mouseCoord = { x: 0, y: 0 };
 const output = ref(null);
 onMounted(() => {
@@ -370,6 +366,7 @@ function initShowQuads() {
   imgContainerRef.value.resetQuadsArray(newShowQuadArray, initImageScale);
   clearShowQuads();
   addAll2ShowQuads();
+  updateJsonHighlightIndex(-1);
 }
 // Get files
 
@@ -391,9 +388,9 @@ function changeImageByArrowKeys(direction) {
 }
 
 function loadImgFromPath(path) {
-  //console.log(path);
   imageSrcTmp = '';
   ipcRenderer.send('open-pic-file', path);
+  outputMessage('Get file response...');
 }
 
 // 常量：最大允许的宽高
@@ -405,15 +402,14 @@ async function reloadImageObj(src) {
     originalImg.onload = () => {
       const { width, height } = originalImg;
       initImageScale = 1;
-      // 2) 如果原图都在4096以内，直接使用
+      // 2) 如果原图都在MAX_DIMENSION以内，直接使用
       if (width <= MAX_DIMENSION && height <= MAX_DIMENSION) {
         imageObj.value = originalImg;
         return resolve(imageObj.value);
       }
 
       // 3) 否则需要缩放
-      //    计算缩放比例：让宽或高中最大的那个恰好等于4096
-      // TODO 需要记住这个scale，后续所有读入的坐标计算都要额外乘上这个scale。（保存到json时除以scale）
+      //    计算缩放比例：让宽或高中最大的那个恰好等于MAX_DIMENSION
       initImageScale = MAX_DIMENSION / Math.max(width, height);
       const newWidth = Math.floor(width * initImageScale);
       const newHeight = Math.floor(height * initImageScale);
@@ -446,7 +442,6 @@ let imgFileName = ref(null);
 ipcRenderer.on('open-pic-file-response', async (e, response) => {
   imgContainerRef.value.resetIsImgFileLoading(true);
   imgContainerRef.value.changeMouseState(true);
-  console.log('open-pic-file-response: ', response);
   if (response.success) {
     imageSrcTmp += response.picInfo.str;
     if (response.picInfo.fileName === '') return;

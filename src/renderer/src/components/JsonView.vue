@@ -42,7 +42,8 @@ let lineHeight = 0;
 const jsonView = ref(null);
 
 const highlightedIndex = ref(-1);
-watch(highlightedIndex, newIndex => {
+watch(highlightedIndex, (newIndex, oldIndex) => {
+  if (oldIndex === newIndex) return;
   if (newIndex > -1 && newIndex < jsonPerPicArray.length) {
     ensureHighlightVisible();
     emits('update-quad-info', newIndex + 1);
@@ -128,6 +129,7 @@ function updateJsonPerPicArray() {
   jsonPerPicArray = jsonArrayTmp;
   emits('update-quad-info', -1, jsonPerPicArray.length);
   emits('init-show-quads');
+  updateHighlightInfo();
 }
 
 const hasPicJsonFailedFetched = ref(false);
@@ -136,7 +138,6 @@ function initJsonInfo(imgFilePath, direction = '') {
   else hasPicJsonFailedFetched.value = false;
 
   updateJsonPerPicArray();
-  updateHighlightInfo();
 }
 </script>
 
