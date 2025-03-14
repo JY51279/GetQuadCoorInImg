@@ -440,7 +440,7 @@ function drawQuad(quadPoints, isHighlight = false) {
   ctxQuad.value.save();
   ctxQuad.value.strokeStyle = strokeColor;
   ctxQuad.value.lineWidth = 1;
-  console.log('@@@@', quadPoints);
+  // console.log('@@@@', quadPoints);
   drawPath(ctxQuad.value, quadPoints);
   ctxQuad.value.stroke();
 
@@ -461,7 +461,7 @@ function clearQuad(quadPoints) {
 
   ctxQuad.value.strokeStyle = '#FFFFFF'; //white
   ctxQuad.value.lineWidth = 1;
-  console.log('####', quadPoints);
+  // console.log('####', quadPoints);
   drawPath(ctxQuad.value, quadPoints);
   ctxQuad.value.stroke();
 
