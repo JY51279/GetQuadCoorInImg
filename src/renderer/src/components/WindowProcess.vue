@@ -528,6 +528,9 @@ function drawZoomAndDots() {
     for (let i = 0; i < dotsRealCoord.length; ++i) {
       drawDotInZoom(dotsRealCoord[i]);
     }
+
+    // always highlight center pixel (4th row, 4th col = index 3,3)
+    drawMouseQuadInZoom();
   } catch (err) {
     console.log(imageObj.value);
     console.error('An error occurred:', err);
@@ -551,6 +554,28 @@ function initZoomSettings() {
   zoomCtx.webkitImageSmoothingEnabled = false;
   zoomCtx.msImageSmoothingEnabled = false;
   zoomCtx.fillStyle = 'rgb(255,0,0)'; // 设置颜色
+}
+
+// 边界情况很少却要增加很多逻辑，以后有空再改，当前仅考虑4th row, 4th col
+function drawMouseQuadInZoom() {
+  const zoomCtx = zoomView.value.getContext('2d');
+  const px = 60, // 3 * 20,
+    py = 60, // 3 * 20,
+    size = 20;
+
+  zoomCtx.lineWidth = 2;
+  // 外黑框
+  zoomCtx.strokeStyle = 'blue';
+  zoomCtx.strokeRect(px, py, size, size);
+
+  // 内白十字
+  zoomCtx.strokeStyle = 'red';
+  zoomCtx.beginPath();
+  zoomCtx.moveTo(px + 5, py + 10);
+  zoomCtx.lineTo(px + 15, py + 10);
+  zoomCtx.moveTo(px + 10, py + 5);
+  zoomCtx.lineTo(px + 10, py + 15);
+  zoomCtx.stroke();
 }
 
 // Show quad
