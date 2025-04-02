@@ -394,7 +394,7 @@ function loadImgFromPath(path) {
 }
 
 // 常量：最大允许的宽高
-const MAX_DIMENSION = 4096;
+const MAX_DIMENSION = 3072;
 async function reloadImageObj(src) {
   await new Promise((resolve, reject) => {
     // 1) 先加载原图到临时 image
