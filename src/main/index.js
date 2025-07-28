@@ -112,7 +112,7 @@ function sendBase64InChunks(event, buffer, filePath) {
 
 function openPicFile(event, filePath) {
   // 获取文件类型
-  const extname = path.extname(filePath).slice(1);
+  const extname = path.extname(filePath).slice(1).toLowerCase();
   if (!imageExtensions.includes(extname)) {
     event.reply('open-pic-file-response', { success: false, error: 'Unsupported image format' });
     return;

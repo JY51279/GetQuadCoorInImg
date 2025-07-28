@@ -1,7 +1,7 @@
 {
   "name": "QuadTool",
   "version": "1.0.0",
-  "description": "An Electron application with Vue",
+  "description": "An Electron application with Vue, build by npm run build:win",
   "main": "./out/main/index.js",
   "author": "Camilla Xu <camila@dynamsoft.com>",
   "homepage": "https://electron-vite.org",
