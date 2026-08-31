@@ -1,5 +1,11 @@
 <template>
   <div class="container">
+    <TransitionGroup name="toast" tag="div" class="toast-container">
+      <div v-for="notification in notifications" :key="notification.id" class="toast-message">
+        {{ notification.message }}
+      </div>
+    </TransitionGroup>
+
     <imageItem
       ref="imgContainerRef"
       :image-obj="imageObj"
@@ -20,6 +26,30 @@
           <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
           <div class="fileInfo-style">图片: {{ imgFileName }}</div>
           <div class="fileInfo-style">图片次序: <br />{{ picInfo.picNum }} / {{ picInfo.picTotalNum }}</div>
+          <div class="fileInfo-style">
+            跳转到图片:
+            <div class="image-index-jump">
+              <input
+                v-model="jumpImageIndex"
+                class="image-index-input"
+                type="number"
+                min="1"
+                step="1"
+                :max="picInfo.picTotalNum || undefined"
+                :placeholder="picInfo.picTotalNum ? `1-${picInfo.picTotalNum}` : '无数据'"
+                :disabled="picInfo.picTotalNum === 0 || isImageRequestInProgress"
+                aria-label="图片 index"
+                @keydown.enter.prevent="jumpToImageIndex"
+              />
+              <button
+                class="image-index-button"
+                :disabled="picInfo.picTotalNum === 0 || isImageRequestInProgress"
+                @click="jumpToImageIndex"
+              >
+                跳转
+              </button>
+            </div>
+          </div>
           <div class="fileInfo-style">矩形次序: <br />{{ quadInfo.quadNum }} / {{ quadInfo.quadTotal }}</div>
         </div>
         <div class="dotsArea-style">
@@ -28,11 +58,6 @@
             <!-- <button class="button-delete-style" @click="clearOneDot(index)">x</button>-->
           </div>
         </div>
-      </div>
-
-      <!-- 输出区域 -->
-      <div ref="output" class="outputText-style">
-        <div v-for="(message, index) in outputMessages" :key="index">{{ message }}</div>
       </div>
 
       <div style="display: flex; justify-content: flex-end">
@@ -57,7 +82,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue';
 import jsonItems from './JsonView.vue';
 import imageItem from './ImageView.vue';
 import Help from './Help.vue';
@@ -90,8 +115,8 @@ watch(quadInfo, newQuadInfo => {
 });
 
 const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
+const jumpImageIndex = ref('');
 const mouseCoord = { x: 0, y: 0 };
-const output = ref(null);
 onMounted(() => {
   console.log('onMounted...');
   initZoomSettings();
@@ -101,9 +126,6 @@ onMounted(() => {
   });
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('keyup', handleKeyUp);
-
-  const outputDiv = output.value;
-  outputDiv.scrollTop = outputDiv.scrollHeight;
 });
 
 onUnmounted(() => {
@@ -114,6 +136,7 @@ onUnmounted(() => {
   });
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('keyup', handleKeyUp);
+  clearMessage();
 });
 
 // 监听键盘事件
@@ -167,6 +190,9 @@ const keyActions = {
 };
 
 function handleKeyDown(e) {
+  const tagName = e.target?.tagName;
+  if (e.target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(tagName)) return;
+
   const keyCode = e.keyCode || e.code;
 
   if (!isLogging && keyCode >= 48 && keyCode <= 57) {
@@ -195,21 +221,29 @@ function handleKeyUp() {
   isLogging = false; // 在键盘释放时重置标志为 false，以便下次可以再次执行日志记录操作
 }
 
-// 输出信息到输出区域
-const MAX_MESSAGES = 50;
-const outputMessages = ref([]);
-async function outputMessage(message) {
-  outputMessages.value.push(message);
+const NOTIFICATION_DURATION = 3000;
+const MAX_VISIBLE_NOTIFICATIONS = 4;
+const notifications = ref([]);
+const notificationTimers = new Map();
+let notificationId = 0;
 
-  // 仅保留最新的MAX_MESSAGES条
-  if (outputMessages.value.length > MAX_MESSAGES) {
-    outputMessages.value.splice(0, 1);
+function removeNotification(id) {
+  notifications.value = notifications.value.filter(notification => notification.id !== id);
+  const timer = notificationTimers.get(id);
+  if (timer) clearTimeout(timer);
+  notificationTimers.delete(id);
+}
+
+function outputMessage(message) {
+  const notification = { id: ++notificationId, message: String(message) };
+  notifications.value.push(notification);
+
+  if (notifications.value.length > MAX_VISIBLE_NOTIFICATIONS) {
+    removeNotification(notifications.value[0].id);
   }
 
-  // 滚动到最底部
-  await nextTick();
-  const outputDiv = output.value;
-  outputDiv.scrollTop = outputDiv.scrollHeight;
+  const timer = setTimeout(() => removeNotification(notification.id), NOTIFICATION_DURATION);
+  notificationTimers.set(notification.id, timer);
 }
 
 // Click button
@@ -312,7 +346,9 @@ async function saveJsonFileInfo(jsonFileInfo) {
 }
 
 function clearMessage() {
-  outputMessages.value = [];
+  for (const timer of notificationTimers.values()) clearTimeout(timer);
+  notificationTimers.clear();
+  notifications.value = [];
 }
 
 // Init Img
@@ -333,6 +369,8 @@ async function initProcessInfo(jsonImageIndex = null) {
     }
 
     if (!jsonView.value.initJsonInfo(imgFilePath, jsonImageIndex)) {
+      picInfo.picNum = 0;
+      jumpImageIndex.value = '';
       canOperate.value = false;
       imgContainerRef.value.resetIsImgFileLoading(false);
       return false;
@@ -341,6 +379,7 @@ async function initProcessInfo(jsonImageIndex = null) {
     const { picNum, picTotalNum } = getJsonPicNum();
     picInfo.picNum = picNum;
     picInfo.picTotalNum = picTotalNum;
+    jumpImageIndex.value = picNum;
     canOperate.value = true;
     imgContainerRef.value.resetIsImgFileLoading(false);
     return true;
@@ -393,6 +432,32 @@ function changeImageByArrowKeys(direction) {
     return;
   }
   startDatasetImageRequest(target, direction);
+}
+
+function jumpToImageIndex() {
+  if (isImageRequestInProgress.value) {
+    outputMessage('Please wait for the current image to finish loading.');
+    return;
+  }
+
+  const inputValue = String(jumpImageIndex.value).trim();
+  if (!/^\d+$/.test(inputValue)) {
+    outputMessage('Image index must be an integer starting from 1.');
+    return;
+  }
+
+  const pictureNumber = Number(inputValue);
+  if (!Number.isSafeInteger(pictureNumber) || pictureNumber < 1 || pictureNumber > picInfo.picTotalNum) {
+    outputMessage(`Image index must be between 1 and ${picInfo.picTotalNum}.`);
+    return;
+  }
+
+  const target = getJsonImageTarget(pictureNumber - 1);
+  if (!target.success) {
+    outputMessage(target.error);
+    return;
+  }
+  startDatasetImageRequest(target, '');
 }
 
 function sendImageFileRequest(path) {
@@ -462,6 +527,7 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
   const canRestorePreviousImage = failedRequest?.previousCanOperate === true;
   if (canRestorePreviousImage) {
     canOperate.value = true;
+    jumpImageIndex.value = picInfo.picNum || '';
     imageLoadErrorPath.value = '';
     imgContainerRef.value.changeMouseState(false);
   } else {
@@ -469,6 +535,7 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
     imgFileName.value = '';
     imgFilePath = '';
     picInfo.picNum = 0;
+    jumpImageIndex.value = '';
     imageLoadErrorPath.value = failedPath;
     imgContainerRef.value.clearDots();
   }
@@ -560,6 +627,7 @@ function resetImageForDatasetChange(picTotalNum = 0) {
   isImageRequestInProgress.value = false;
   picInfo.picNum = 0;
   picInfo.picTotalNum = picTotalNum;
+  jumpImageIndex.value = '';
   clearDots();
   imgContainerRef.value.clearImage();
   imgContainerRef.value.changeMouseState(true);
@@ -791,6 +859,26 @@ function updateJsonHighlightIndex(newIndex) {
   line-height: 1.5; /* 行高为 1.5 */
   word-wrap: break-word;
 }
+.image-index-jump {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.image-index-input {
+  min-width: 0;
+  width: 68px;
+  box-sizing: border-box;
+}
+.image-index-button {
+  flex: 1;
+  padding: 2px 4px;
+  border: 1px solid #888;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.image-index-button:disabled {
+  cursor: default;
+}
 .dotsArea-style {
   height: 100px;
   margin-top: 10px;
@@ -815,13 +903,39 @@ function updateJsonHighlightIndex(newIndex) {
 .button-delete-style:hover {
   background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
 }
-.outputText-style {
-  height: 200px;
-  font-size: 12px;
-  margin-top: auto;
-  margin-bottom: 10px;
-  word-wrap: break-word;
-  overflow-y: scroll;
+.toast-container {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 10000;
+  display: flex;
+  width: min(720px, calc(100vw - 32px));
+  flex-direction: column;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.toast-message {
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background-color: rgba(35, 35, 35, 0.92);
+  color: white;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+}
+.toast-enter-active,
+.toast-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 .button-style {
   border-radius: 12px;
