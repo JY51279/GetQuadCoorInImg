@@ -58,7 +58,6 @@ export function commitPreparedJsonProcess(preparedJson) {
   quadIndex = -1;
   quadDots = [];
   jsonPerPicArray = [];
-  jsonPerPicPerObjKeysNum = 0;
   return true;
 }
 
@@ -67,7 +66,6 @@ export function getJsonImagePath() {
 }
 
 let jsonPerPicArray = [];
-let jsonPerPicPerObjKeysNum = 0;
 export function resetPicJson(imgFilePath, direction = '') {
   resetImgIndex(imgFilePath, direction);
 
@@ -82,7 +80,6 @@ export function resetPicJson(imgFilePath, direction = '') {
       return false;
     }
     jsonPerPicArray = json[rootKey][imgIndex][classKeys.targetKey];
-    if (jsonPerPicArray.length > 0) jsonPerPicPerObjKeysNum = Object.keys(jsonPerPicArray[0]).length;
     return true;
   } catch (err) {
     console.error('An error occurred while accessing the JSON array:', err);
@@ -129,10 +126,6 @@ export function getJsonPerPicStrArray() {
   for (let i = 0; i < jsonPerPicArray.length; i++) jsonPerPicStrArray.push(transJson2Str(jsonPerPicArray[i]));
   return jsonPerPicStrArray;
 }
-export function getJsonPerPicPerObjKeysNum() {
-  return jsonPerPicPerObjKeysNum;
-}
-
 let jsonFileInfo = { str: '', path: '' };
 export function getJsonFileInfo() {
   jsonFileInfo.str = transJson2Str(json);
