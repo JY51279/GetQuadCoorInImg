@@ -10,9 +10,7 @@
       <span>{{ jsonItem }}</span>
     </div></pre>
     <div v-if="hasPicJsonFailedFetched" class="loading-overlay">
-      Failed to get image data.<br />
-      Please check the input files and ensure the selected product type is correct.<br />
-      Then, try again.
+      <div class="json-error-content">{{ picJsonErrorMessage }}</div>
     </div>
   </div>
 </template>
@@ -133,11 +131,27 @@ function updateJsonPerPicArray() {
 }
 
 const hasPicJsonFailedFetched = ref(false);
+const picJsonErrorMessage = ref('');
 function initJsonInfo(imgFilePath, direction = '') {
-  if (!resetPicJson(imgFilePath, direction)) hasPicJsonFailedFetched.value = true;
-  else hasPicJsonFailedFetched.value = false;
+  if (!resetPicJson(imgFilePath, direction)) {
+    formattedJsonStrArray.value = [];
+    jsonPerPicArray = [];
+    jsonPerObjLineNum = -1;
+    highlightedIndex.value = -1;
+    hasPicJsonFailedFetched.value = true;
+    picJsonErrorMessage.value = imgFilePath
+      ? `No JSON data found for image path:\n${imgFilePath}`
+      : 'No JSON data found for the current image.';
+    emits('update-quad-info', -1, 0);
+    emits('init-show-quads');
+    return false;
+  }
+
+  hasPicJsonFailedFetched.value = false;
+  picJsonErrorMessage.value = '';
 
   updateJsonPerPicArray();
+  return true;
 }
 </script>
 
@@ -173,5 +187,16 @@ function initJsonInfo(imgFilePath, direction = '') {
   display: flex;
   justify-content: center;
   align-items: center;
+  box-sizing: border-box;
+  padding: 24px;
+  text-align: center;
+}
+
+.json-error-content {
+  max-width: 100%;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 </style>

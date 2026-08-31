@@ -114,13 +114,17 @@ function openPicFile(event, filePath) {
   // 获取文件类型
   const extname = path.extname(filePath).slice(1).toLowerCase();
   if (!imageExtensions.includes(extname)) {
-    event.reply('open-pic-file-response', { success: false, error: 'Unsupported image format' });
+    event.reply('open-pic-file-response', {
+      success: false,
+      error: 'Unsupported image format',
+      path: filePath,
+    });
     return;
   }
   if (extname === 'tiff' || extname === 'tif') {
     fs.readFile(filePath, async (err, data) => {
       if (err) {
-        event.reply('open-pic-file-response', { success: false, error: err.message });
+        event.reply('open-pic-file-response', { success: false, error: err.message, path: filePath });
         return;
       }
       try {
@@ -169,7 +173,11 @@ function openPicFile(event, filePath) {
           const pngBuffer = await sharp(data).png().toBuffer();
           sendBase64InChunks(event, pngBuffer, filePath);
         } catch (sharpError) {
-          event.reply('open-pic-file-response', { success: false, error: sharpError.message });
+          event.reply('open-pic-file-response', {
+            success: false,
+            error: sharpError.message,
+            path: filePath,
+          });
         }
       }
     });
@@ -201,12 +209,12 @@ function openPicFile(event, filePath) {
       event.reply('open-pic-file-response', { success: true, picInfo });
     } catch (error) {
       // 发生异常时，向渲染进程回复错误信息
-      event.reply('open-pic-file-response', { success: false, error: error.message });
+      event.reply('open-pic-file-response', { success: false, error: error.message, path: filePath });
     }
   });
   stream.on('error', err => {
     // 发生错误时，向渲染进程回复错误信息
-    event.reply('open-pic-file-response', { success: false, error: err.message });
+    event.reply('open-pic-file-response', { success: false, error: err.message, path: filePath });
   });
 }
 // This method will be called when Electron has finished

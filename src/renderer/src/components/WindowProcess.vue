@@ -3,6 +3,8 @@
     <imageItem
       ref="imgContainerRef"
       :image-obj="imageObj"
+      :can-edit="canOperate"
+      :image-load-error-path="imageLoadErrorPath"
       @update-zoom-view="updateZoomView"
       @output-message="outputMessage"
       @update-dots-real-coord="updateDotsRealCoord"
@@ -43,9 +45,9 @@
       <div class="button-group">
         <button class="button-style" @click="chooseJsonFile">Get JsonFile</button>
         <button class="button-style" @click="chooseImgFile">Get PicFile</button>
-        <button class="button-style" @click="modifyJsonItem">Mod JsonItem</button>
-        <button class="button-style" @click="deleteJsonItem">Del JsonItem</button>
-        <button class="button-style" @click="addJsonItem">Add JsonItem</button>
+        <button class="button-style" :disabled="!canOperate" @click="modifyJsonItem">Mod JsonItem</button>
+        <button class="button-style" :disabled="!canOperate" @click="deleteJsonItem">Del JsonItem</button>
+        <button class="button-style" :disabled="!canOperate" @click="addJsonItem">Add JsonItem</button>
         <!--TODO 目前的布局放不下了才暂时注释了三个不咋重要的！！！
           <button class="button-style" @click="clearDots">Clear Dots</button>
         <button class="button-style" @click="clearMessage">Clear Msgs</button>
@@ -73,7 +75,6 @@ import {
   getJsonPerPicPointsArray,
   getDefaultProductType,
   resetJsonNoValue,
-  getJsonImagePath,
 } from '../utils/JsonProcess.js';
 import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
 
@@ -255,6 +256,10 @@ function clearDots() {
 
 // JSON Operations
 function performJsonAction(action) {
+  if (!canOperate.value) {
+    outputMessage('JSON operation is disabled until the image matches the dataset.');
+    return;
+  }
   outputMessage('Start operate: ' + action);
   let updateJsonRes = updateJson(action, initImageScale);
   if (updateJsonRes !== KEYS.OPERATE_SUCCESS) {
@@ -329,31 +334,36 @@ function clearMessage() {
 
 // Init Img
 const imageObj = ref(new Image());
+const canOperate = ref(false);
+const imageLoadErrorPath = ref('');
 let imgFilePath = '';
 async function initProcessInfo(direction = '') {
   try {
-    if (imageObj.value === null || imageObj.value.src === KEYS.IMAGE_NULL_SRC) {
+    if (!imageObj.value || imageObj.value.src === '') {
       outputMessage('initProcessInfo Error.');
+      canOperate.value = false;
+      imgContainerRef.value.resetIsImgFileLoading(false);
+      return false;
     } else {
       await imgContainerRef.value.initImgInfo();
       imgContainerRef.value.changeMouseState(false);
     }
-    imgContainerRef.value.resetIsImgFileLoading(false);
-    jsonView.value.initJsonInfo(imgFilePath, direction);
 
-    // 当读入新的Json时, imgFilePath !== getJsonImagePath, 重新载入新Json对应的图片
-    if (imgFilePath !== getJsonImagePath()) {
-      imgFilePath = getJsonImagePath();
-      openImgFileDirection = '';
-      loadImgFromPath(imgFilePath);
-      return;
+    if (!jsonView.value.initJsonInfo(imgFilePath, direction)) {
+      canOperate.value = false;
+      imgContainerRef.value.resetIsImgFileLoading(false);
+      return false;
     }
 
     const { picNum, picTotalNum } = getJsonPicNum();
     picInfo.picNum = picNum;
     picInfo.picTotalNum = picTotalNum;
     openImgFileDirection = '';
+    canOperate.value = true;
+    imgContainerRef.value.resetIsImgFileLoading(false);
+    return true;
   } catch (error) {
+    canOperate.value = false;
     console.error(`Error name: ${error.name}`);
     console.error(`Error message: ${error.message}`);
     console.error(`Stack trace: ${error.stack}`);
@@ -450,13 +460,19 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
 
     imgFileName.value = response.picInfo.fileName;
     imgFilePath = response.picInfo.path.replace(/\\/g, '/');
-    await initProcessInfo(openImgFileDirection);
-    outputMessage('Load Pic Successfully.');
+    imageLoadErrorPath.value = '';
+    const isReady = await initProcessInfo(openImgFileDirection);
+    outputMessage(isReady ? 'Load Pic Successfully.' : 'Image loaded, but no matching JSON data was found.');
   } else {
+    const failedPath = (response.path || '').replace(/[\\/]/g, '/');
     imageObj.value = null;
     imgFileName.value = '';
     imgFilePath = '';
-    await initProcessInfo(openImgFileDirection);
+    canOperate.value = false;
+    imageLoadErrorPath.value = failedPath;
+    imgContainerRef.value.clearDots();
+    imgContainerRef.value.resetIsImgFileLoading(false);
+    openImgFileDirection = '';
     const errorMessage = response.error;
     outputMessage('Failed to open pic: ');
     outputMessage(errorMessage);
@@ -481,6 +497,7 @@ ipcRenderer.on('choose-json-file-response', async (e, response) => {
       jsonData.path = jsonData.path.replace(/[\\/]/g, '/');
       const defaultClass = getDefaultProductType(jsonData.path);
       await updateClass(defaultClass);
+      canOperate.value = false;
       resetJsonProcess(jsonData, selectedOption.value[0]);
       if (imgFilePath !== '') await initProcessInfo();
       else changeImageByArrowKeys(KEYS.NEXT);

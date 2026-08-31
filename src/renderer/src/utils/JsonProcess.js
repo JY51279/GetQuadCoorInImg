@@ -64,10 +64,7 @@ export function resetPicJson(imgFilePath, direction = '') {
   resetImgIndex(imgFilePath, direction);
 
   if (imgIndex === -1) {
-    // jsonPerPicArray.splice(0, jsonPerPicArray.length);
-    // window.alert('The loaded image file does not match the dataset file.');
-    // return false;
-    imgIndex = 0;
+    return false;
   }
 
   try {

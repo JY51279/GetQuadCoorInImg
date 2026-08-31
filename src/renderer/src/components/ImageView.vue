@@ -26,7 +26,13 @@
                   pointer-events: none;`"
     ></canvas>
     <div v-if="isImgFileLoading" class="loading-overlay">Loading...</div>
-    <div v-if="isImgFileLoadingFailed" class="loading-overlay">Failed to load image.</div>
+    <div v-if="isImgFileLoadingFailed" class="loading-overlay">
+      <div class="image-error-content">
+        <div class="image-error-title">Failed to load image</div>
+        <div class="image-error-label">Path:</div>
+        <div class="image-error-path">{{ imageLoadErrorPath || 'Unknown path' }}</div>
+      </div>
+    </div>
     <div
       v-if="indices2Show"
       class="str-right-mouse"
@@ -121,6 +127,14 @@ const props = defineProps({
     type: Object, // 指定类型为对象
     default: null, // 默认值为 null
   },
+  canEdit: {
+    type: Boolean,
+    default: true,
+  },
+  imageLoadErrorPath: {
+    type: String,
+    default: '',
+  },
 });
 
 const offsetCanvasLeft = 22;
@@ -145,7 +159,7 @@ function deletePt(ptIndex) {
 
 // Delete Dot in canvas
 function deleteDot(e) {
-  if (isDisabledMouse.value) return;
+  if (isDisabledMouse.value || !props.canEdit) return;
   const { existingDotIndex } = getDotInfo(e);
   if (!deletePt(existingDotIndex)) {
     outputMessage('Error delete the pt in canvas!');
@@ -695,7 +709,7 @@ watch(dotsRealCoord, newDotsRealCoord => {
 });
 
 function toggleDot(e) {
-  if (isDisabledMouse.value || imageSrc === '' || !isNotLongPress) {
+  if (isDisabledMouse.value || !props.canEdit || imageSrc === '' || !isNotLongPress) {
     return;
   }
   // 如果红点在图片显示范围外，输出“The pt is not in the pic.”
@@ -1023,5 +1037,29 @@ function resetIsImgFileLoadingFailed(newValue) {
   display: flex;
   justify-content: center;
   align-items: center;
+  box-sizing: border-box;
+  padding: 24px;
+  text-align: center;
+}
+
+.image-error-content {
+  max-width: 100%;
+  line-height: 1.5;
+}
+
+.image-error-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.image-error-label {
+  margin-top: 12px;
+  color: #d6d6d6;
+}
+
+.image-error-path {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 </style>
