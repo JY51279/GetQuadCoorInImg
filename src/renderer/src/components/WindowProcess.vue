@@ -45,9 +45,9 @@
       <div class="button-group">
         <button class="button-style" @click="chooseJsonFile">Get JsonFile</button>
         <button class="button-style" @click="chooseImgFile">Get PicFile</button>
-        <button class="button-style" :disabled="!canOperate" @click="modifyJsonItem">Mod JsonItem</button>
-        <button class="button-style" :disabled="!canOperate" @click="deleteJsonItem">Del JsonItem</button>
-        <button class="button-style" :disabled="!canOperate" @click="addJsonItem">Add JsonItem</button>
+        <button class="button-style" :disabled="!canOperate || isSaving" @click="modifyJsonItem">Mod JsonItem</button>
+        <button class="button-style" :disabled="!canOperate || isSaving" @click="deleteJsonItem">Del JsonItem</button>
+        <button class="button-style" :disabled="!canOperate || isSaving" @click="addJsonItem">Add JsonItem</button>
         <!--TODO 目前的布局放不下了才暂时注释了三个不咋重要的！！！
           <button class="button-style" @click="clearDots">Clear Dots</button>
         <button class="button-style" @click="clearMessage">Clear Msgs</button>
@@ -255,30 +255,41 @@ function clearDots() {
 }
 
 // JSON Operations
-function performJsonAction(action) {
+const isSaving = ref(false);
+async function performJsonAction(action) {
   if (!canOperate.value) {
     outputMessage('JSON operation is disabled until the image matches the dataset.');
     return;
   }
-  outputMessage('Start operate: ' + action);
-  let updateJsonRes = updateJson(action, initImageScale);
-  if (updateJsonRes !== KEYS.OPERATE_SUCCESS) {
-    outputMessage(updateJsonRes);
+  if (isSaving.value) {
     return;
   }
-  saveJsonFile();
-  switch (action) {
-    case KEYS.JSON_ADD:
-      jsonView.value.addJsonItem();
-      break;
-    case KEYS.JSON_DELETE:
-      jsonView.value.deleteJsonItem();
-      break;
-    case KEYS.JSON_MODIFY:
-      jsonView.value.modifyJsonItem();
-      break;
+
+  isSaving.value = true;
+  try {
+    outputMessage('Start operate: ' + action);
+    const updateJsonRes = updateJson(action, initImageScale);
+    if (updateJsonRes !== KEYS.OPERATE_SUCCESS) {
+      outputMessage(updateJsonRes);
+      return;
+    }
+
+    switch (action) {
+      case KEYS.JSON_ADD:
+        jsonView.value.addJsonItem();
+        break;
+      case KEYS.JSON_DELETE:
+        jsonView.value.deleteJsonItem();
+        break;
+      case KEYS.JSON_MODIFY:
+        jsonView.value.modifyJsonItem();
+        break;
+    }
+    clearDots();
+    await saveJsonFile();
+  } finally {
+    isSaving.value = false;
   }
-  clearDots();
 }
 
 function addJsonItem() {
@@ -297,36 +308,37 @@ function modifyJsonItem() {
   performJsonAction(KEYS.JSON_MODIFY);
 }
 
-function resetJsonValue() {
+async function resetJsonValue() {
+  if (isSaving.value) return;
+
   if (resetJsonNoValue()) {
     outputMessage('Reset No. successfully.');
-    saveJsonFile();
+    isSaving.value = true;
+    try {
+      await saveJsonFile();
+    } finally {
+      isSaving.value = false;
+    }
   } else outputMessage('Reset No. failed!');
 }
 
-function saveJsonFile() {
+async function saveJsonFile() {
   try {
-    let jsonFileInfo = { str: '', path: '' };
-    jsonFileInfo = getJsonFileInfo();
-    ipcRenderer.send('save-json-file', jsonFileInfo);
-  } catch (error) {
-    console.error('Error while sending IPC message:', error);
-  }
-}
-
-ipcRenderer.on('save-json-file-response', (event, response) => {
-  try {
-    if (response.success) {
-      outputMessage('Json saved.');
-    } else {
-      const errorMessage = response.error;
+    const jsonFileInfo = getJsonFileInfo();
+    const response = await ipcRenderer.invoke('save-json-file', jsonFileInfo);
+    if (!response.success) {
+      const errorMessage = response.error || 'Unknown error';
       console.error('Failed to save JSON file:', errorMessage);
+      outputMessage(`Failed to save JSON: ${errorMessage}`);
+      return false;
     }
+    return true;
   } catch (error) {
     console.error('An error occurred while saving JSON file:', error);
-    console.log(response);
+    outputMessage(`Failed to save JSON: ${error.message}`);
+    return false;
   }
-});
+}
 
 function clearMessage() {
   outputMessages.value = [];

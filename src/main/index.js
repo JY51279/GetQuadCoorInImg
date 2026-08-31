@@ -8,6 +8,41 @@ const UTIF = require('utif');
 const { PNG } = require('pngjs');
 const sharp = require('sharp');
 
+let jsonTempFileCounter = 0;
+
+async function saveJsonFileAtomically(data) {
+  if (!data || typeof data.path !== 'string' || data.path.length === 0) {
+    throw new Error('Invalid JSON file path.');
+  }
+  if (typeof data.str !== 'string') {
+    throw new Error('Invalid JSON content.');
+  }
+
+  JSON.parse(data.str);
+
+  const filePath = data.path;
+  const directory = path.dirname(filePath);
+  const fileName = path.basename(filePath);
+  const tempFilePath = path.join(
+    directory,
+    `.${fileName}.${process.pid}.${Date.now()}.${++jsonTempFileCounter}.tmp`,
+  );
+
+  try {
+    await fs.promises.writeFile(tempFilePath, data.str, 'utf-8');
+    await fs.promises.rename(tempFilePath, filePath);
+  } catch (error) {
+    try {
+      await fs.promises.unlink(tempFilePath);
+    } catch (cleanupError) {
+      if (cleanupError.code !== 'ENOENT') {
+        console.error('Failed to remove temporary JSON file:', cleanupError);
+      }
+    }
+    throw error;
+  }
+}
+
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -282,22 +317,14 @@ app.whenReady().then(() => {
         console.error('Error while opening json file dialog:', err);
       });
   });
-  ipcMain.on('save-json-file', (event, data) => {
-    const filePath = data.path;
-    const content = data.str;
+  ipcMain.handle('save-json-file', async (_event, data) => {
     try {
-      fs.writeFile(filePath, content, err => {
-        if (err) {
-          console.log('Fail Save Json');
-          event.reply('save-json-file-response', { success: false, error: err.message });
-        } else {
-          console.log('Suc Save Json');
-          event.reply('save-json-file-response', { success: true });
-        }
-      });
+      await saveJsonFileAtomically(data);
+      console.log('Suc Save Json');
+      return { success: true };
     } catch (err) {
-      console.log('Error:', err.message);
-      event.reply('save-json-file-response', { success: false, error: err.message });
+      console.error('Fail Save Json:', err.message);
+      return { success: false, error: err.message };
     }
   });
   createWindow();
