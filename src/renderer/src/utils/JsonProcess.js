@@ -152,15 +152,15 @@ export function updateQuadIndex(newIndex) {
 
 const separator = ' ';
 function TransQuadDots2Str(realDots, initImageScale) {
-  // 根据initImageScale缩放坐标
-  realDots.forEach(dot => {
-    dot.x = Math.round(dot.x / initImageScale);
-    dot.y = Math.round(dot.y / initImageScale);
-  });
+  // 根据initImageScale缩放坐标，但不要修改工作图片中的原始点
+  let jsonDots = realDots.map(dot => ({
+    x: Math.round(dot.x / initImageScale),
+    y: Math.round(dot.y / initImageScale),
+  }));
 
   // 判断是否为一个元素，并仅修改与当前点最近的点
-  if (realDots.length === 1) {
-    let p1 = realDots[0];
+  if (jsonDots.length === 1) {
+    let p1 = jsonDots[0];
     let dotsStr = jsonPerPicArray[quadIndex][classKeys.ItemKey];
     let dotsArray = dotsStr.split(' ').map(Number);
     let dots = [];
@@ -181,39 +181,39 @@ function TransQuadDots2Str(realDots, initImageScale) {
 
     // 替换最近的点
     dots[closestIndex] = p1;
-    realDots = [...dots];
+    jsonDots = [...dots];
   }
 
   // 判断是否为两个元素，并补全另外两个点
-  if (realDots.length === 2) {
-    let p1 = realDots[0];
-    let p2 = realDots[1];
+  if (jsonDots.length === 2) {
+    let p1 = jsonDots[0];
+    let p2 = jsonDots[1];
 
     // 计算另外两个点
     let p3 = { x: p1.x, y: p2.y };
     let p4 = { x: p2.x, y: p1.y };
 
-    // 将新点添加到 realDots 中
-    realDots.push(p3, p4);
+    // 将新点添加到 JSON 坐标点数组中
+    jsonDots.push(p3, p4);
   }
 
   // 判断是否为三个元素，并补全剩余的一点
-  if (realDots.length === 3) {
-    let p1 = realDots[0];
-    let p2 = realDots[1];
-    let p3 = realDots[2];
+  if (jsonDots.length === 3) {
+    let p1 = jsonDots[0];
+    let p2 = jsonDots[1];
+    let p3 = jsonDots[2];
 
     // 计算第四个点
     let p4 = { x: p1.x + (p3.x - p2.x), y: p1.y + (p3.y - p2.y) };
 
-    // 将新点添加到 realDots 中
-    realDots.push(p4);
+    // 将新点添加到 JSON 坐标点数组中
+    jsonDots.push(p4);
   }
 
   let targetStr = '';
-  if (realDots.length !== 4) return targetStr;
+  if (jsonDots.length !== 4) return targetStr;
   const barcodeType = jsonPerPicArray[quadIndex]['Barcode Type'];
-  targetStr = serializePointArray2String(realDots, separator, barcodeType ?? '');
+  targetStr = serializePointArray2String(jsonDots, separator, barcodeType ?? '');
   //console.log('targetStr: ' + targetStr);
   if (targetStr === '') return targetStr;
   return targetStr;
