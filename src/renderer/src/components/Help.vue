@@ -57,7 +57,7 @@
     <div class="keyCombination">
       <div class="key">Ctrl</div>
       <div class="key">a</div>
-      <div class="keyText">添加高亮Json项(DDN)</div>
+      <div class="keyText">在尾部添加Json项</div>
     </div>
 
     <div class="keyCombination">

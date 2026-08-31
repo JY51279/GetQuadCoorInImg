@@ -39,8 +39,8 @@
         <Help />
       </div>
       <div class="button-group">
-        <button class="button-style" @click="chooseJsonFile">Get JsonFile</button>
-        <button class="button-style" @click="chooseImgFile">Get PicFile</button>
+        <button class="button-style" :disabled="isImageRequestInProgress" @click="chooseJsonFile">Get JsonFile</button>
+        <button class="button-style" :disabled="isImageRequestInProgress" @click="chooseImgFile">Get PicFile</button>
         <button class="button-style" :disabled="!canOperate || isSaving" @click="modifyJsonItem">Mod JsonItem</button>
         <button class="button-style" :disabled="!canOperate || isSaving" @click="deleteJsonItem">Del JsonItem</button>
         <button class="button-style" :disabled="!canOperate || isSaving" @click="addJsonItem">Add JsonItem</button>
@@ -64,7 +64,8 @@ import Help from './Help.vue';
 import {
   prepareJsonProcess,
   commitPreparedJsonProcess,
-  getAdjacentImagePath,
+  getAdjacentJsonImageTarget,
+  getJsonImageTarget,
   updateQuadIndex,
   updateJson,
   getJsonPicNum,
@@ -72,7 +73,7 @@ import {
   getJsonPerPicPointsArray,
   resetJsonNoValue,
 } from '../utils/JsonProcess.js';
-import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
+import { KEYS } from '../utils/BasicFuncs.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 const imgContainerRef = ref(null);
@@ -264,10 +265,6 @@ async function performJsonAction(action) {
 }
 
 function addJsonItem() {
-  if (loadedProductType.value !== PRODUCTS.DDN) {
-    outputMessage("Can't add JSON item, the class is not 'DDN'.");
-    return;
-  }
   performJsonAction(KEYS.JSON_ADD);
 }
 
@@ -323,7 +320,7 @@ const imageObj = ref(new Image());
 const canOperate = ref(false);
 const imageLoadErrorPath = ref('');
 let imgFilePath = '';
-async function initProcessInfo(direction = '') {
+async function initProcessInfo(jsonImageIndex = null) {
   try {
     if (!imageObj.value || imageObj.value.src === '') {
       outputMessage('initProcessInfo Error.');
@@ -335,7 +332,7 @@ async function initProcessInfo(direction = '') {
       imgContainerRef.value.changeMouseState(false);
     }
 
-    if (!jsonView.value.initJsonInfo(imgFilePath, direction)) {
+    if (!jsonView.value.initJsonInfo(imgFilePath, jsonImageIndex)) {
       canOperate.value = false;
       imgContainerRef.value.resetIsImgFileLoading(false);
       return false;
@@ -344,12 +341,12 @@ async function initProcessInfo(direction = '') {
     const { picNum, picTotalNum } = getJsonPicNum();
     picInfo.picNum = picNum;
     picInfo.picTotalNum = picTotalNum;
-    openImgFileDirection = '';
     canOperate.value = true;
     imgContainerRef.value.resetIsImgFileLoading(false);
     return true;
   } catch (error) {
     canOperate.value = false;
+    imgContainerRef.value.resetIsImgFileLoading(false);
     console.error(`Error name: ${error.name}`);
     console.error(`Error message: ${error.message}`);
     console.error(`Stack trace: ${error.stack}`);
@@ -367,26 +364,116 @@ function initShowQuads() {
 // Get files
 
 let imageSrcTmp = '';
+const isImageRequestInProgress = ref(false);
+let pendingImageRequest = null;
+
 function chooseImgFile() {
+  if (isImageRequestInProgress.value) {
+    outputMessage('Please wait for the current image to finish loading.');
+    return;
+  }
   try {
     imageSrcTmp = '';
+    pendingImageRequest = null;
     ipcRenderer.send('open-image-file-dialog');
   } catch (error) {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
   }
 }
 
-let openImgFileDirection = '';
 function changeImageByArrowKeys(direction) {
-  const path = getAdjacentImagePath(direction);
-  openImgFileDirection = direction;
-  loadImgFromPath(path);
+  if (isImageRequestInProgress.value) {
+    outputMessage('Please wait for the current image to finish loading.');
+    return;
+  }
+
+  const target = getAdjacentJsonImageTarget(direction);
+  if (!target.success) {
+    outputMessage(target.error);
+    return;
+  }
+  startDatasetImageRequest(target, direction);
 }
 
-function loadImgFromPath(path) {
+function sendImageFileRequest(path) {
   imageSrcTmp = '';
   ipcRenderer.send('open-pic-file', path);
   outputMessage('Get file response...');
+}
+
+function startDatasetImageRequest(target, direction, previousRequest = null) {
+  const attemptedIndexes = previousRequest?.attemptedIndexes ?? new Set();
+  if (!previousRequest && picInfo.picNum > 0) attemptedIndexes.add(picInfo.picNum - 1);
+  attemptedIndexes.add(target.index);
+
+  pendingImageRequest = {
+    source: 'dataset',
+    index: target.index,
+    path: target.path,
+    direction,
+    attemptedIndexes,
+    previousCanOperate: previousRequest?.previousCanOperate ?? canOperate.value,
+  };
+  isImageRequestInProgress.value = true;
+  canOperate.value = false;
+  imgContainerRef.value.resetIsImgFileLoading(true);
+  sendImageFileRequest(target.path);
+}
+
+function ensureManualImageRequest() {
+  if (pendingImageRequest) return;
+  pendingImageRequest = {
+    source: 'manual',
+    index: null,
+    path: '',
+    direction: '',
+    attemptedIndexes: new Set(),
+    previousCanOperate: canOperate.value,
+  };
+  isImageRequestInProgress.value = true;
+  canOperate.value = false;
+}
+
+function retryDatasetImageRequest() {
+  const failedRequest = pendingImageRequest;
+  if (failedRequest?.source !== 'dataset') return false;
+
+  const nextTarget = getAdjacentJsonImageTarget(failedRequest.direction);
+  if (!nextTarget.success || failedRequest.attemptedIndexes.has(nextTarget.index)) return false;
+
+  outputMessage(`Skipping unavailable image and trying JSON item ${nextTarget.index + 1}.`);
+  startDatasetImageRequest(nextTarget, failedRequest.direction, failedRequest);
+  return true;
+}
+
+function finishImageRequest() {
+  pendingImageRequest = null;
+  imageSrcTmp = '';
+  isImageRequestInProgress.value = false;
+}
+
+function handleImageRequestFailure(errorMessage, failedPath = '') {
+  const failedRequest = pendingImageRequest;
+  outputMessage(`Failed to open image${failedPath ? `: ${failedPath}` : ''}.`);
+  outputMessage(errorMessage || 'Unknown image loading error.');
+
+  if (retryDatasetImageRequest()) return;
+
+  const canRestorePreviousImage = failedRequest?.previousCanOperate === true;
+  if (canRestorePreviousImage) {
+    canOperate.value = true;
+    imageLoadErrorPath.value = '';
+    imgContainerRef.value.changeMouseState(false);
+  } else {
+    imageObj.value = null;
+    imgFileName.value = '';
+    imgFilePath = '';
+    picInfo.picNum = 0;
+    imageLoadErrorPath.value = failedPath;
+    imgContainerRef.value.clearDots();
+  }
+  imgContainerRef.value.resetIsImgFileLoading(false);
+  finishImageRequest();
 }
 
 // 常量：最大允许的宽高
@@ -436,43 +523,43 @@ async function reloadImageObj(src) {
 
 let imgFileName = ref(null);
 ipcRenderer.on('open-pic-file-response', async (e, response) => {
+  ensureManualImageRequest();
   imgContainerRef.value.resetIsImgFileLoading(true);
   imgContainerRef.value.changeMouseState(true);
   if (response.success) {
     imageSrcTmp += response.picInfo.str;
     if (response.picInfo.fileName === '') return;
 
-    await reloadImageObj(imageSrcTmp);
+    const completedRequest = pendingImageRequest;
+    try {
+      await reloadImageObj(imageSrcTmp);
+    } catch (error) {
+      handleImageRequestFailure(error.message, response.picInfo.path || completedRequest?.path || '');
+      return;
+    }
 
     imgFileName.value = response.picInfo.fileName;
     imgFilePath = response.picInfo.path.replace(/\\/g, '/');
     imageLoadErrorPath.value = '';
-    const isReady = await initProcessInfo(openImgFileDirection);
+    const requestedJsonImageIndex = completedRequest?.source === 'dataset' ? completedRequest.index : null;
+    const isReady = await initProcessInfo(requestedJsonImageIndex);
+    finishImageRequest();
     outputMessage(isReady ? 'Load Pic Successfully.' : 'Image loaded, but no matching JSON data was found.');
   } else {
     const failedPath = (response.path || '').replace(/[\\/]/g, '/');
-    imageObj.value = null;
-    imgFileName.value = '';
-    imgFilePath = '';
-    canOperate.value = false;
-    imageLoadErrorPath.value = failedPath;
-    imgContainerRef.value.clearDots();
-    imgContainerRef.value.resetIsImgFileLoading(false);
-    openImgFileDirection = '';
-    const errorMessage = response.error;
-    outputMessage('Failed to open pic: ');
-    outputMessage(errorMessage);
+    handleImageRequestFailure(response.error, failedPath);
   }
 });
 
-function resetImageForDatasetChange() {
+function resetImageForDatasetChange(picTotalNum = 0) {
   imageObj.value = null;
   imgFileName.value = '';
   imgFilePath = '';
   imageLoadErrorPath.value = '';
-  openImgFileDirection = '';
+  pendingImageRequest = null;
+  isImageRequestInProgress.value = false;
   picInfo.picNum = 0;
-  picInfo.picTotalNum = 0;
+  picInfo.picTotalNum = picTotalNum;
   clearDots();
   imgContainerRef.value.clearImage();
   imgContainerRef.value.changeMouseState(true);
@@ -481,6 +568,10 @@ function resetImageForDatasetChange() {
 }
 
 function chooseJsonFile() {
+  if (isImageRequestInProgress.value) {
+    outputMessage('Please wait for the current image to finish loading.');
+    return;
+  }
   try {
     ipcRenderer.send('open-json-file-dialog');
   } catch (error) {
@@ -523,14 +614,18 @@ ipcRenderer.on('choose-json-file-response', async (e, response) => {
       loadedProductType.value = preparedJson.productType;
       jsonFileName.value = jsonData.fileName;
       canOperate.value = false;
-      resetImageForDatasetChange();
+      resetImageForDatasetChange(preparedJson.data.Picture.length);
       if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
 
       if (preparedJson.data.Picture.length === 0) {
         outputMessage('JSON loaded successfully, but the dataset contains no valid image items.');
       } else {
-        imgContainerRef.value.resetIsImgFileLoading(true);
-        loadImgFromPath(preparedJson.data.Picture[0]['Image Source']);
+        const firstImageTarget = getJsonImageTarget(0);
+        if (!firstImageTarget.success) {
+          outputMessage(firstImageTarget.error);
+          return;
+        }
+        startDatasetImageRequest(firstImageTarget, KEYS.NEXT);
       }
     } else {
       // 处理读取文件失败的情况

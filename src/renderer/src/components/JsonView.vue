@@ -114,8 +114,8 @@ function updateJsonPerPicArray() {
 
 const hasPicJsonFailedFetched = ref(false);
 const picJsonErrorMessage = ref('');
-function initJsonInfo(imgFilePath, direction = '') {
-  if (!resetPicJson(imgFilePath, direction)) {
+function initJsonInfo(imgFilePath, jsonImageIndex = null) {
+  if (!resetPicJson(imgFilePath, jsonImageIndex)) {
     formattedJsonStrArray.value = [];
     jsonPerPicArray = [];
     highlightedIndex.value = -1;

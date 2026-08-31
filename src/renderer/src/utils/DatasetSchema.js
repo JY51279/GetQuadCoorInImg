@@ -15,14 +15,6 @@ export const PRODUCT_SCHEMAS = Object.freeze({
       'Barcode Text': 'string',
       'Barcode Type': 'string',
     }),
-    signatures: Object.freeze([
-      'Barcode Info',
-      'Barcode Count',
-      'Barcode Location',
-      'Barcode Hex',
-      'Barcode Text',
-      'Barcode Type',
-    ]),
   }),
   DDN: Object.freeze({
     class: 'DDN',
@@ -30,11 +22,6 @@ export const PRODUCT_SCHEMAS = Object.freeze({
     ItemKey: 'Expected Quadrilateral Points',
     ItemsCount: 'Expected Quadrilateral Count',
     auxiliaryFields: Object.freeze({}),
-    signatures: Object.freeze([
-      'Quadrilateral Info',
-      'Expected Quadrilateral Count',
-      'Expected Quadrilateral Points',
-    ]),
   }),
   DLR: Object.freeze({
     class: 'DLR',
@@ -45,7 +32,6 @@ export const PRODUCT_SCHEMAS = Object.freeze({
       'Label Text': 'array',
       'Label Hex': 'array',
     }),
-    signatures: Object.freeze(['Label Info', 'Label Count', 'Label Location', 'Label Text', 'Label Hex']),
   }),
 });
 
@@ -70,36 +56,68 @@ export function getProductSchema(productType) {
   return PRODUCT_SCHEMAS[productType.toUpperCase()] ?? null;
 }
 
-function objectMatchesSignatures(object, signatures) {
-  return isObject(object) && signatures.some(key => hasOwn(object, key));
+function getMainFields(schema) {
+  return [schema.targetKey, schema.ItemsCount];
 }
 
-function datasetMatchesSchema(pictures, schema) {
+function getItemFields(schema) {
+  return [schema.ItemKey, ...Object.keys(schema.auxiliaryFields)];
+}
+
+function datasetMatchesMainFields(pictures, schema) {
+  const mainFields = getMainFields(schema);
+  return pictures.some(
+    picture => isObject(picture) && mainFields.some(fieldName => hasOwn(picture, fieldName)),
+  );
+}
+
+function datasetMatchesItemFields(pictures, schema) {
+  const itemFields = getItemFields(schema);
   for (const picture of pictures) {
     if (!isObject(picture)) continue;
-    if (objectMatchesSignatures(picture, schema.signatures)) return true;
 
     for (const value of Object.values(picture)) {
       if (!Array.isArray(value)) continue;
-      if (value.some(item => objectMatchesSignatures(item, schema.signatures))) return true;
+      if (
+        value.some(
+          item => isObject(item) && itemFields.some(fieldName => hasOwn(item, fieldName)),
+        )
+      ) {
+        return true;
+      }
     }
   }
   return false;
 }
 
 export function detectProductType(pictures) {
-  const matchedProducts = Object.values(PRODUCT_SCHEMAS)
-    .filter(schema => datasetMatchesSchema(pictures, schema))
+  const schemas = Object.values(PRODUCT_SCHEMAS);
+  const matchedMainProducts = schemas
+    .filter(schema => datasetMatchesMainFields(pictures, schema))
     .map(schema => schema.class);
 
-  if (matchedProducts.length > 1) {
+  if (matchedMainProducts.length > 1) {
     return {
       success: false,
-      error: `Dataset contains conflicting product fields: ${matchedProducts.join(', ')}.`,
+      error: `Dataset contains conflicting product fields: ${matchedMainProducts.join(', ')}.`,
     };
   }
-  if (matchedProducts.length === 1) {
-    return { success: true, productType: matchedProducts[0] };
+  if (matchedMainProducts.length === 1) {
+    return { success: true, productType: matchedMainProducts[0] };
+  }
+
+  const matchedItemProducts = schemas
+    .filter(schema => datasetMatchesItemFields(pictures, schema))
+    .map(schema => schema.class);
+
+  if (matchedItemProducts.length > 1) {
+    return {
+      success: false,
+      error: `Dataset contains conflicting product fields: ${matchedItemProducts.join(', ')}.`,
+    };
+  }
+  if (matchedItemProducts.length === 1) {
+    return { success: true, productType: matchedItemProducts[0] };
   }
 
   return {
@@ -114,7 +132,7 @@ function normalizeLocation(value) {
   const tokens = value.trim().split(/\s+/);
   const valid =
     tokens.length === 8 &&
-    tokens.every(token => /^\d+$/.test(token) && Number.isSafeInteger(Number(token)) && Number(token) >= 0);
+    tokens.every(token => /^-?\d+$/.test(token) && Number.isSafeInteger(Number(token)));
   if (!valid) return { valid: false, value: DEFAULT_LOCATION };
 
   return { valid: true, value: tokens.map(token => String(Number(token))).join(' ') };

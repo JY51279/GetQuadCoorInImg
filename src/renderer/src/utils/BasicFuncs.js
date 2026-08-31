@@ -4,7 +4,7 @@ export const KEYS = {
   PREVIOUS: 'previous',
   JSON_MODIFY: 'Modify JSON content',
   JSON_DELETE: 'Delete JSON content',
-  JSON_ADD: 'Add JSON content', // 仅在DDN使用
+  JSON_ADD: 'Add JSON content',
   OPERATE_SUCCESS: 'Operate Success',
   OPERATE_FAIL: 'Operate Fail',
   // 其他键...
@@ -147,7 +147,9 @@ export function isPointRightOfLine(point, line) {
 }
 //***********************Json*************************/
 export function transStr2Json(jsonStr) {
-  var json = JSON.parse(jsonStr);
+  const jsonText =
+    typeof jsonStr === 'string' && jsonStr.charCodeAt(0) === 0xfeff ? jsonStr.slice(1) : jsonStr;
+  var json = JSON.parse(jsonText);
   return json;
 }
 export function transJson2Str(json) {

@@ -6,7 +6,7 @@ import {
   parsePointString2Array,
 } from './BasicFuncs.js';
 import { KEYS } from '../utils/BasicFuncs.js';
-import { formatRepairSummary, getProductSchema, normalizeDataset } from './DatasetSchema.js';
+import { DEFAULT_LOCATION, formatRepairSummary, getProductSchema, normalizeDataset } from './DatasetSchema.js';
 
 const rootKey = 'Picture';
 const imgKey = 'Image Source';
@@ -55,6 +55,7 @@ export function commitPreparedJsonProcess(preparedJson) {
   jsonImgPathList = preparedJson.imagePaths;
   classKeys = preparedJson.classKeys;
   imgIndex = -1;
+  navigationImgIndex = -1;
   quadIndex = -1;
   quadDots = [];
   jsonPerPicArray = [];
@@ -66,8 +67,8 @@ export function getJsonImagePath() {
 }
 
 let jsonPerPicArray = [];
-export function resetPicJson(imgFilePath, direction = '') {
-  resetImgIndex(imgFilePath, direction);
+export function resetPicJson(imgFilePath, requestedImgIndex = null) {
+  resetImgIndex(imgFilePath, requestedImgIndex);
 
   if (imgIndex === -1) {
     return false;
@@ -83,25 +84,37 @@ export function resetPicJson(imgFilePath, direction = '') {
     return true;
   } catch (err) {
     console.error('An error occurred while accessing the JSON array:', err);
+    return false;
   }
 }
 
 let classKeys = {};
 
 let imgIndex = -1;
-function resetImgIndex(imgPath, direction = '') {
+let navigationImgIndex = -1;
+function resetImgIndex(imgPath, requestedImgIndex = null) {
   if (imgPath === '') {
     imgIndex = -1;
-    return;
-  } else if (direction !== '') {
-    imgIndex = getAdjacentImageIndex(direction);
+    navigationImgIndex = -1;
     return;
   }
 
-  imgPath = imgPath.replace(/[\\/]/g, '/');
+  const normalizedImgPath = imgPath.replace(/[\\/]/g, '/');
+  if (
+    Number.isInteger(requestedImgIndex) &&
+    requestedImgIndex >= 0 &&
+    requestedImgIndex < jsonImgPathList.length &&
+    jsonImgPathList[requestedImgIndex] === normalizedImgPath
+  ) {
+    imgIndex = requestedImgIndex;
+    navigationImgIndex = requestedImgIndex;
+    return;
+  }
+
   for (let i = 0; i < json[rootKey].length; ++i) {
-    if (jsonImgPathList[i] === imgPath) {
+    if (jsonImgPathList[i] === normalizedImgPath) {
       imgIndex = i;
+      navigationImgIndex = i;
       return;
     }
   }
@@ -145,7 +158,7 @@ export function updateQuadIndex(newIndex) {
 }
 
 const separator = ' ';
-function TransQuadDots2Str(realDots, initImageScale) {
+function TransQuadDots2Str(realDots, initImageScale, baseItem = null) {
   // 根据initImageScale缩放坐标，但不要修改工作图片中的原始点
   let jsonDots = realDots.map(dot => ({
     x: Math.round(dot.x / initImageScale),
@@ -154,8 +167,9 @@ function TransQuadDots2Str(realDots, initImageScale) {
 
   // 判断是否为一个元素，并仅修改与当前点最近的点
   if (jsonDots.length === 1) {
+    if (!baseItem) return '';
     let p1 = jsonDots[0];
-    let dotsStr = jsonPerPicArray[quadIndex][classKeys.ItemKey];
+    let dotsStr = baseItem[classKeys.ItemKey];
     let dotsArray = dotsStr.split(' ').map(Number);
     let dots = [];
     for (let i = 0; i < dotsArray.length; i += 2) {
@@ -206,7 +220,7 @@ function TransQuadDots2Str(realDots, initImageScale) {
 
   let targetStr = '';
   if (jsonDots.length !== 4) return targetStr;
-  const barcodeType = jsonPerPicArray[quadIndex]['Barcode Type'];
+  const barcodeType = baseItem?.['Barcode Type'] ?? '';
   targetStr = serializePointArray2String(jsonDots, separator, barcodeType ?? '');
   //console.log('targetStr: ' + targetStr);
   if (targetStr === '') return targetStr;
@@ -234,12 +248,12 @@ export function updateJson(action = KEYS.JSON_MODIFY, initImageScale) {
 
 function modifyJsonContent(initImageScale) {
   return operateJsonContent(() => {
-    let quadStr = TransQuadDots2Str(quadDots, initImageScale);
+    if (quadIndex < 0 || quadIndex >= jsonPerPicArray.length) {
+      return 'Failed to find jsonItem.';
+    }
+    const quadStr = TransQuadDots2Str(quadDots, initImageScale, jsonPerPicArray[quadIndex]);
     if (quadStr === '') {
       return 'Failed to trans dots to string.';
-    }
-    if (quadIndex === -1) {
-      return 'Failed to find jsonItem.';
     }
     jsonPerPicArray[quadIndex][classKeys.ItemKey] = quadStr;
     return KEYS.OPERATE_SUCCESS;
@@ -248,7 +262,7 @@ function modifyJsonContent(initImageScale) {
 
 function deleteJsonContent() {
   return operateJsonContent(() => {
-    if (quadIndex === -1) {
+    if (quadIndex < 0 || quadIndex >= jsonPerPicArray.length) {
       return 'Failed to find jsonItem.';
     }
     jsonPerPicArray.splice(quadIndex, 1);
@@ -258,13 +272,28 @@ function deleteJsonContent() {
 
 function addJsonContent(initImageScale) {
   return operateJsonContent(() => {
-    let quadStr = TransQuadDots2Str(quadDots, initImageScale);
-    if (quadStr === '') {
-      return 'Failed to trans dots to string.';
+    const newItem = createDefaultJsonItem();
+    if (quadDots.length >= 2 && quadDots.length <= 4) {
+      const quadStr = TransQuadDots2Str(quadDots, initImageScale);
+      if (quadStr === '') {
+        return 'Failed to trans dots to string.';
+      }
+      newItem[classKeys.ItemKey] = quadStr;
+    } else if (quadDots.length > 4) {
+      return 'Failed to add jsonItem: no more than 4 points are allowed.';
     }
-    jsonPerPicArray.push({ [classKeys.ItemKey]: quadStr });
+
+    jsonPerPicArray.push(newItem);
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to add jsonItem.');
+}
+
+function createDefaultJsonItem() {
+  const newItem = { [classKeys.ItemKey]: DEFAULT_LOCATION };
+  for (const [fieldName, fieldType] of Object.entries(classKeys.auxiliaryFields)) {
+    newItem[fieldName] = fieldType === 'array' ? [] : '';
+  }
+  return newItem;
 }
 
 function operateJsonContent(callback, errorMessage) {
@@ -281,23 +310,37 @@ function operateJsonContent(callback, errorMessage) {
   }
 }
 
-function getAdjacentImageIndex(direction) {
-  let newIndex;
-  const totalImages = json[rootKey].length;
-  if (direction === KEYS.NEXT) {
-    newIndex = (imgIndex + 1) % totalImages; // 获取下一张图片的索引
-  } else if (direction === KEYS.PREVIOUS) {
-    newIndex = Math.max(-1, imgIndex - 1) % totalImages; // 获取上一张图片的索引
+function createJsonImageTarget(index) {
+  if (!Array.isArray(json[rootKey]) || json[rootKey].length === 0) {
+    return { success: false, error: 'No image data is available in the loaded JSON dataset.' };
   }
-  if (newIndex < 0) {
-    newIndex = totalImages - 1; // 处理索引小于0的情况
+  if (!Number.isInteger(index) || index < 0 || index >= json[rootKey].length) {
+    return { success: false, error: 'Invalid JSON image index.' };
   }
-  return newIndex;
+
+  navigationImgIndex = index;
+  return { success: true, index, path: jsonImgPathList[index] };
 }
 
-export function getAdjacentImagePath(direction) {
-  let newIndex = getAdjacentImageIndex(direction);
-  return json[rootKey][newIndex][imgKey]; // 返回对应图片的地址
+export function getJsonImageTarget(index) {
+  return createJsonImageTarget(index);
+}
+
+export function getAdjacentJsonImageTarget(direction) {
+  if (!Array.isArray(json[rootKey]) || json[rootKey].length === 0) {
+    return { success: false, error: 'No image data is available in the loaded JSON dataset.' };
+  }
+
+  const totalImages = json[rootKey].length;
+  const baseIndex = navigationImgIndex >= 0 ? navigationImgIndex : imgIndex;
+  if (direction === KEYS.NEXT) {
+    return createJsonImageTarget((baseIndex + 1) % totalImages);
+  }
+  if (direction === KEYS.PREVIOUS) {
+    const previousIndex = baseIndex < 0 ? totalImages - 1 : (baseIndex - 1 + totalImages) % totalImages;
+    return createJsonImageTarget(previousIndex);
+  }
+  return { success: false, error: 'Invalid JSON image navigation direction.' };
 }
 
 const noKey = 'No.';
