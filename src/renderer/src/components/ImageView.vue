@@ -113,6 +113,7 @@ defineExpose({
   changeMouseState,
   toggleMode,
   resetIsImgFileLoading,
+  clearImage,
 });
 
 const emits = defineEmits([
@@ -758,6 +759,22 @@ const ctx = ref(null);
 const ctxQuad = ref(null);
 //const imageObj = ref(null);
 let imageSrc = '';
+function clearImage() {
+  imageSrc = '';
+  initImgWidth.value = 0;
+  initImgHeight.value = 0;
+  scale.value = 0;
+  offsetX.value = 0;
+  offsetY.value = 0;
+
+  if (ctx.value !== null) {
+    ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
+  }
+  if (ctxQuad.value !== null) {
+    ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
+  }
+}
+
 async function initImgInfo() {
   scale.value = 0;
   offsetX.value = 0;

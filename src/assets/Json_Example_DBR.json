@@ -1,0 +1,17 @@
+{
+  "Picture": [
+    {
+      "Barcode Count": "1",
+      "Barcode Info": [
+        {
+          "Barcode Hex": "39373837353731303038323436",
+          "Barcode Location": "41 41 467 46 464 336 41 336",
+          "Barcode Text": "",
+          "Barcode Type": "ean13"
+        }
+      ],
+      "Image Source": "D:/Data/DBRImages/Blurred/EAN13_Crop/EAN13_10/58.jpg",
+      "No.": "1"
+    }
+  ]
+}

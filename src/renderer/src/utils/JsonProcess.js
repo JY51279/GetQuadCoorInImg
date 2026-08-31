@@ -5,55 +5,63 @@ import {
   transJson2Str,
   parsePointString2Array,
 } from './BasicFuncs.js';
-import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
+import { KEYS } from '../utils/BasicFuncs.js';
+import { formatRepairSummary, getProductSchema, normalizeDataset } from './DatasetSchema.js';
 
 const rootKey = 'Picture';
 const imgKey = 'Image Source';
-const TotalClassKeys = [
-  {
-    class: PRODUCTS.DBR,
-    targetKey: 'Barcode Info',
-    ItemKey: 'Barcode Location',
-    ItemsCount: 'Barcode Count',
-  },
-  {
-    class: PRODUCTS.DDN,
-    targetKey: 'Quadrilateral Info',
-    ItemKey: 'Expected Quadrilateral Points',
-    ItemsCount: 'Expected Quadrilateral Count',
-  },
-  {
-    class: PRODUCTS.DLR,
-    targetKey: 'Label Info',
-    ItemKey: 'Label Location',
-    ItemsCount: 'Label Count',
-  },
-];
 // Special case: DBR "Barcode Type": "datamatrix"
 
-export function resetJsonProcess(jsonData, classStr) {
+export function prepareJsonProcess(jsonData) {
   try {
-    quadIndex = -1;
-    resetJsonInfo(jsonData);
-    resetClassKeys(classStr.toUpperCase());
+    if (!jsonData || typeof jsonData.str !== 'string' || typeof jsonData.path !== 'string') {
+      return { success: false, error: 'Invalid JSON file information.' };
+    }
+
+    const parsedJson = transStr2Json(jsonData.str);
+    const normalizedResult = normalizeDataset(parsedJson);
+    if (!normalizedResult.success) return normalizedResult;
+
+    const preparedClassKeys = getProductSchema(normalizedResult.productType);
+    const preparedImagePaths = normalizedResult.data[rootKey].map(picture =>
+      picture[imgKey].replace(/[\\/]/g, '/'),
+    );
+
+    return {
+      ...normalizedResult,
+      success: true,
+      path: jsonData.path,
+      imagePaths: preparedImagePaths,
+      classKeys: preparedClassKeys,
+      fileInfo: {
+        str: transJson2Str(normalizedResult.data),
+        path: jsonData.path,
+      },
+      repairSummary: formatRepairSummary(normalizedResult.repairs),
+    };
   } catch (err) {
-    window.alert('Failed to retrieve JSON data. Please check the class and try again.');
+    return { success: false, error: err.message };
   }
 }
 
 let json = {};
 let path = '';
 let jsonImgPathList = [];
-function resetJsonInfo(jsonData) {
-  json = transStr2Json(jsonData.str);
-  path = jsonData.path;
+export function commitPreparedJsonProcess(preparedJson) {
+  if (!preparedJson?.success) return false;
 
-  let pathList = [];
-  for (let i = 0; i < json[rootKey].length; ++i) {
-    pathList.push(json[rootKey][i][imgKey].replace(/[\\/]/g, '/'));
-  }
-  jsonImgPathList = pathList;
+  json = preparedJson.data;
+  path = preparedJson.path;
+  jsonImgPathList = preparedJson.imagePaths;
+  classKeys = preparedJson.classKeys;
+  imgIndex = -1;
+  quadIndex = -1;
+  quadDots = [];
+  jsonPerPicArray = [];
+  jsonPerPicPerObjKeysNum = 0;
+  return true;
 }
+
 export function getJsonImagePath() {
   return jsonImgPathList[imgIndex];
 }
@@ -82,13 +90,6 @@ export function resetPicJson(imgFilePath, direction = '') {
 }
 
 let classKeys = {};
-function resetClassKeys(classStr) {
-  for (let i = 0; i < 3; ++i) {
-    if (TotalClassKeys[i].class === classStr) {
-      classKeys = TotalClassKeys[i];
-    }
-  }
-}
 
 let imgIndex = -1;
 function resetImgIndex(imgPath, direction = '') {
@@ -304,22 +305,6 @@ function getAdjacentImageIndex(direction) {
 export function getAdjacentImagePath(direction) {
   let newIndex = getAdjacentImageIndex(direction);
   return json[rootKey][newIndex][imgKey]; // 返回对应图片的地址
-}
-
-export function getDefaultProductType(jsonPath) {
-  jsonPath = jsonPath.replace(/[\\/]/g, '/');
-  const pathArray = jsonPath.split('/');
-  const productType = Object.values(PRODUCTS);
-
-  let targetIndex = -1;
-  for (let i = 0; i < pathArray.length; i++) {
-    if (productType.includes(pathArray[i])) {
-      if (targetIndex === -1) targetIndex = i;
-      else return ''; //  There are many product types in the condition, so the real product type can’t be determined.
-    }
-  }
-  if (targetIndex === -1) return '';
-  return pathArray[targetIndex];
 }
 
 const noKey = 'No.';

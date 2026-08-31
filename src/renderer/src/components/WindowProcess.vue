@@ -15,12 +15,8 @@
         <div class="zoomViewBox">
           <canvas id="zoom" ref="zoomView" class="zoom-style" width="120" height="120"></canvas>
         </div>
-        <div>
-          <input v-model="selectedOption" type="checkbox" :value="PRODUCTS.DBR" @click="checkClass" />DBR<br />
-          <input v-model="selectedOption" type="checkbox" :value="PRODUCTS.DDN" @click="checkClass" />DDN<br />
-          <input v-model="selectedOption" type="checkbox" :value="PRODUCTS.DLR" @click="checkClass" />DLR<br />
-        </div>
         <div class="fileArea-style">
+          <div class="fileInfo-style">产品类型: {{ loadedProductType || '未加载' }}</div>
           <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
           <div class="fileInfo-style">图片: {{ imgFileName }}</div>
           <div class="fileInfo-style">图片次序: <br />{{ picInfo.picNum }} / {{ picInfo.picTotalNum }}</div>
@@ -66,14 +62,14 @@ import jsonItems from './JsonView.vue';
 import imageItem from './ImageView.vue';
 import Help from './Help.vue';
 import {
-  resetJsonProcess,
+  prepareJsonProcess,
+  commitPreparedJsonProcess,
   getAdjacentImagePath,
   updateQuadIndex,
   updateJson,
   getJsonPicNum,
   getJsonFileInfo,
   getJsonPerPicPointsArray,
-  getDefaultProductType,
   resetJsonNoValue,
 } from '../utils/JsonProcess.js';
 import { KEYS, PRODUCTS } from '../utils/BasicFuncs.js';
@@ -215,31 +211,6 @@ async function outputMessage(message) {
   outputDiv.scrollTop = outputDiv.scrollHeight;
 }
 
-/******click */
-// Click checkbox to check the class
-const selectedOption = ref(['DBR']);
-const classTotalStr = Object.values(PRODUCTS);
-function checkClass() {
-  return new Promise(resolve => {
-    setTimeout(function () {
-      if (selectedOption.value.length === 0) {
-        selectedOption.value.push(classTotalStr[0]);
-      }
-      if (selectedOption.value.length > 1) {
-        selectedOption.value.splice(0, 1);
-      }
-      resolve();
-    }, 1);
-  });
-}
-async function updateClass(inputType) {
-  if (inputType === '' || !classTotalStr.includes(inputType)) {
-    return;
-  }
-  selectedOption.value.push(inputType);
-  await checkClass();
-}
-
 // Click button
 function clearOneDot(index) {
   imgContainerRef.value.deletePt(index);
@@ -293,7 +264,7 @@ async function performJsonAction(action) {
 }
 
 function addJsonItem() {
-  if (selectedOption.value[0] !== PRODUCTS.DDN) {
+  if (loadedProductType.value !== PRODUCTS.DDN) {
     outputMessage("Can't add JSON item, the class is not 'DDN'.");
     return;
   }
@@ -323,8 +294,11 @@ async function resetJsonValue() {
 }
 
 async function saveJsonFile() {
+  return saveJsonFileInfo(getJsonFileInfo());
+}
+
+async function saveJsonFileInfo(jsonFileInfo) {
   try {
-    const jsonFileInfo = getJsonFileInfo();
     const response = await ipcRenderer.invoke('save-json-file', jsonFileInfo);
     if (!response.success) {
       const errorMessage = response.error || 'Unknown error';
@@ -491,6 +465,21 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
   }
 });
 
+function resetImageForDatasetChange() {
+  imageObj.value = null;
+  imgFileName.value = '';
+  imgFilePath = '';
+  imageLoadErrorPath.value = '';
+  openImgFileDirection = '';
+  picInfo.picNum = 0;
+  picInfo.picTotalNum = 0;
+  clearDots();
+  imgContainerRef.value.clearImage();
+  imgContainerRef.value.changeMouseState(true);
+  imgContainerRef.value.resetIsImgFileLoading(false);
+  jsonView.value.initJsonInfo('');
+}
+
 function chooseJsonFile() {
   try {
     ipcRenderer.send('open-json-file-dialog');
@@ -500,27 +489,58 @@ function chooseJsonFile() {
 }
 
 let jsonFileName = ref(null);
+const loadedProductType = ref('');
 ipcRenderer.on('choose-json-file-response', async (e, response) => {
   try {
     if (response.success) {
-      let jsonData = { str: '', path: '', fileName: '' };
-      jsonData = response.jsonInfo;
-      jsonFileName.value = jsonData.fileName;
+      const jsonData = response.jsonInfo;
       jsonData.path = jsonData.path.replace(/[\\/]/g, '/');
-      const defaultClass = getDefaultProductType(jsonData.path);
-      await updateClass(defaultClass);
+      const preparedJson = prepareJsonProcess(jsonData);
+      if (!preparedJson.success) {
+        outputMessage(`Failed to load JSON: ${preparedJson.error}`);
+        return;
+      }
+
+      if (preparedJson.changed) {
+        if (isSaving.value) {
+          outputMessage('Failed to load JSON: another save operation is still in progress.');
+          return;
+        }
+
+        isSaving.value = true;
+        try {
+          if (!(await saveJsonFileInfo(preparedJson.fileInfo))) return;
+        } finally {
+          isSaving.value = false;
+        }
+      }
+
+      if (!commitPreparedJsonProcess(preparedJson)) {
+        outputMessage('Failed to load JSON: unable to commit the prepared dataset.');
+        return;
+      }
+
+      loadedProductType.value = preparedJson.productType;
+      jsonFileName.value = jsonData.fileName;
       canOperate.value = false;
-      resetJsonProcess(jsonData, selectedOption.value[0]);
-      if (imgFilePath !== '') await initProcessInfo();
-      else changeImageByArrowKeys(KEYS.NEXT);
+      resetImageForDatasetChange();
+      if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
+
+      if (preparedJson.data.Picture.length === 0) {
+        outputMessage('JSON loaded successfully, but the dataset contains no valid image items.');
+      } else {
+        imgContainerRef.value.resetIsImgFileLoading(true);
+        loadImgFromPath(preparedJson.data.Picture[0]['Image Source']);
+      }
     } else {
       // 处理读取文件失败的情况
       const errorMessage = response.error;
       console.error('Failed to read JSON file:', errorMessage);
+      outputMessage(`Failed to read JSON file: ${errorMessage}`);
     }
   } catch (error) {
     console.error('An error occurred while processing JSON file:', error);
-    console.log(response);
+    outputMessage(`Failed to process JSON file: ${error.message}`);
   }
 });
 
