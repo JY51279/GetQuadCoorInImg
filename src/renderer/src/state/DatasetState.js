@@ -1,15 +1,37 @@
 import {
+  KEYS,
+  getNearestOrFarthestPointIndex,
+  parsePointString2Array,
   setQuadDots2ClockWise,
   serializePointArray2String,
-  transStr2Json,
   transJson2Str,
-  parsePointString2Array,
-} from './BasicFuncs.js';
-import { KEYS } from '../utils/BasicFuncs.js';
-import { DEFAULT_LOCATION, formatRepairSummary, getProductSchema, normalizeDataset } from './DatasetSchema.js';
+  transStr2Json,
+} from '../utils/BasicFuncs.js';
+import { DEFAULT_LOCATION, formatRepairSummary, getProductSchema, normalizeDataset } from '../utils/DatasetSchema.js';
 
-const rootKey = 'Picture';
-const imgKey = 'Image Source';
+const ROOT_KEY = 'Picture';
+const IMAGE_SOURCE_KEY = 'Image Source';
+const NUMBER_KEY = 'No.';
+const POINT_SEPARATOR = ' ';
+
+const datasetState = {
+  dataset: {},
+  jsonFilePath: '',
+  imagePaths: [],
+  currentItems: [],
+  productSchema: {},
+  currentImageIndex: -1,
+  navigationImageIndex: -1,
+  selectedDots: [],
+  selectedQuadIndex: -1,
+};
+
+function clearCurrentAnnotationState() {
+  datasetState.currentItems = [];
+  datasetState.selectedDots = [];
+  datasetState.selectedQuadIndex = -1;
+}
+
 // Special case: DBR "Barcode Type": "datamatrix"
 
 export function prepareJsonProcess(jsonData) {
@@ -23,8 +45,8 @@ export function prepareJsonProcess(jsonData) {
     if (!normalizedResult.success) return normalizedResult;
 
     const preparedClassKeys = getProductSchema(normalizedResult.productType);
-    const preparedImagePaths = normalizedResult.data[rootKey].map(picture =>
-      picture[imgKey].replace(/[\\/]/g, '/'),
+    const preparedImagePaths = normalizedResult.data[ROOT_KEY].map(picture =>
+      picture[IMAGE_SOURCE_KEY].replace(/[\\/]/g, '/'),
     );
 
     return {
@@ -44,62 +66,57 @@ export function prepareJsonProcess(jsonData) {
   }
 }
 
-let json = {};
-let path = '';
-let jsonImgPathList = [];
 export function commitPreparedJsonProcess(preparedJson) {
   if (!preparedJson?.success) return false;
 
-  json = preparedJson.data;
-  path = preparedJson.path;
-  jsonImgPathList = preparedJson.imagePaths;
-  classKeys = preparedJson.classKeys;
-  imgIndex = -1;
-  navigationImgIndex = -1;
-  quadIndex = -1;
-  quadDots = [];
-  jsonPerPicArray = [];
+  datasetState.dataset = preparedJson.data;
+  datasetState.jsonFilePath = preparedJson.path;
+  datasetState.imagePaths = preparedJson.imagePaths;
+  datasetState.productSchema = preparedJson.classKeys;
+  datasetState.currentImageIndex = -1;
+  datasetState.navigationImageIndex = -1;
+  clearCurrentAnnotationState();
   return true;
 }
 
 export function getJsonImageDialogContext() {
-  const contextIndex = imgIndex >= 0 ? imgIndex : 0;
+  const contextIndex = datasetState.currentImageIndex >= 0 ? datasetState.currentImageIndex : 0;
   return {
-    jsonFilePath: path,
-    imagePath: jsonImgPathList[contextIndex] ?? '',
+    jsonFilePath: datasetState.jsonFilePath,
+    imagePath: datasetState.imagePaths[contextIndex] ?? '',
   };
 }
 
-let jsonPerPicArray = [];
 export function resetPicJson(imgFilePath, requestedImgIndex = null) {
   resetImgIndex(imgFilePath, requestedImgIndex);
 
-  if (imgIndex === -1) {
+  if (datasetState.currentImageIndex === -1) {
+    clearCurrentAnnotationState();
     return false;
   }
 
   try {
-    if (!Object.prototype.hasOwnProperty.call(json[rootKey][imgIndex], classKeys.targetKey)) {
-      jsonPerPicArray.splice(0, jsonPerPicArray.length);
+    const currentPicture = datasetState.dataset[ROOT_KEY][datasetState.currentImageIndex];
+    if (!Object.prototype.hasOwnProperty.call(currentPicture, datasetState.productSchema.targetKey)) {
+      clearCurrentAnnotationState();
       window.alert('The selected product type does not match the dataset type.');
       return false;
     }
-    jsonPerPicArray = json[rootKey][imgIndex][classKeys.targetKey];
+    datasetState.currentItems = currentPicture[datasetState.productSchema.targetKey];
+    datasetState.selectedDots = [];
+    datasetState.selectedQuadIndex = -1;
     return true;
   } catch (err) {
+    clearCurrentAnnotationState();
     console.error('An error occurred while accessing the JSON array:', err);
     return false;
   }
 }
 
-let classKeys = {};
-
-let imgIndex = -1;
-let navigationImgIndex = -1;
 function resetImgIndex(imgPath, requestedImgIndex = null) {
   if (imgPath === '') {
-    imgIndex = -1;
-    navigationImgIndex = -1;
+    datasetState.currentImageIndex = -1;
+    datasetState.navigationImageIndex = -1;
     return;
   }
 
@@ -107,62 +124,69 @@ function resetImgIndex(imgPath, requestedImgIndex = null) {
   if (
     Number.isInteger(requestedImgIndex) &&
     requestedImgIndex >= 0 &&
-    requestedImgIndex < jsonImgPathList.length &&
-    jsonImgPathList[requestedImgIndex] === normalizedImgPath
+    requestedImgIndex < datasetState.imagePaths.length &&
+    datasetState.imagePaths[requestedImgIndex] === normalizedImgPath
   ) {
-    imgIndex = requestedImgIndex;
-    navigationImgIndex = requestedImgIndex;
+    datasetState.currentImageIndex = requestedImgIndex;
+    datasetState.navigationImageIndex = requestedImgIndex;
     return;
   }
 
-  for (let i = 0; i < json[rootKey].length; ++i) {
-    if (jsonImgPathList[i] === normalizedImgPath) {
-      imgIndex = i;
-      navigationImgIndex = i;
+  for (let i = 0; i < datasetState.dataset[ROOT_KEY].length; ++i) {
+    if (datasetState.imagePaths[i] === normalizedImgPath) {
+      datasetState.currentImageIndex = i;
+      datasetState.navigationImageIndex = i;
       return;
     }
   }
-  imgIndex = -1;
+  datasetState.currentImageIndex = -1;
 }
 
 export function getJsonPicNum() {
-  return { picNum: imgIndex + 1, picTotalNum: json[rootKey].length };
+  return {
+    picNum: datasetState.currentImageIndex + 1,
+    picTotalNum: datasetState.dataset[ROOT_KEY].length,
+  };
 }
 
 export function getJsonPerPicPointsArray() {
   let jsonPerPicPointsArray = [];
-  for (let i = 0; i < jsonPerPicArray.length; i++) {
-    const strTmp = jsonPerPicArray[i][classKeys.ItemKey];
-    const pointsTmp = parsePointString2Array(strTmp, separator);
+  for (let i = 0; i < datasetState.currentItems.length; i++) {
+    const strTmp = datasetState.currentItems[i][datasetState.productSchema.ItemKey];
+    const pointsTmp = parsePointString2Array(strTmp, POINT_SEPARATOR);
     jsonPerPicPointsArray.push(pointsTmp);
   }
   return jsonPerPicPointsArray;
 }
 export function getJsonPerPicStrArray() {
   let jsonPerPicStrArray = [];
-  for (let i = 0; i < jsonPerPicArray.length; i++) jsonPerPicStrArray.push(transJson2Str(jsonPerPicArray[i]));
+  for (let i = 0; i < datasetState.currentItems.length; i++) {
+    jsonPerPicStrArray.push(transJson2Str(datasetState.currentItems[i]));
+  }
   return jsonPerPicStrArray;
 }
-let jsonFileInfo = { str: '', path: '' };
 export function getJsonFileInfo() {
-  jsonFileInfo.str = transJson2Str(json);
-  jsonFileInfo.path = path;
-  return jsonFileInfo;
+  return {
+    str: transJson2Str(datasetState.dataset),
+    path: datasetState.jsonFilePath,
+  };
 }
 
-let quadDots = [];
-let quadIndex = -1;
 export function setQuadInfo(realDots) {
-  quadDots = realDots.slice();
-  if (quadDots.length === 4) setQuadDots2ClockWise(quadDots, jsonPerPicArray[quadIndex]?.['Barcode Type'] ?? '');
+  datasetState.selectedDots = realDots.slice();
+  if (datasetState.selectedDots.length === 4) {
+    setQuadDots2ClockWise(
+      datasetState.selectedDots,
+      datasetState.currentItems[datasetState.selectedQuadIndex]?.['Barcode Type'] ?? '',
+    );
+  }
 }
 
 export function updateQuadIndex(newIndex) {
-  quadIndex = newIndex;
+  datasetState.selectedQuadIndex = newIndex;
 }
 
-const separator = ' ';
-function TransQuadDots2Str(realDots, initImageScale, baseItem = null) {
+function transQuadDotsToString(realDots, initImageScale, baseItem = null) {
   // 根据initImageScale缩放坐标，但不要修改工作图片中的原始点
   let jsonDots = realDots.map(dot => ({
     x: Math.round(dot.x / initImageScale),
@@ -172,28 +196,14 @@ function TransQuadDots2Str(realDots, initImageScale, baseItem = null) {
   // 判断是否为一个元素，并仅修改与当前点最近的点
   if (jsonDots.length === 1) {
     if (!baseItem) return '';
-    let p1 = jsonDots[0];
-    let dotsStr = baseItem[classKeys.ItemKey];
-    let dotsArray = dotsStr.split(' ').map(Number);
-    let dots = [];
-    for (let i = 0; i < dotsArray.length; i += 2) {
-      dots.push({ x: dotsArray[i], y: dotsArray[i + 1] });
-    }
-
-    // 找到与 p1 最近的点
-    let closestIndex = 0;
-    let minDistance = Infinity;
-    for (let i = 0; i < dots.length; i++) {
-      let distance = Math.sqrt(Math.pow(dots[i].x - p1.x, 2) + Math.pow(dots[i].y - p1.y, 2));
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestIndex = i;
-      }
-    }
+    const newPoint = jsonDots[0];
+    const currentPoints = parsePointString2Array(baseItem[datasetState.productSchema.ItemKey], POINT_SEPARATOR);
+    const closestIndex = getNearestOrFarthestPointIndex(currentPoints, newPoint);
+    if (closestIndex === -1) return '';
 
     // 替换最近的点
-    dots[closestIndex] = p1;
-    jsonDots = [...dots];
+    currentPoints[closestIndex] = newPoint;
+    jsonDots = currentPoints;
   }
 
   // 判断是否为两个元素，并补全另外两个点
@@ -225,7 +235,7 @@ function TransQuadDots2Str(realDots, initImageScale, baseItem = null) {
   let targetStr = '';
   if (jsonDots.length !== 4) return targetStr;
   const barcodeType = baseItem?.['Barcode Type'] ?? '';
-  targetStr = serializePointArray2String(jsonDots, separator, barcodeType ?? '');
+  targetStr = serializePointArray2String(jsonDots, POINT_SEPARATOR, barcodeType ?? '');
   //console.log('targetStr: ' + targetStr);
   if (targetStr === '') return targetStr;
   return targetStr;
@@ -252,24 +262,28 @@ export function updateJson(action = KEYS.JSON_MODIFY, initImageScale) {
 
 function modifyJsonContent(initImageScale) {
   return operateJsonContent(() => {
-    if (quadIndex < 0 || quadIndex >= jsonPerPicArray.length) {
+    if (datasetState.selectedQuadIndex < 0 || datasetState.selectedQuadIndex >= datasetState.currentItems.length) {
       return 'Failed to find jsonItem.';
     }
-    const quadStr = TransQuadDots2Str(quadDots, initImageScale, jsonPerPicArray[quadIndex]);
+    const quadStr = transQuadDotsToString(
+      datasetState.selectedDots,
+      initImageScale,
+      datasetState.currentItems[datasetState.selectedQuadIndex],
+    );
     if (quadStr === '') {
       return 'Failed to trans dots to string.';
     }
-    jsonPerPicArray[quadIndex][classKeys.ItemKey] = quadStr;
+    datasetState.currentItems[datasetState.selectedQuadIndex][datasetState.productSchema.ItemKey] = quadStr;
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to modify jsonItem.');
 }
 
 function deleteJsonContent() {
   return operateJsonContent(() => {
-    if (quadIndex < 0 || quadIndex >= jsonPerPicArray.length) {
+    if (datasetState.selectedQuadIndex < 0 || datasetState.selectedQuadIndex >= datasetState.currentItems.length) {
       return 'Failed to find jsonItem.';
     }
-    jsonPerPicArray.splice(quadIndex, 1);
+    datasetState.currentItems.splice(datasetState.selectedQuadIndex, 1);
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to delete jsonItem.');
 }
@@ -277,24 +291,24 @@ function deleteJsonContent() {
 function addJsonContent(initImageScale) {
   return operateJsonContent(() => {
     const newItem = createDefaultJsonItem();
-    if (quadDots.length >= 2 && quadDots.length <= 4) {
-      const quadStr = TransQuadDots2Str(quadDots, initImageScale);
+    if (datasetState.selectedDots.length >= 2 && datasetState.selectedDots.length <= 4) {
+      const quadStr = transQuadDotsToString(datasetState.selectedDots, initImageScale);
       if (quadStr === '') {
         return 'Failed to trans dots to string.';
       }
-      newItem[classKeys.ItemKey] = quadStr;
-    } else if (quadDots.length > 4) {
+      newItem[datasetState.productSchema.ItemKey] = quadStr;
+    } else if (datasetState.selectedDots.length > 4) {
       return 'Failed to add jsonItem: no more than 4 points are allowed.';
     }
 
-    jsonPerPicArray.push(newItem);
+    datasetState.currentItems.push(newItem);
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to add jsonItem.');
 }
 
 function createDefaultJsonItem() {
-  const newItem = { [classKeys.ItemKey]: DEFAULT_LOCATION };
-  for (const [fieldName, fieldType] of Object.entries(classKeys.auxiliaryFields)) {
+  const newItem = { [datasetState.productSchema.ItemKey]: DEFAULT_LOCATION };
+  for (const [fieldName, fieldType] of Object.entries(datasetState.productSchema.auxiliaryFields)) {
     newItem[fieldName] = fieldType === 'array' ? [] : '';
   }
   return newItem;
@@ -304,8 +318,9 @@ function operateJsonContent(callback, errorMessage) {
   try {
     const result = callback();
     if (result === KEYS.OPERATE_SUCCESS) {
-      json[rootKey][imgIndex][classKeys.targetKey] = jsonPerPicArray;
-      json[rootKey][imgIndex][classKeys.ItemsCount] = jsonPerPicArray.length;
+      const currentPicture = datasetState.dataset[ROOT_KEY][datasetState.currentImageIndex];
+      currentPicture[datasetState.productSchema.targetKey] = datasetState.currentItems;
+      currentPicture[datasetState.productSchema.ItemsCount] = datasetState.currentItems.length;
     }
     return result;
   } catch (err) {
@@ -315,15 +330,15 @@ function operateJsonContent(callback, errorMessage) {
 }
 
 function createJsonImageTarget(index) {
-  if (!Array.isArray(json[rootKey]) || json[rootKey].length === 0) {
+  if (!Array.isArray(datasetState.dataset[ROOT_KEY]) || datasetState.dataset[ROOT_KEY].length === 0) {
     return { success: false, error: 'No image data is available in the loaded JSON dataset.' };
   }
-  if (!Number.isInteger(index) || index < 0 || index >= json[rootKey].length) {
+  if (!Number.isInteger(index) || index < 0 || index >= datasetState.dataset[ROOT_KEY].length) {
     return { success: false, error: 'Invalid JSON image index.' };
   }
 
-  navigationImgIndex = index;
-  return { success: true, index, path: jsonImgPathList[index] };
+  datasetState.navigationImageIndex = index;
+  return { success: true, index, path: datasetState.imagePaths[index] };
 }
 
 export function getJsonImageTarget(index) {
@@ -331,12 +346,13 @@ export function getJsonImageTarget(index) {
 }
 
 export function getAdjacentJsonImageTarget(direction) {
-  if (!Array.isArray(json[rootKey]) || json[rootKey].length === 0) {
+  if (!Array.isArray(datasetState.dataset[ROOT_KEY]) || datasetState.dataset[ROOT_KEY].length === 0) {
     return { success: false, error: 'No image data is available in the loaded JSON dataset.' };
   }
 
-  const totalImages = json[rootKey].length;
-  const baseIndex = navigationImgIndex >= 0 ? navigationImgIndex : imgIndex;
+  const totalImages = datasetState.dataset[ROOT_KEY].length;
+  const baseIndex =
+    datasetState.navigationImageIndex >= 0 ? datasetState.navigationImageIndex : datasetState.currentImageIndex;
   if (direction === KEYS.NEXT) {
     return createJsonImageTarget((baseIndex + 1) % totalImages);
   }
@@ -347,16 +363,15 @@ export function getAdjacentJsonImageTarget(direction) {
   return { success: false, error: 'Invalid JSON image navigation direction.' };
 }
 
-const noKey = 'No.';
 export function resetJsonNoValue() {
-  if (Object.keys(json).length === 0) {
+  if (Object.keys(datasetState.dataset).length === 0) {
     return false;
   }
 
   let newNoValue = 0;
-  for (let i = 0; i < json[rootKey].length; i++) {
+  for (let i = 0; i < datasetState.dataset[ROOT_KEY].length; i++) {
     newNoValue++;
-    json[rootKey][i][noKey] = newNoValue.toString();
+    datasetState.dataset[ROOT_KEY][i][NUMBER_KEY] = newNoValue.toString();
   }
   return true;
 }

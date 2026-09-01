@@ -91,7 +91,7 @@ import { useMouse, useMousePressed } from '@vueuse/core';
 import cloneDeep from 'lodash/cloneDeep';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 
-import { setQuadInfo } from '../utils/JsonProcess.js';
+import { setQuadInfo } from '../state/DatasetState.js';
 import { isPointInPolygon } from '../utils/BasicFuncs.js';
 
 const dotsRealCoord = reactive([]);
