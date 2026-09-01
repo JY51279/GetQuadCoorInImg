@@ -66,6 +66,14 @@ export function getJsonImagePath() {
   return jsonImgPathList[imgIndex];
 }
 
+export function getJsonImageDialogContext() {
+  const contextIndex = imgIndex >= 0 ? imgIndex : 0;
+  return {
+    jsonFilePath: path,
+    imagePath: jsonImgPathList[contextIndex] ?? '',
+  };
+}
+
 let jsonPerPicArray = [];
 export function resetPicJson(imgFilePath, requestedImgIndex = null) {
   resetImgIndex(imgFilePath, requestedImgIndex);

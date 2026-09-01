@@ -65,7 +65,13 @@
       </div>
       <div class="button-group">
         <button class="button-style" :disabled="isImageRequestInProgress" @click="chooseJsonFile">Get JsonFile</button>
-        <button class="button-style" :disabled="isImageRequestInProgress" @click="chooseImgFile">Get PicFile</button>
+        <button
+          class="button-style"
+          :disabled="picInfo.picTotalNum === 0 || isImageRequestInProgress"
+          @click="chooseImgFile"
+        >
+          手动选择图片
+        </button>
         <button class="button-style" :disabled="!canOperate || isSaving" @click="modifyJsonItem">Mod JsonItem</button>
         <button class="button-style" :disabled="!canOperate || isSaving" @click="deleteJsonItem">Del JsonItem</button>
         <button class="button-style" :disabled="!canOperate || isSaving" @click="addJsonItem">Add JsonItem</button>
@@ -90,6 +96,7 @@ import {
   prepareJsonProcess,
   commitPreparedJsonProcess,
   getAdjacentJsonImageTarget,
+  getJsonImageDialogContext,
   getJsonImageTarget,
   updateQuadIndex,
   updateJson,
@@ -411,10 +418,14 @@ function chooseImgFile() {
     outputMessage('Please wait for the current image to finish loading.');
     return;
   }
+  if (picInfo.picTotalNum === 0) {
+    outputMessage('Please load a JSON dataset with image items first.');
+    return;
+  }
   try {
     imageSrcTmp = '';
     pendingImageRequest = null;
-    ipcRenderer.send('open-image-file-dialog');
+    ipcRenderer.send('open-image-file-dialog', getJsonImageDialogContext());
   } catch (error) {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
   }
@@ -462,7 +473,8 @@ function jumpToImageIndex() {
 
 function sendImageFileRequest(path) {
   imageSrcTmp = '';
-  ipcRenderer.send('open-pic-file', path);
+  const { jsonFilePath } = getJsonImageDialogContext();
+  ipcRenderer.send('open-pic-file', { imagePath: path, jsonFilePath });
   outputMessage('Get file response...');
 }
 
@@ -659,6 +671,18 @@ ipcRenderer.on('choose-json-file-response', async (e, response) => {
         outputMessage(`Failed to load JSON: ${preparedJson.error}`);
         return;
       }
+
+      const resolvedPathResult = await ipcRenderer.invoke('resolve-json-image-paths', {
+        jsonFilePath: preparedJson.path,
+        imagePaths: preparedJson.imagePaths,
+      });
+      if (!resolvedPathResult.success) {
+        outputMessage(`Failed to resolve JSON image paths: ${resolvedPathResult.error}`);
+        return;
+      }
+      preparedJson.imagePaths = resolvedPathResult.imagePaths.map(imagePath =>
+        imagePath.replace(/[\\/]/g, '/'),
+      );
 
       if (preparedJson.changed) {
         if (isSaving.value) {
@@ -952,6 +976,13 @@ function updateJsonHighlightIndex(newIndex) {
 }
 .button-style:hover {
   background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
+}
+.button-style:disabled,
+.button-style:disabled:hover {
+  background-color: #b8b8b8;
+  color: #f3f3f3;
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 .button-group {
   display: flex;

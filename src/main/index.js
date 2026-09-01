@@ -9,6 +9,8 @@ const { PNG } = require('pngjs');
 const sharp = require('sharp');
 
 let jsonTempFileCounter = 0;
+let lastJsonDirectory = '';
+let dialogPathSettingsFile = '';
 
 async function saveJsonFileAtomically(data) {
   if (!data || typeof data.path !== 'string' || data.path.length === 0) {
@@ -41,6 +43,61 @@ async function saveJsonFileAtomically(data) {
     }
     throw error;
   }
+}
+
+function getExistingDirectory(directoryPath) {
+  if (typeof directoryPath !== 'string' || directoryPath.length === 0) return '';
+  try {
+    return fs.statSync(directoryPath).isDirectory() ? directoryPath : '';
+  } catch {
+    return '';
+  }
+}
+
+function getDefaultDialogDirectory() {
+  return (
+    getExistingDirectory(lastJsonDirectory) ||
+    getExistingDirectory(app.getPath('documents')) ||
+    app.getPath('home')
+  );
+}
+
+async function loadDialogPathSettings() {
+  dialogPathSettingsFile = path.join(app.getPath('userData'), 'dialog-paths.json');
+  try {
+    const settingsText = await fs.promises.readFile(dialogPathSettingsFile, 'utf-8');
+    const settings = JSON.parse(settingsText);
+    lastJsonDirectory = getExistingDirectory(settings.lastJsonDirectory);
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error('Failed to load dialog path settings:', error.message);
+  }
+}
+
+async function saveDialogPathSettings() {
+  if (!dialogPathSettingsFile) return;
+  await saveJsonFileAtomically({
+    path: dialogPathSettingsFile,
+    str: JSON.stringify({ lastJsonDirectory }, null, 2),
+  });
+}
+
+function resolveJsonImagePath(imagePath, jsonFilePath = '') {
+  if (typeof imagePath !== 'string' || imagePath.length === 0) return '';
+  if (path.isAbsolute(imagePath)) return path.normalize(imagePath);
+
+  if (typeof jsonFilePath === 'string' && jsonFilePath.length > 0) {
+    return path.resolve(path.dirname(jsonFilePath), imagePath);
+  }
+  return path.resolve(imagePath);
+}
+
+function getImageDialogDefaultDirectory(context) {
+  const jsonFilePath = typeof context?.jsonFilePath === 'string' ? context.jsonFilePath : '';
+  const imagePath = typeof context?.imagePath === 'string' ? context.imagePath : '';
+  const resolvedImagePath = resolveJsonImagePath(imagePath, jsonFilePath);
+  const imageDirectory = resolvedImagePath ? getExistingDirectory(path.dirname(resolvedImagePath)) : '';
+  const jsonDirectory = jsonFilePath ? getExistingDirectory(path.dirname(jsonFilePath)) : '';
+  return imageDirectory || jsonDirectory || getDefaultDialogDirectory();
 }
 
 function createWindow() {
@@ -255,7 +312,8 @@ function openPicFile(event, filePath) {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await loadDialogPathSettings();
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron');
 
@@ -267,10 +325,11 @@ app.whenReady().then(() => {
   });
   //IPC test
   ipcMain.setMaxListeners(20);
-  ipcMain.on('open-image-file-dialog', event => {
+  ipcMain.on('open-image-file-dialog', (event, context) => {
     //console.log('ipcMain.on  open-json-file-dialog');
     dialog
       .showOpenDialog({
+        defaultPath: getImageDialogDefaultDirectory(context),
         properties: ['openFile'],
         filters: [{ name: 'Image Files', extensions: imageExtensions }],
       })
@@ -285,14 +344,22 @@ app.whenReady().then(() => {
         console.error('Error while opening image file dialog:', err);
       });
   });
-  ipcMain.on('open-pic-file', (event, filePath) => {
-    openPicFile(event, filePath);
+  ipcMain.on('open-pic-file', (event, request) => {
+    const imagePath = typeof request === 'string' ? request : request?.imagePath;
+    const jsonFilePath = typeof request === 'string' ? '' : request?.jsonFilePath;
+    const resolvedImagePath = resolveJsonImagePath(imagePath, jsonFilePath);
+    if (!resolvedImagePath) {
+      event.reply('open-pic-file-response', { success: false, error: 'Invalid image path.', path: '' });
+      return;
+    }
+    openPicFile(event, resolvedImagePath);
   });
 
   ipcMain.on('open-json-file-dialog', event => {
     //console.log('ipcMain.on  open-json-file-dialog');
     dialog
       .showOpenDialog({
+        defaultPath: getDefaultDialogDirectory(),
         properties: ['openFile'],
         filters: [{ name: 'JSON Files', extensions: ['json'] }],
       })
@@ -301,6 +368,10 @@ app.whenReady().then(() => {
           // 发送选中文件的路径到渲染进程
           const filePath = result.filePaths[0];
           const fileName = path.basename(filePath);
+          lastJsonDirectory = path.dirname(filePath);
+          saveDialogPathSettings().catch(error => {
+            console.error('Failed to save dialog path settings:', error.message);
+          });
           fs.readFile(filePath, 'utf-8', (err, data) => {
             if (err) {
               console.log('Fail Open Json');
@@ -316,6 +387,19 @@ app.whenReady().then(() => {
       .catch(err => {
         console.error('Error while opening json file dialog:', err);
       });
+  });
+  ipcMain.handle('resolve-json-image-paths', (_event, data) => {
+    try {
+      if (!data || typeof data.jsonFilePath !== 'string' || !Array.isArray(data.imagePaths)) {
+        throw new Error('Invalid image path resolution request.');
+      }
+      const imagePaths = data.imagePaths.map(imagePath =>
+        resolveJsonImagePath(imagePath, data.jsonFilePath),
+      );
+      return { success: true, imagePaths };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   });
   ipcMain.handle('save-json-file', async (_event, data) => {
     try {
