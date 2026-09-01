@@ -150,7 +150,11 @@ function outputMessage(message) {
 }
 // Basic delete
 function deletePt(ptIndex) {
-  if (ptIndex !== -1 && ptIndex < dotsCanvasCoord.value.length) {
+  if (
+    Number.isInteger(ptIndex) &&
+    ptIndex >= 0 &&
+    ptIndex < dotsCanvasCoord.value.length
+  ) {
     dotsCanvasCoord.value.splice(ptIndex, 1);
     dotsRealCoord.splice(ptIndex, 1);
     return true;
@@ -224,7 +228,7 @@ const sourceLTCoord = { x: 0, y: 0 };
 const sourceRBCoord = { x: 0, y: 0 };
 const gridLimit = 10;
 function drawCanvas() {
-  if (canvas.value === null || canvas.value === null || props.imageObj === null) {
+  if (canvas.value === null || ctx.value === null || props.imageObj === null) {
     outputMessage('drawCanvas canvas Error.');
     return;
   }
@@ -339,9 +343,18 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
 }
 
 let quadsArray = [];
+function isValidQuadPoints(quadPoints) {
+  return (
+    Array.isArray(quadPoints) &&
+    quadPoints.length >= 4 &&
+    quadPoints.every(point => point && Number.isFinite(point.x) && Number.isFinite(point.y))
+  );
+}
+
 function resetQuadsArray(newQuadArray, initImageScale) {
-  quadsArray = newQuadArray;
+  quadsArray = Array.isArray(newQuadArray) ? newQuadArray : [];
   quadsArray.forEach(quad => {
+    if (!isValidQuadPoints(quad)) return;
     quad.forEach(dot => {
       dot.x = Math.round(dot.x * initImageScale);
       dot.y = Math.round(dot.y * initImageScale);
@@ -370,7 +383,7 @@ watch(showQuadIndex, () => {
 });
 
 function toggleShowQuadIndex(newIndex) {
-  if (newIndex < 0 || newIndex > quadsArray.length) {
+  if (!Number.isInteger(newIndex) || newIndex < 0 || newIndex >= quadsArray.length) {
     console.log('newIndex out of range: ', newIndex);
     outputMessage('newIndex out of range.');
     return;
@@ -384,7 +397,7 @@ function toggleShowQuadIndex(newIndex) {
 }
 
 function addShowQuadIndex(newIndex) {
-  if (newIndex < 0 || newIndex > quadsArray.length) {
+  if (!Number.isInteger(newIndex) || newIndex < 0 || newIndex >= quadsArray.length) {
     console.log('newIndex out of range: ', newIndex);
     outputMessage('newIndex out of range.');
     return;
@@ -411,7 +424,7 @@ function clearShowQuadIndex() {
 
 const outerQuadArray = [];
 function drawCanvasForShowQuads() {
-  if (ctxQuad.value === null || ctxQuad.value === null) {
+  if (ctxQuad.value === null) {
     console.log('Failed to draw canvas for show quads');
     return;
   }
@@ -430,7 +443,7 @@ function drawShowQuads() {
   }
 }
 function drawQuadLine(quadRealPoints, isHighlight = false) {
-  if (quadRealPoints.length < 4) {
+  if (!isValidQuadPoints(quadRealPoints)) {
     console.log('Failed to draw quad');
     return;
   }
@@ -795,10 +808,10 @@ async function initImgInfo() {
     initImgHeight.value = img.height;
     updateImgData();
     // Update ctx
-    if (ctx.value !== null && ctx.value !== null) {
+    if (ctx.value !== null) {
       ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
     }
-    if (ctxQuad.value !== null && ctxQuad.value !== null) {
+    if (ctxQuad.value !== null) {
       ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
     }
     ctx.value = canvas.value.getContext('2d');
@@ -970,8 +983,8 @@ async function updateViewSize() {
 }
 
 function initCanvasSettings() {
-  if (canvas.value === null || canvas.value === null || scale.value >= gridLimit) return;
-  if (ctx.value === null || ctx.value === null) {
+  if (canvas.value === null || scale.value >= gridLimit) return;
+  if (ctx.value === null) {
     ctx.value = canvas.value.getContext('2d');
   }
 
