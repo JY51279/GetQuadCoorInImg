@@ -62,10 +62,6 @@ export function commitPreparedJsonProcess(preparedJson) {
   return true;
 }
 
-export function getJsonImagePath() {
-  return jsonImgPathList[imgIndex];
-}
-
 export function getJsonImageDialogContext() {
   const contextIndex = imgIndex >= 0 ? imgIndex : 0;
   return {

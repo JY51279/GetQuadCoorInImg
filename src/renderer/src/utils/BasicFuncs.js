@@ -9,11 +9,6 @@ export const KEYS = {
   OPERATE_FAIL: 'Operate Fail',
   // 其他键...
 };
-export const PRODUCTS = {
-  DBR: 'DBR',
-  DDN: 'DDN',
-  DLR: 'DLR',
-};
 export function swap(arr, index1, index2) {
   [arr[index1], arr[index2]] = [arr[index2], arr[index1]];
 }
@@ -162,21 +157,4 @@ export function serializePointArray2String(points, separator, barcodeType) {
   if (!setQuadDots2ClockWise(pointsTmp, barcodeType)) return '';
   const str = pointsTmp.map(item => `${item.x} ${item.y}`).join(separator);
   return str;
-}
-
-// unusedFunction
-export function getClosestPtIndexInArray(oriPoint, pointArray) {
-  let minDistance = Infinity;
-  let closestIndex = -1;
-
-  for (let i = 0; i < pointArray.length; i++) {
-    const point = pointArray[i];
-    const distance = Math.sqrt(Math.pow(oriPoint.x - point.x, 2) + Math.pow(oriPoint.y - point.y, 2));
-    if (distance < minDistance) {
-      minDistance = distance;
-      closestIndex = i;
-    }
-  }
-
-  return closestIndex;
 }
