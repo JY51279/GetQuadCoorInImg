@@ -124,25 +124,39 @@ watch(quadInfo, newQuadInfo => {
 const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
 const jumpImageIndex = ref('');
 const mouseCoord = { x: 0, y: 0 };
+let removeOpenPicFileResponseListener = null;
+let removeChooseJsonFileResponseListener = null;
+
+function handleWindowMouseMove(e) {
+  mouseCoord.x = e.clientX;
+  mouseCoord.y = e.clientY;
+}
+
 onMounted(() => {
   console.log('onMounted...');
   initZoomSettings();
-  window.addEventListener('mousemove', e => {
-    mouseCoord.x = e.clientX;
-    mouseCoord.y = e.clientY;
-  });
+  window.addEventListener('mousemove', handleWindowMouseMove);
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('keyup', handleKeyUp);
+  removeOpenPicFileResponseListener = ipcRenderer.on(
+    'open-pic-file-response',
+    handleOpenPicFileResponse,
+  );
+  removeChooseJsonFileResponseListener = ipcRenderer.on(
+    'choose-json-file-response',
+    handleChooseJsonFileResponse,
+  );
 });
 
 onUnmounted(() => {
   console.log('onUnmounted...');
-  window.removeEventListener('mousemove', e => {
-    mouseCoord.x = e.clientX;
-    mouseCoord.y = e.clientY;
-  });
-  window.addEventListener('keydown', handleKeyDown);
-  window.addEventListener('keyup', handleKeyUp);
+  window.removeEventListener('mousemove', handleWindowMouseMove);
+  window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('keyup', handleKeyUp);
+  removeOpenPicFileResponseListener?.();
+  removeChooseJsonFileResponseListener?.();
+  removeOpenPicFileResponseListener = null;
+  removeChooseJsonFileResponseListener = null;
   clearMessage();
 });
 
@@ -601,7 +615,7 @@ async function reloadImageObj(src) {
 }
 
 let imgFileName = ref(null);
-ipcRenderer.on('open-pic-file-response', async (e, response) => {
+async function handleOpenPicFileResponse(_event, response) {
   ensureManualImageRequest();
   imgContainerRef.value.resetIsImgFileLoading(true);
   imgContainerRef.value.changeMouseState(true);
@@ -628,7 +642,7 @@ ipcRenderer.on('open-pic-file-response', async (e, response) => {
     const failedPath = (response.path || '').replace(/[\\/]/g, '/');
     handleImageRequestFailure(response.error, failedPath);
   }
-});
+}
 
 function resetImageForDatasetChange(picTotalNum = 0) {
   imageObj.value = null;
@@ -661,7 +675,7 @@ function chooseJsonFile() {
 
 let jsonFileName = ref(null);
 const loadedProductType = ref('');
-ipcRenderer.on('choose-json-file-response', async (e, response) => {
+async function handleChooseJsonFileResponse(_event, response) {
   try {
     if (response.success) {
       const jsonData = response.jsonInfo;
@@ -729,7 +743,7 @@ ipcRenderer.on('choose-json-file-response', async (e, response) => {
     console.error('An error occurred while processing JSON file:', error);
     outputMessage(`Failed to process JSON file: ${error.message}`);
   }
-});
+}
 
 const dotsRealCoord = reactive([]);
 function updateDotsRealCoord(newDotsRealCoord) {

@@ -680,25 +680,27 @@ watch(pressed, newVal => {
 });
 
 const mouseCoord = reactive({ x: 0, y: 0 });
+function handleWindowMouseMove(e) {
+  mouseCoord.x = e.clientX;
+  mouseCoord.y = e.clientY;
+  mouseMoved = true;
+}
+
 onMounted(() => {
   console.log('onMountedIMG...');
   updateViewSize();
   window.addEventListener('resize', updateViewSize);
-  window.addEventListener('mousemove', e => {
-    mouseCoord.x = e.clientX;
-    mouseCoord.y = e.clientY;
-    mouseMoved = true;
-  });
+  window.addEventListener('mousemove', handleWindowMouseMove);
 });
 
 onUnmounted(() => {
   console.log('onUnmountedIMG...');
   window.removeEventListener('resize', updateViewSize);
-  window.removeEventListener('mousemove', e => {
-    mouseCoord.x = e.clientX;
-    mouseCoord.y = e.clientY;
-    mouseMoved = true;
-  });
+  window.removeEventListener('mousemove', handleWindowMouseMove);
+  if (timer !== null) {
+    clearTimeout(timer);
+    timer = null;
+  }
 });
 
 // Click canvas to get dot
