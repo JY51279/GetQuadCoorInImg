@@ -191,34 +191,54 @@ function getDotInfo(e) {
   return { canvasCoord, realCoord, existingDotIndex };
 }
 
-let imgPixelData2D = [];
+let imgPixelData = null;
+let imgPixelDataWidth = 0;
+let imgPixelDataHeight = 0;
+
+function clearImgPixelData() {
+  imgPixelData = null;
+  imgPixelDataWidth = 0;
+  imgPixelDataHeight = 0;
+}
+
 function updateImgData() {
+  clearImgPixelData();
   if (!props.imageObj) return;
+
   // 创建一个Canvas对象
-  let canvasTmp = document.createElement('canvas');
+  const canvasTmp = document.createElement('canvas');
   canvasTmp.width = initImgWidth.value;
   canvasTmp.height = initImgHeight.value;
 
   // 将图像绘制到Canvas上
-  var ctxTmp = canvasTmp.getContext('2d');
+  const ctxTmp = canvasTmp.getContext('2d');
+  if (ctxTmp === null) throw new Error('Failed to create the image pixel canvas context.');
   ctxTmp.drawImage(props.imageObj, 0, 0);
 
-  // 获取图像像素的颜色矩阵
-  const imgPixelData = ctxTmp.getImageData(0, 0, canvasTmp.width, canvasTmp.height).data;
-  const imgPixelData2DTmp = [];
-  for (let x = 0; x < canvasTmp.width; ++x) {
-    imgPixelData2DTmp[x] = [];
-    for (let y = 0; y < canvasTmp.height; ++y) {
-      const i = (y * canvasTmp.width + x) * 4;
-      const r = imgPixelData[i];
-      const g = imgPixelData[i + 1];
-      const b = imgPixelData[i + 2];
-      const a = imgPixelData[i + 3];
-      const cssColor = `rgba(${r}, ${g}, ${b}, ${a})`;
-      imgPixelData2DTmp[x][y] = cssColor;
-    }
+  // 只保留连续的 RGBA 字节，不为整张图片预先创建颜色字符串。
+  const imageData = ctxTmp.getImageData(0, 0, canvasTmp.width, canvasTmp.height);
+  imgPixelData = imageData.data;
+  imgPixelDataWidth = imageData.width;
+  imgPixelDataHeight = imageData.height;
+}
+
+function getPixelColor(sourceX, sourceY) {
+  if (
+    imgPixelData === null ||
+    sourceX < 0 ||
+    sourceX >= imgPixelDataWidth ||
+    sourceY < 0 ||
+    sourceY >= imgPixelDataHeight
+  ) {
+    return null;
   }
-  imgPixelData2D = imgPixelData2DTmp;
+
+  const pixelOffset = (sourceY * imgPixelDataWidth + sourceX) * 4;
+  const red = imgPixelData[pixelOffset];
+  const green = imgPixelData[pixelOffset + 1];
+  const blue = imgPixelData[pixelOffset + 2];
+  const alpha = imgPixelData[pixelOffset + 3] / 255;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 // Only draw the part of img inside the viewport
@@ -336,7 +356,9 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
       const canvasX = startX + swOffset * space;
       const sourceX = sourceLTCoord.x + swOffset;
 
-      ctx.value.fillStyle = imgPixelData2D[sourceX][sourceY];
+      const pixelColor = getPixelColor(sourceX, sourceY);
+      if (pixelColor === null) continue;
+      ctx.value.fillStyle = pixelColor;
       ctx.value.fillRect(canvasX, canvasY, dw, dh);
     }
   }
@@ -519,12 +541,29 @@ function getQuads2Draw(quadRealPoints) {
   return { outerQuadPoints, innerQuadPoints };
 }
 
-function updateViewPortDraw() {
+let viewportDrawFrameId = null;
+
+function cancelScheduledViewPortDraw() {
+  if (viewportDrawFrameId === null) return;
+  cancelAnimationFrame(viewportDrawFrameId);
+  viewportDrawFrameId = null;
+}
+
+function drawViewPortNow() {
   if (imageSrc === '') return;
   drawCanvas();
   updateDotsCanvasCoord();
   console.log(4, 'drawCanvasForShowQuads');
   drawCanvasForShowQuads();
+}
+
+function updateViewPortDraw() {
+  if (imageSrc === '' || viewportDrawFrameId !== null) return;
+
+  viewportDrawFrameId = requestAnimationFrame(() => {
+    viewportDrawFrameId = null;
+    drawViewPortNow();
+  });
 }
 
 const isDisabledMouse = ref(false);
@@ -710,6 +749,8 @@ onUnmounted(() => {
   console.log('onUnmountedIMG...');
   window.removeEventListener('resize', updateViewSize);
   window.removeEventListener('mousemove', handleWindowMouseMove);
+  cancelScheduledViewPortDraw();
+  clearImgPixelData();
   if (timer !== null) {
     clearTimeout(timer);
     timer = null;
@@ -775,6 +816,8 @@ const ctxQuad = ref(null);
 //const imageObj = ref(null);
 let imageSrc = '';
 function clearImage() {
+  cancelScheduledViewPortDraw();
+  clearImgPixelData();
   imageSrc = '';
   initImgWidth.value = 0;
   initImgHeight.value = 0;
