@@ -6,7 +6,7 @@
       </div>
     </TransitionGroup>
 
-    <imageItem
+    <ImageView
       ref="imgContainerRef"
       :image-obj="imageObj"
       :can-edit="canOperate"
@@ -15,7 +15,7 @@
       @output-message="outputMessage"
       @update-dots-real-coord="updateDotsRealCoord"
       @update-json-highlight-index="updateJsonHighlightIndex"
-    ></imageItem>
+    ></ImageView>
     <div class="tool-container">
       <div>
         <div class="zoomViewBox">
@@ -83,14 +83,14 @@
       </div>
     </div>
 
-    <jsonItems ref="jsonView" @update-quad-info="updateQuadInfo" @init-show-quads="initShowQuads"></jsonItems>
+    <JsonView ref="jsonView" @update-quad-info="updateQuadInfo" @init-show-quads="initShowQuads"></JsonView>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch } from 'vue';
-import jsonItems from './JsonView.vue';
-import imageItem from './ImageView.vue';
+import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import JsonView from './JsonView.vue';
+import ImageView from './ImageView.vue';
 import Help from './Help.vue';
 import {
   prepareJsonProcess,
@@ -106,12 +106,48 @@ import {
   resetJsonNoValue,
 } from '../state/DatasetState.js';
 import { KEYS } from '../utils/BasicFuncs.js';
+import { loadRendererImage } from '../utils/RendererImageLoader.js';
+import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
+
+// Child component and canvas references
 const imgContainerRef = ref(null);
 const jsonView = ref(null);
+const zoomView = ref(null);
 
+// Dataset and current image state
 const quadInfo = reactive({ quadNum: 0, quadTotal: 0 });
+const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
+const jumpImageIndex = ref('');
+const dotsRealCoord = reactive([]);
+const imageObj = ref(new Image());
+const imgFileName = ref(null);
+const jsonFileName = ref(null);
+const loadedProductType = ref('');
+let imgFilePath = '';
+let initImageScale = 1;
+
+// Operation and image request state
+const canOperate = ref(false);
+const isSaving = ref(false);
+const isImageRequestInProgress = ref(false);
+const imageLoadErrorPath = ref('');
+let imageChunkBuffer = '';
+let activeImageRequest = null;
+
+// Notification state
+const NOTIFICATION_DURATION = 3000;
+const MAX_VISIBLE_NOTIFICATIONS = 4;
+const notifications = ref([]);
+const notificationTimers = new Map();
+let notificationId = 0;
+
+// Window input and listener state
+const mouseCoord = { x: 0, y: 0 };
+let removeOpenPicFileResponseListener = null;
+let removeChooseJsonFileResponseListener = null;
+
 function updateQuadInfo(quadNum = -1, quadTotal = -1) {
   if (quadNum !== -1) quadInfo.quadNum = quadNum;
   if (quadTotal !== -1) quadInfo.quadTotal = quadTotal;
@@ -121,38 +157,22 @@ watch(quadInfo, newQuadInfo => {
   imgContainerRef.value.resetHighlightQuadIndex(newQuadInfo.quadNum - 1);
 });
 
-const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
-const jumpImageIndex = ref('');
-const mouseCoord = { x: 0, y: 0 };
-let removeOpenPicFileResponseListener = null;
-let removeChooseJsonFileResponseListener = null;
-
 function handleWindowMouseMove(e) {
   mouseCoord.x = e.clientX;
   mouseCoord.y = e.clientY;
 }
 
 onMounted(() => {
-  console.log('onMounted...');
-  initZoomSettings();
+  configureZoomCanvas(zoomView.value);
   window.addEventListener('mousemove', handleWindowMouseMove);
   window.addEventListener('keydown', handleKeyDown);
-  window.addEventListener('keyup', handleKeyUp);
-  removeOpenPicFileResponseListener = ipcRenderer.on(
-    'open-pic-file-response',
-    handleOpenPicFileResponse,
-  );
-  removeChooseJsonFileResponseListener = ipcRenderer.on(
-    'choose-json-file-response',
-    handleChooseJsonFileResponse,
-  );
+  removeOpenPicFileResponseListener = ipcRenderer.on('open-pic-file-response', handleOpenPicFileResponse);
+  removeChooseJsonFileResponseListener = ipcRenderer.on('choose-json-file-response', handleChooseJsonFileResponse);
 });
 
 onUnmounted(() => {
-  console.log('onUnmounted...');
   window.removeEventListener('mousemove', handleWindowMouseMove);
   window.removeEventListener('keydown', handleKeyDown);
-  window.removeEventListener('keyup', handleKeyUp);
   removeOpenPicFileResponseListener?.();
   removeChooseJsonFileResponseListener?.();
   removeOpenPicFileResponseListener = null;
@@ -160,8 +180,7 @@ onUnmounted(() => {
   clearMessage();
 });
 
-// 监听键盘事件
-let isLogging = false;
+// Keyboard shortcuts
 const keyActions = {
   w: {
     default: () => jsonView.value.updateLightIndex(KEYS.PREVIOUS),
@@ -216,19 +235,16 @@ function handleKeyDown(e) {
 
   const keyCode = e.keyCode || e.code;
 
-  if (!isLogging && keyCode >= 48 && keyCode <= 57) {
+  if (keyCode >= 48 && keyCode <= 57) {
     const digit = keyCode - 48;
     clearOneDot(digit - 1);
     return;
   }
-  //console.log(e.key);
   const action = keyActions[e.key];
-  //console.log(keyActions[e.key]);
   if (!action) return;
 
   if (e.ctrlKey && e.shiftKey && action.ctrl_shift) {
     e.preventDefault();
-    //console.log(action.ctrl_shift);
     action.ctrl_shift();
   } else if (e.ctrlKey && action.ctrl) {
     e.preventDefault();
@@ -238,16 +254,8 @@ function handleKeyDown(e) {
     action.default();
   }
 }
-function handleKeyUp() {
-  isLogging = false; // 在键盘释放时重置标志为 false，以便下次可以再次执行日志记录操作
-}
 
-const NOTIFICATION_DURATION = 3000;
-const MAX_VISIBLE_NOTIFICATIONS = 4;
-const notifications = ref([]);
-const notificationTimers = new Map();
-let notificationId = 0;
-
+// Notifications
 function removeNotification(id) {
   notifications.value = notifications.value.filter(notification => notification.id !== id);
   const timer = notificationTimers.get(id);
@@ -267,7 +275,7 @@ function outputMessage(message) {
   notificationTimers.set(notification.id, timer);
 }
 
-// Click button
+// Child component commands
 function clearOneDot(index) {
   imgContainerRef.value.deletePt(index);
 }
@@ -278,11 +286,9 @@ function resetPosition() {
 
 function clearDots() {
   imgContainerRef.value.clearDots();
-  //outputMessage('clearDots Successfully.');
 }
 
 // JSON Operations
-const isSaving = ref(false);
 async function performJsonAction(action) {
   if (!canOperate.value) {
     outputMessage('JSON operation is disabled until the image matches the dataset.');
@@ -372,11 +378,7 @@ function clearMessage() {
   notifications.value = [];
 }
 
-// Init Img
-const imageObj = ref(new Image());
-const canOperate = ref(false);
-const imageLoadErrorPath = ref('');
-let imgFilePath = '';
+// Dataset and image initialization
 async function initProcessInfo(jsonImageIndex = null) {
   try {
     if (!imageObj.value || imageObj.value.src === '') {
@@ -385,7 +387,12 @@ async function initProcessInfo(jsonImageIndex = null) {
       imgContainerRef.value.resetIsImgFileLoading(false);
       return false;
     } else {
-      await imgContainerRef.value.initImgInfo();
+      await nextTick();
+      if (!(await imgContainerRef.value.initImgInfo())) {
+        canOperate.value = false;
+        imgContainerRef.value.resetIsImgFileLoading(false);
+        return false;
+      }
       imgContainerRef.value.changeMouseState(false);
     }
 
@@ -413,7 +420,6 @@ async function initProcessInfo(jsonImageIndex = null) {
   }
 }
 
-let initImageScale = 1; // Image scale at first to avoid too large image
 function initShowQuads() {
   const newShowQuadArray = getJsonPerPicPointsArray();
   imgContainerRef.value.resetQuadsArray(newShowQuadArray, initImageScale);
@@ -421,12 +427,7 @@ function initShowQuads() {
   addAll2ShowQuads();
   updateJsonHighlightIndex(-1);
 }
-// Get files
-
-let imageSrcTmp = '';
-const isImageRequestInProgress = ref(false);
-let pendingImageRequest = null;
-
+// Image request lifecycle
 function chooseImgFile() {
   if (isImageRequestInProgress.value) {
     outputMessage('Please wait for the current image to finish loading.');
@@ -437,8 +438,8 @@ function chooseImgFile() {
     return;
   }
   try {
-    imageSrcTmp = '';
-    pendingImageRequest = null;
+    imageChunkBuffer = '';
+    activeImageRequest = null;
     ipcRenderer.send('open-image-file-dialog', getJsonImageDialogContext());
   } catch (error) {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
@@ -486,7 +487,7 @@ function jumpToImageIndex() {
 }
 
 function sendImageFileRequest(path) {
-  imageSrcTmp = '';
+  imageChunkBuffer = '';
   const { jsonFilePath } = getJsonImageDialogContext();
   ipcRenderer.send('open-pic-file', { imagePath: path, jsonFilePath });
   outputMessage('Get file response...');
@@ -497,7 +498,7 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
   if (!previousRequest && picInfo.picNum > 0) attemptedIndexes.add(picInfo.picNum - 1);
   attemptedIndexes.add(target.index);
 
-  pendingImageRequest = {
+  activeImageRequest = {
     source: 'dataset',
     index: target.index,
     path: target.path,
@@ -512,8 +513,8 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
 }
 
 function ensureManualImageRequest() {
-  if (pendingImageRequest) return;
-  pendingImageRequest = {
+  if (activeImageRequest) return;
+  activeImageRequest = {
     source: 'manual',
     index: null,
     path: '',
@@ -526,7 +527,7 @@ function ensureManualImageRequest() {
 }
 
 function retryDatasetImageRequest() {
-  const failedRequest = pendingImageRequest;
+  const failedRequest = activeImageRequest;
   if (failedRequest?.source !== 'dataset') return false;
 
   const nextTarget = getAdjacentJsonImageTarget(failedRequest.direction);
@@ -537,14 +538,14 @@ function retryDatasetImageRequest() {
   return true;
 }
 
-function finishImageRequest() {
-  pendingImageRequest = null;
-  imageSrcTmp = '';
+function resetImageRequestState() {
+  activeImageRequest = null;
+  imageChunkBuffer = '';
   isImageRequestInProgress.value = false;
 }
 
 function handleImageRequestFailure(errorMessage, failedPath = '') {
-  const failedRequest = pendingImageRequest;
+  const failedRequest = activeImageRequest;
   outputMessage(`Failed to open image${failedPath ? `: ${failedPath}` : ''}.`);
   outputMessage(errorMessage || 'Unknown image loading error.');
 
@@ -566,66 +567,22 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
     imgContainerRef.value.clearDots();
   }
   imgContainerRef.value.resetIsImgFileLoading(false);
-  finishImageRequest();
+  resetImageRequestState();
 }
 
-// 常量：最大允许的宽高
-const MAX_DIMENSION = 3072;
-async function reloadImageObj(src) {
-  await new Promise((resolve, reject) => {
-    // 1) 先加载原图到临时 image
-    const originalImg = new Image();
-    originalImg.onload = () => {
-      const { width, height } = originalImg;
-      initImageScale = 1;
-      // 2) 如果原图都在MAX_DIMENSION以内，直接使用
-      if (width <= MAX_DIMENSION && height <= MAX_DIMENSION) {
-        imageObj.value = originalImg;
-        return resolve(imageObj.value);
-      }
-
-      // 3) 否则需要缩放
-      //    计算缩放比例：让宽或高中最大的那个恰好等于MAX_DIMENSION
-      initImageScale = MAX_DIMENSION / Math.max(width, height);
-      const newWidth = Math.floor(width * initImageScale);
-      const newHeight = Math.floor(height * initImageScale);
-
-      // 4) 在临时Canvas里绘制并缩放
-      const canvas = document.createElement('canvas');
-      canvas.width = newWidth;
-      canvas.height = newHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(originalImg, 0, 0, newWidth, newHeight);
-
-      // 5) 将canvas内容转成base64或blob给新的Image
-      const resizedDataUrl = canvas.toDataURL('image/png');
-
-      // 6) 用这份缩放后的数据来填充最终的 imageObj
-      imageObj.value = new Image();
-      imageObj.value.onload = () => {
-        resolve(imageObj.value);
-      };
-      imageObj.value.onerror = reject;
-
-      imageObj.value.src = resizedDataUrl;
-    };
-    originalImg.onerror = reject;
-    originalImg.src = src;
-  });
-}
-
-let imgFileName = ref(null);
 async function handleOpenPicFileResponse(_event, response) {
   ensureManualImageRequest();
   imgContainerRef.value.resetIsImgFileLoading(true);
   imgContainerRef.value.changeMouseState(true);
   if (response.success) {
-    imageSrcTmp += response.picInfo.str;
+    imageChunkBuffer += response.picInfo.str;
     if (response.picInfo.fileName === '') return;
 
-    const completedRequest = pendingImageRequest;
+    const completedRequest = activeImageRequest;
     try {
-      await reloadImageObj(imageSrcTmp);
+      const loadedImage = await loadRendererImage(imageChunkBuffer);
+      imageObj.value = loadedImage.image;
+      initImageScale = loadedImage.initialScale;
     } catch (error) {
       handleImageRequestFailure(error.message, response.picInfo.path || completedRequest?.path || '');
       return;
@@ -636,7 +593,7 @@ async function handleOpenPicFileResponse(_event, response) {
     imageLoadErrorPath.value = '';
     const requestedJsonImageIndex = completedRequest?.source === 'dataset' ? completedRequest.index : null;
     const isReady = await initProcessInfo(requestedJsonImageIndex);
-    finishImageRequest();
+    resetImageRequestState();
     outputMessage(isReady ? 'Load Pic Successfully.' : 'Image loaded, but no matching JSON data was found.');
   } else {
     const failedPath = (response.path || '').replace(/[\\/]/g, '/');
@@ -649,8 +606,7 @@ function resetImageForDatasetChange(picTotalNum = 0) {
   imgFileName.value = '';
   imgFilePath = '';
   imageLoadErrorPath.value = '';
-  pendingImageRequest = null;
-  isImageRequestInProgress.value = false;
+  resetImageRequestState();
   picInfo.picNum = 0;
   picInfo.picTotalNum = picTotalNum;
   jumpImageIndex.value = '';
@@ -673,8 +629,7 @@ function chooseJsonFile() {
   }
 }
 
-let jsonFileName = ref(null);
-const loadedProductType = ref('');
+// Dataset loading
 async function handleChooseJsonFileResponse(_event, response) {
   try {
     if (response.success) {
@@ -694,9 +649,7 @@ async function handleChooseJsonFileResponse(_event, response) {
         outputMessage(`Failed to resolve JSON image paths: ${resolvedPathResult.error}`);
         return;
       }
-      preparedJson.imagePaths = resolvedPathResult.imagePaths.map(imagePath =>
-        imagePath.replace(/[\\/]/g, '/'),
-      );
+      preparedJson.imagePaths = resolvedPathResult.imagePaths.map(imagePath => imagePath.replace(/[\\/]/g, '/'));
 
       if (preparedJson.changed) {
         if (isSaving.value) {
@@ -734,7 +687,6 @@ async function handleChooseJsonFileResponse(_event, response) {
         startDatasetImageRequest(firstImageTarget, KEYS.NEXT);
       }
     } else {
-      // 处理读取文件失败的情况
       const errorMessage = response.error;
       console.error('Failed to read JSON file:', errorMessage);
       outputMessage(`Failed to read JSON file: ${errorMessage}`);
@@ -745,87 +697,24 @@ async function handleChooseJsonFileResponse(_event, response) {
   }
 }
 
-const dotsRealCoord = reactive([]);
 function updateDotsRealCoord(newDotsRealCoord) {
   dotsRealCoord.splice(0, dotsRealCoord.length, ...newDotsRealCoord);
 }
-// eslint-disable-next-line no-unused-vars
-watch(dotsRealCoord, newDotsRealCoord => {
+
+watch(dotsRealCoord, () => {
   updateZoomView();
 });
-// Update Zoom
-const zoomView = ref(null);
+
+// Zoom preview
 function updateZoomView() {
-  if (!imageObj.value || !imageObj.value.complete) return;
-  drawZoomAndDots();
-}
-function drawZoomAndDots() {
+  const origin = imgContainerRef.value?.realDot2GetZoom;
+  if (!imageObj.value?.complete || !origin || origin.x === -1) return;
+
   try {
-    if (!imageObj.value || !imageObj.value.complete || imgContainerRef.value.realDot2GetZoom.x === -1) return;
-    const zoomCtx = zoomView.value.getContext('2d');
-    zoomCtx.drawImage(
-      imageObj.value,
-      imgContainerRef.value.realDot2GetZoom.x,
-      imgContainerRef.value.realDot2GetZoom.y,
-      6,
-      6,
-      0,
-      0,
-      120,
-      120,
-    );
-
-    for (let i = 0; i < dotsRealCoord.length; ++i) {
-      drawDotInZoom(dotsRealCoord[i]);
-    }
-
-    // always highlight center pixel (4th row, 4th col = index 3,3)
-    drawMouseQuadInZoom();
-  } catch (err) {
-    console.log(imageObj.value);
-    console.error('An error occurred:', err);
+    drawZoomPreview(zoomView.value, imageObj.value, origin, dotsRealCoord);
+  } catch (error) {
+    console.error('Failed to draw the zoom preview:', error);
   }
-}
-
-function drawDotInZoom(newRealCoord) {
-  if (imgContainerRef.value.realDot2GetZoom.x === -1) return;
-  const zoomCtx = zoomView.value.getContext('2d');
-  let transX = newRealCoord.x - imgContainerRef.value.realDot2GetZoom.x;
-  let transY = newRealCoord.y - imgContainerRef.value.realDot2GetZoom.y;
-  if (transX >= 0 && transX < 6 && transY >= 0 && transY < 6) {
-    zoomCtx.fillRect(transX * 20, transY * 20, 20, 20);
-  }
-}
-
-function initZoomSettings() {
-  const zoomCtx = zoomView.value.getContext('2d');
-  zoomCtx.imageSmoothingEnabled = false;
-  zoomCtx.mozImageSmoothingEnabled = false;
-  zoomCtx.webkitImageSmoothingEnabled = false;
-  zoomCtx.msImageSmoothingEnabled = false;
-  zoomCtx.fillStyle = 'rgb(255,0,0)'; // 设置颜色
-}
-
-// 边界情况很少却要增加很多逻辑，以后有空再改，当前仅考虑4th row, 4th col
-function drawMouseQuadInZoom() {
-  const zoomCtx = zoomView.value.getContext('2d');
-  const px = 60, // 3 * 20,
-    py = 60, // 3 * 20,
-    size = 20;
-
-  zoomCtx.lineWidth = 2;
-  // 外黑框
-  zoomCtx.strokeStyle = 'blue';
-  zoomCtx.strokeRect(px, py, size, size);
-
-  // 内白十字
-  zoomCtx.strokeStyle = 'red';
-  zoomCtx.beginPath();
-  zoomCtx.moveTo(px + 5, py + 10);
-  zoomCtx.lineTo(px + 15, py + 10);
-  zoomCtx.moveTo(px + 10, py + 5);
-  zoomCtx.lineTo(px + 10, py + 15);
-  zoomCtx.stroke();
 }
 
 // Show quad

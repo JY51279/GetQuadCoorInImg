@@ -88,33 +88,17 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
-import cloneDeep from 'lodash/cloneDeep';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
+import {
+  canvasToImagePoint,
+  imageToCanvasPoint,
+  imageToScaledPoint,
+  scaledToCanvasPoint,
+  scaledToImagePoint,
+} from '../utils/ImageViewGeometry.js';
 
 import { setQuadInfo } from '../state/DatasetState.js';
 import { isPointInPolygon } from '../utils/BasicFuncs.js';
-
-const dotsRealCoord = reactive([]);
-const realDot2GetZoom = ref({ x: -1, y: -1 });
-defineExpose({
-  //值
-  dotsRealCoord,
-  realDot2GetZoom,
-  //方法
-  deletePt,
-  clearDots,
-  resetPosition,
-  initImgInfo,
-  resetHighlightQuadIndex,
-  toggleShowQuadIndex,
-  addShowQuadIndex,
-  clearShowQuadIndex,
-  resetQuadsArray,
-  changeMouseState,
-  toggleMode,
-  resetIsImgFileLoading,
-  clearImage,
-});
 
 const emits = defineEmits([
   'update-zoom-view',
@@ -138,23 +122,82 @@ const props = defineProps({
   },
 });
 
+// Canvas and viewport state
 const offsetCanvasLeft = 22;
 const offsetCanvasTop = 22;
+const gridLimit = 10;
+const scaleRange = 60;
+const autoAdaptBorderDis = 10;
 const imgContainerRef = ref(null);
 const canvas = ref(null);
 const canvasForShowQuads = ref(null);
+const ctx = ref(null);
+const ctxQuad = ref(null);
 const scale = ref(1);
+const offsetX = ref(0);
+const offsetY = ref(0);
+const viewportWidth = ref(0);
+const viewportHeight = ref(0);
+const initImgWidth = ref(0);
+const initImgHeight = ref(0);
+const canvasLTCoord = { x: 0, y: 0 };
+const canvasRBCoord = { x: 0, y: 0 };
+const sourceLTCoord = { x: 0, y: 0 };
+const sourceRBCoord = { x: 0, y: 0 };
+let imageSrc = '';
+let viewportDrawFrameId = null;
+
+// Image pixel cache
+let imgPixelData = null;
+let imgPixelDataWidth = 0;
+let imgPixelDataHeight = 0;
+
+// Annotation state
+const dotsRealCoord = reactive([]);
+const dotsCanvasCoord = ref([]);
+const realDot2GetZoom = ref({ x: -1, y: -1 });
+let quadsArray = [];
+const highlightQuadIndex = ref(-1);
+const showQuadIndex = reactive([]);
+const outerQuadArray = [];
+
+// Interaction and feedback state
+const isDisabledMouse = ref(false);
+const mouseIsOverContainer = ref(false);
+const mouseCoord = reactive({ x: 0, y: 0 });
+const indices2Show = ref('');
+const isImgFileLoading = ref(false);
+const isImgFileLoadingFailed = ref(false);
+let isOverviewMode = false;
+let mouseMoved = false;
+let timer = null;
+let isNotLongPress = true;
+
+defineExpose({
+  dotsRealCoord,
+  realDot2GetZoom,
+  deletePt,
+  clearDots,
+  resetPosition,
+  initImgInfo,
+  resetHighlightQuadIndex,
+  toggleShowQuadIndex,
+  addShowQuadIndex,
+  clearShowQuadIndex,
+  resetQuadsArray,
+  changeMouseState,
+  toggleMode,
+  resetIsImgFileLoading,
+  clearImage,
+});
 
 function outputMessage(message) {
   emits('output-message', message);
 }
-// Basic delete
+
+// Point editing
 function deletePt(ptIndex) {
-  if (
-    Number.isInteger(ptIndex) &&
-    ptIndex >= 0 &&
-    ptIndex < dotsCanvasCoord.value.length
-  ) {
+  if (Number.isInteger(ptIndex) && ptIndex >= 0 && ptIndex < dotsCanvasCoord.value.length) {
     dotsCanvasCoord.value.splice(ptIndex, 1);
     dotsRealCoord.splice(ptIndex, 1);
     return true;
@@ -162,7 +205,6 @@ function deletePt(ptIndex) {
   return false;
 }
 
-// Delete Dot in canvas
 function deleteDot(e) {
   if (isDisabledMouse.value || !props.canEdit) return;
   const { existingDotIndex } = getDotInfo(e);
@@ -184,17 +226,10 @@ function getDotInfo(e) {
   const existingDotIndex = dotsRealCoord.findIndex(
     realDot => Math.abs(realDot.x - realCoord.x) < 2 && Math.abs(realDot.y - realCoord.y) < 2,
   );
-  // console.log('***********getDotInfo');
-  // console.log('e.client: (' + e.clientX + ', ' + e.clientY + ')');
-  // console.log('canvasCoord: (' + canvasCoord.x + ', ' + canvasCoord.y + ')');
-  // console.log('realCoord: (' + realCoord.x + ', ' + realCoord.y + ')');
   return { canvasCoord, realCoord, existingDotIndex };
 }
 
-let imgPixelData = null;
-let imgPixelDataWidth = 0;
-let imgPixelDataHeight = 0;
-
+// Image pixel cache and base image rendering
 function clearImgPixelData() {
   imgPixelData = null;
   imgPixelDataWidth = 0;
@@ -205,17 +240,14 @@ function updateImgData() {
   clearImgPixelData();
   if (!props.imageObj) return;
 
-  // 创建一个Canvas对象
   const canvasTmp = document.createElement('canvas');
   canvasTmp.width = initImgWidth.value;
   canvasTmp.height = initImgHeight.value;
 
-  // 将图像绘制到Canvas上
   const ctxTmp = canvasTmp.getContext('2d');
   if (ctxTmp === null) throw new Error('Failed to create the image pixel canvas context.');
   ctxTmp.drawImage(props.imageObj, 0, 0);
 
-  // 只保留连续的 RGBA 字节，不为整张图片预先创建颜色字符串。
   const imageData = ctxTmp.getImageData(0, 0, canvasTmp.width, canvasTmp.height);
   imgPixelData = imageData.data;
   imgPixelDataWidth = imageData.width;
@@ -241,12 +273,6 @@ function getPixelColor(sourceX, sourceY) {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
-// Only draw the part of img inside the viewport
-const canvasLTCoord = { x: 0, y: 0 };
-const canvasRBCoord = { x: 0, y: 0 };
-const sourceLTCoord = { x: 0, y: 0 };
-const sourceRBCoord = { x: 0, y: 0 };
-const gridLimit = 10;
 function drawCanvas() {
   if (canvas.value === null || ctx.value === null || props.imageObj === null) {
     outputMessage('drawCanvas canvas Error.');
@@ -258,16 +284,11 @@ function drawCanvas() {
     offsetX.value <= -initImgWidth.value * scale.value ||
     offsetY.value <= -initImgHeight.value * scale.value
   ) {
-    // console.log('offset: (' + offsetX.value + ', ' + offsetY.value + ')');
-    // console.log('maxOff: (' + viewportWidth.value + ', ' + viewportHeight.value + ')');
-    // console.log('minOff: (' + -initImgWidth.value * scale.value + ', ' + -initImgHeight.value * scale.value + ')');
-    // console.log('scale: ' + scale.value);
     ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
     outputMessage('The image is out of the visible area.');
     return;
   }
 
-  // Calc Overlap area
   const x1 = Math.max(0, offsetX.value);
   const x2 = Math.min(viewportWidth.value - 1, offsetX.value + initImgWidth.value * scale.value - 1);
   const y1 = Math.max(0, offsetY.value);
@@ -275,15 +296,14 @@ function drawCanvas() {
   let imgScaledLTCoord = { x: x1 - offsetX.value, y: y1 - offsetY.value };
   let imgScaledRBCoord = { x: x2 - offsetX.value, y: y2 - offsetY.value };
 
-  //Calc left-top and right-bottom pts in canvas
   transScaled2RealInfo(sourceLTCoord, imgScaledLTCoord);
   transScaled2RealInfo(sourceRBCoord, imgScaledRBCoord);
 
-  transReal2ScaledInfo(imgScaledLTCoord, sourceLTCoord); // 使点位置与图片像素贴合
+  transReal2ScaledInfo(imgScaledLTCoord, sourceLTCoord);
   transReal2ScaledInfo(imgScaledRBCoord, {
     x: sourceRBCoord.x + 1,
     y: sourceRBCoord.y + 1,
-  }); //得到目标范围外的右下一点，用以后续计算dw dh
+  });
 
   const sw = Math.abs(sourceLTCoord.x - sourceRBCoord.x) + 1;
   const sh = Math.abs(sourceLTCoord.y - sourceRBCoord.y) + 1;
@@ -293,7 +313,6 @@ function drawCanvas() {
   transScaled2CanvasInfo(canvasLTCoord, imgScaledLTCoord);
   transScaled2CanvasInfo(canvasRBCoord, imgScaledRBCoord);
 
-  //Draw
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
   if (scale.value < gridLimit) {
     initCanvasSettings();
@@ -314,19 +333,14 @@ function drawCanvas() {
   }
 }
 
-// Area: [canvasLTCoord, canvasRBCoord)
 function drawGrid() {
-  // 设置间隔
   const space = scale.value + 1;
-  // 区域的左上和右下
   const areaX1 = canvasLTCoord.x,
     areaX2 = Math.min(canvasRBCoord.x, canvas.value.width);
   const areaY1 = canvasLTCoord.y,
     areaY2 = Math.min(canvasRBCoord.y, canvas.value.height);
-  // 设置虚线
   ctx.value.setLineDash([]);
 
-  // 绘制水平方向的网格线
   for (let y = areaY1; y <= areaY2; y += space) {
     ctx.value.beginPath();
     ctx.value.moveTo(areaX1, y);
@@ -334,7 +348,6 @@ function drawGrid() {
     ctx.value.stroke();
   }
 
-  // 绘制垂直方向的网格线
   for (let x = areaX1; x <= areaX2; x += space) {
     ctx.value.beginPath();
     ctx.value.moveTo(x, areaY1);
@@ -348,7 +361,7 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
   const dw = scale.value,
     dh = scale.value;
   const startX = canvasLTCoord.x + 1,
-    startY = canvasLTCoord.y + 1; // 包括最左/上侧网格线
+    startY = canvasLTCoord.y + 1;
   for (let shOffset = 0; shOffset < sourceHeight; ++shOffset) {
     const canvasY = startY + shOffset * space;
     const sourceY = sourceLTCoord.y + shOffset;
@@ -364,7 +377,7 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
   }
 }
 
-let quadsArray = [];
+// Annotation overlay rendering
 function isValidQuadPoints(quadPoints) {
   return (
     Array.isArray(quadPoints) &&
@@ -384,29 +397,22 @@ function resetQuadsArray(newQuadArray, initImageScale) {
   });
 }
 
-const highlightQuadIndex = ref(-1);
-// eslint-disable-next-line no-unused-vars
 watch(highlightQuadIndex, (newHighlightQuadIndex, oldHighlightQuadIndex) => {
   if (oldHighlightQuadIndex === newHighlightQuadIndex) return;
-  if (moveHighlightToEnd()) return; // drawCanvas when showIndexArray changed
-  console.log(2, 'drawCanvasForShowQuads');
-  drawCanvasForShowQuads(); // highlightQuadIndex is not in the showIndex
+  if (moveHighlightToEnd()) return;
+  drawCanvasForShowQuads();
 });
 
 function resetHighlightQuadIndex(newIndex) {
   highlightQuadIndex.value = newIndex;
 }
 
-let showQuadIndex = reactive([]);
-// eslint-disable-next-line no-unused-vars
 watch(showQuadIndex, () => {
-  console.log(3, 'drawCanvasForShowQuads');
   drawCanvasForShowQuads();
 });
 
 function toggleShowQuadIndex(newIndex) {
   if (!Number.isInteger(newIndex) || newIndex < 0 || newIndex >= quadsArray.length) {
-    console.log('newIndex out of range: ', newIndex);
     outputMessage('newIndex out of range.');
     return;
   }
@@ -420,7 +426,6 @@ function toggleShowQuadIndex(newIndex) {
 
 function addShowQuadIndex(newIndex) {
   if (!Number.isInteger(newIndex) || newIndex < 0 || newIndex >= quadsArray.length) {
-    console.log('newIndex out of range: ', newIndex);
     outputMessage('newIndex out of range.');
     return;
   }
@@ -430,7 +435,6 @@ function addShowQuadIndex(newIndex) {
   }
 }
 
-//To make sure the highlight outerQuad will draw at last.
 function moveHighlightToEnd() {
   let index = showQuadIndex.indexOf(highlightQuadIndex.value);
   if (index !== -1) {
@@ -444,10 +448,9 @@ function clearShowQuadIndex() {
   showQuadIndex.splice(0, showQuadIndex.length);
 }
 
-const outerQuadArray = [];
 function drawCanvasForShowQuads() {
   if (ctxQuad.value === null) {
-    console.log('Failed to draw canvas for show quads');
+    console.warn('Failed to draw canvas for show quads');
     return;
   }
   outerQuadArray.splice(0, outerQuadArray.length);
@@ -466,7 +469,7 @@ function drawShowQuads() {
 }
 function drawQuadLine(quadRealPoints, isHighlight = false) {
   if (!isValidQuadPoints(quadRealPoints)) {
-    console.log('Failed to draw quad');
+    console.warn('Failed to draw quad');
     return;
   }
   const { outerQuadPoints, innerQuadPoints } = getQuads2Draw(quadRealPoints);
@@ -477,10 +480,9 @@ function drawQuadLine(quadRealPoints, isHighlight = false) {
 
 function drawQuad(quadPoints, isHighlight = false) {
   if (quadPoints.length < 4) {
-    console.log('Failed to draw quad');
+    console.warn('Failed to draw quad');
     return;
   }
-  //Draw highlighted quads with a yellow color, otherwise use green.
   let fillColor = '#00FF00'; // green
   let strokeColor = '#000000'; // black
   if (isHighlight) {
@@ -490,7 +492,6 @@ function drawQuad(quadPoints, isHighlight = false) {
   ctxQuad.value.save();
   ctxQuad.value.strokeStyle = strokeColor;
   ctxQuad.value.lineWidth = 1;
-  // console.log('@@@@', quadPoints);
   drawPath(ctxQuad.value, quadPoints);
   ctxQuad.value.stroke();
 
@@ -503,15 +504,13 @@ function drawQuad(quadPoints, isHighlight = false) {
 
 function clearQuad(quadPoints) {
   if (quadPoints.length < 4) {
-    console.log('Failed to clear quad');
+    console.warn('Failed to clear quad');
     return;
   }
-  // 保存之前的上下文状态
   ctxQuad.value.save();
 
   ctxQuad.value.strokeStyle = '#FFFFFF'; //white
   ctxQuad.value.lineWidth = 1;
-  // console.log('####', quadPoints);
   drawPath(ctxQuad.value, quadPoints);
   ctxQuad.value.stroke();
 
@@ -523,7 +522,6 @@ function clearQuad(quadPoints) {
   const maxY = Math.max(quadPoints[0].y, quadPoints[1].y, quadPoints[2].y, quadPoints[3].y);
   ctxQuad.value.clearRect(minX, minY, maxX - minX, maxY - minY);
 
-  // 恢复之前的上下文状态
   ctxQuad.value.restore();
 }
 
@@ -541,8 +539,7 @@ function getQuads2Draw(quadRealPoints) {
   return { outerQuadPoints, innerQuadPoints };
 }
 
-let viewportDrawFrameId = null;
-
+// Viewport redraw scheduling
 function cancelScheduledViewPortDraw() {
   if (viewportDrawFrameId === null) return;
   cancelAnimationFrame(viewportDrawFrameId);
@@ -553,7 +550,6 @@ function drawViewPortNow() {
   if (imageSrc === '') return;
   drawCanvas();
   updateDotsCanvasCoord();
-  console.log(4, 'drawCanvasForShowQuads');
   drawCanvasForShowQuads();
 }
 
@@ -566,15 +562,11 @@ function updateViewPortDraw() {
   });
 }
 
-const isDisabledMouse = ref(false);
 function changeMouseState(newState = false) {
   isDisabledMouse.value = newState;
 }
 
-// Move
-const autoAdaptBorderDis = 10;
-const offsetX = ref(0);
-const offsetY = ref(0);
+// Pan and zoom interaction
 const { x, y } = useMouse();
 const { pressed } = useMousePressed({ target: imgContainerRef });
 watch([x, y], ([newX, newY], [oldX, oldY]) => {
@@ -586,7 +578,6 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
   }
 });
 
-const mouseIsOverContainer = ref(false);
 const mouseEntered = () => {
   mouseIsOverContainer.value = true;
 };
@@ -603,7 +594,6 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
   offsetX.value += deltaX;
   offsetY.value += deltaY;
 
-  // auto Adapt Border
   if (!(imageSrc === '')) {
     if (Math.abs(newX) < Math.abs(oldX)) {
       if (Math.abs(offsetX.value) < autoAdaptBorderDis) offsetX.value = 0;
@@ -622,7 +612,6 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
   updateViewPortDraw();
 }
 
-const indices2Show = ref('');
 function getMouseInRectIndices() {
   if (mouseIsOverContainer.value !== true || outerQuadArray.length === 0) return;
   indices2Show.value = '';
@@ -655,7 +644,6 @@ function updateJsonHighlightIndex(indicesArray, separator) {
   const targetIndex = indicesNumberArray[0] - 1;
   emits('update-json-highlight-index', targetIndex);
 }
-let isOverviewMode = false;
 function toggleMode() {
   isOverviewMode = !isOverviewMode;
   if (isOverviewMode) {
@@ -663,18 +651,14 @@ function toggleMode() {
   } else {
     outputMessage('Quit Overview Mode');
   }
-  console.log(5, 'drawCanvasForShowQuads');
   drawCanvasForShowQuads();
 }
-// Scale
+
 function updateOffsetScaled(oldScale, newScale) {
-  // Scale source is "InitImgInfo"
   if (oldScale === 0) return;
 
-  // Scale source is "OnWheel"
-  // Judge: Mouse in rendered area
-  let canvasCoord = cloneDeep(mouseCoord);
-  let realCoord = { x: 0, y: 0 };
+  const canvasCoord = { x: mouseCoord.x, y: mouseCoord.y };
+  const realCoord = { x: 0, y: 0 };
   transCanvas2RealInfo(realCoord, canvasCoord, oldScale);
   if (
     realCoord.x < sourceLTCoord.x ||
@@ -684,8 +668,6 @@ function updateOffsetScaled(oldScale, newScale) {
   )
     return;
 
-  // purpose：Scale the image based on the mouseCoord
-  // Calc fineTuning
   transReal2CanvasInfo(canvasCoord, realCoord, oldScale);
   const offsetPixels = {
     x: mouseCoord.x - canvasCoord.x,
@@ -696,7 +678,6 @@ function updateOffsetScaled(oldScale, newScale) {
     y: Math.floor((offsetPixels.y / oldScale) * newScale),
   };
 
-  // Calc scaled canvasCoord without updating offset
   transReal2CanvasInfo(canvasCoord, realCoord, newScale);
 
   offsetX.value -= canvasCoord.x + fineTuning.x - mouseCoord.x;
@@ -709,21 +690,16 @@ watch(scale, (newScale, oldScale) => {
   updateViewPortDraw();
 });
 
-// Judge click type
-let mouseMoved = false;
-let timer = null;
-let isNotLongPress = true;
 watch(pressed, newVal => {
   if (newVal) {
     isNotLongPress = true;
-    mouseMoved = false; // 重置鼠标移动状态
+    mouseMoved = false;
     timer = setTimeout(() => {
       isNotLongPress = false;
-    }, 150); // 长按时间阈值
+    }, 150);
   } else {
     clearTimeout(timer);
     if (isNotLongPress && !mouseMoved) {
-      // 如果鼠标没有移动
       isNotLongPress = true;
     } else {
       isNotLongPress = false;
@@ -731,22 +707,20 @@ watch(pressed, newVal => {
   }
 });
 
-const mouseCoord = reactive({ x: 0, y: 0 });
 function handleWindowMouseMove(e) {
   mouseCoord.x = e.clientX;
   mouseCoord.y = e.clientY;
   mouseMoved = true;
 }
 
+// Component lifecycle
 onMounted(() => {
-  console.log('onMountedIMG...');
   updateViewSize();
   window.addEventListener('resize', updateViewSize);
   window.addEventListener('mousemove', handleWindowMouseMove);
 });
 
 onUnmounted(() => {
-  console.log('onUnmountedIMG...');
   window.removeEventListener('resize', updateViewSize);
   window.removeEventListener('mousemove', handleWindowMouseMove);
   cancelScheduledViewPortDraw();
@@ -757,9 +731,7 @@ onUnmounted(() => {
   }
 });
 
-// Click canvas to get dot
-const dotsCanvasCoord = ref([]);
-
+// Point selection
 watch(dotsRealCoord, newDotsRealCoord => {
   setQuadInfo(newDotsRealCoord);
   emits('update-dots-real-coord', newDotsRealCoord);
@@ -769,7 +741,6 @@ function toggleDot(e) {
   if (isDisabledMouse.value || !props.canEdit || imageSrc === '' || !isNotLongPress) {
     return;
   }
-  // 如果红点在图片显示范围外，输出“The pt is not in the pic.”
   if (
     e.clientX < canvasLTCoord.x ||
     e.clientX >= canvasRBCoord.x ||
@@ -780,17 +751,13 @@ function toggleDot(e) {
     return;
   }
 
-  // eslint-disable-next-line no-unused-vars
-  const { canvasCoord, realCoord, existingDotIndex } = getDotInfo(e);
+  const { realCoord, existingDotIndex } = getDotInfo(e);
   if (existingDotIndex !== -1) {
-    // 如果已经存在红点，删除它
     deletePt(existingDotIndex);
     outputMessage('Delete the pt.');
   } else if (dotsCanvasCoord.value.length >= 4) {
-    // 如果已经有四个红点，输出“Already set 4 pts.”
     outputMessage('Already set 4 pts.');
   } else {
-    // 否则，添加一个新的红点
     dotsRealCoord.push({ x: realCoord.x, y: realCoord.y });
     updateDotsCanvasCoord();
   }
@@ -805,16 +772,9 @@ function resetPosition() {
 function clearDots() {
   dotsCanvasCoord.value = [];
   dotsRealCoord.splice(0, dotsRealCoord.length);
-  //outputMessage('clearDots Successfully.');
 }
 
-// Init Img
-const initImgWidth = ref(0);
-const initImgHeight = ref(0);
-const ctx = ref(null);
-const ctxQuad = ref(null);
-//const imageObj = ref(null);
-let imageSrc = '';
+// Image lifecycle
 function clearImage() {
   cancelScheduledViewPortDraw();
   clearImgPixelData();
@@ -839,6 +799,11 @@ async function initImgInfo() {
   offsetY.value = 0;
   clearDots();
   try {
+    if (!props.imageObj?.src) {
+      console.warn('Failed to initialize image: the image source is unavailable.');
+      return false;
+    }
+
     imageSrc = props.imageObj.src;
     let img = new Image();
     await new Promise((resolve, reject) => {
@@ -850,7 +815,6 @@ async function initImgInfo() {
     initImgWidth.value = img.width;
     initImgHeight.value = img.height;
     updateImgData();
-    // Update ctx
     if (ctx.value !== null) {
       ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
     }
@@ -859,18 +823,15 @@ async function initImgInfo() {
     }
     ctx.value = canvas.value.getContext('2d');
     ctxQuad.value = canvasForShowQuads.value.getContext('2d');
-    // 计算初始缩放比例
     const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
-    scale.value = scaleValue; //scale.value修改，自动调用watch scale
-    console.log('scale:', scale.value);
-    console.log('img.width:', img.width);
-    console.log('img.height:', img.height);
+    scale.value = scaleValue;
     await nextTick();
+    return true;
   } catch (error) {
     console.error('Error in event handler:', error);
+    return false;
   }
 }
-const scaleRange = 60;
 const onWheel = event => {
   if (isDisabledMouse.value) {
     return;
@@ -884,9 +845,9 @@ const onWheel = event => {
       else scale.value = Math.ceil(scale.value - 1);
     } else scale.value = 0.1;
   }
-  console.log(scale.value);
 };
 
+// Zoom preview and point positions
 function updateZoomView(e) {
   if (isDisabledMouse.value || !props.imageObj || imageSrc === '') {
     return;
@@ -906,11 +867,9 @@ function updateRealDots2GetZoom(e) {
   };
   transCanvas2RealInfo(realDot2GetZoom.value, canvasCoord);
 
-  // Make the mouse in the middle of the zoomRect
   realDot2GetZoom.value.x = Math.min(Math.max(realDot2GetZoom.value.x - 3, sourceLTCoord.x), sourceRBCoord.x - 5);
   realDot2GetZoom.value.y = Math.min(Math.max(realDot2GetZoom.value.y - 3, sourceLTCoord.y), sourceRBCoord.y - 5);
 
-  // Draw scaled rect in canvas
   let rectCoord = {
     x: realDot2GetZoom.value.x - 1,
     y: realDot2GetZoom.value.y - 1,
@@ -920,7 +879,6 @@ function updateRealDots2GetZoom(e) {
   return canvasCoord;
 }
 function updateDotsCanvasCoord() {
-  // 新增一个红点
   const realDotsNum = dotsRealCoord.length;
   if (dotsCanvasCoord.value.length !== realDotsNum) {
     dotsCanvasCoord.value.push({ x: 0, y: 0 });
@@ -929,10 +887,7 @@ function updateDotsCanvasCoord() {
       dotsCanvasCoord.value[realDotsNum - 1].x += 1;
       dotsCanvasCoord.value[realDotsNum - 1].y += 1;
     }
-  }
-
-  // 更新所有点的坐标
-  else {
+  } else {
     for (let i = 0; i < realDotsNum; ++i) {
       transReal2CanvasInfo(dotsCanvasCoord.value[i], dotsRealCoord[i]);
       if (scale.value >= gridLimit) {
@@ -943,83 +898,63 @@ function updateDotsCanvasCoord() {
   }
 }
 
+// Coordinate adapters for component state
 function transScaled2RealInfo(targetCoord, scaledCoord) {
   if (scale.value === 0) {
     outputMessage('Failed transScaled2RealInfo: scale==0.');
     return;
   }
-  targetCoord.x = Math.floor(scaledCoord.x / scale.value);
-  targetCoord.y = Math.floor(scaledCoord.y / scale.value);
+  Object.assign(targetCoord, scaledToImagePoint(scaledCoord, scale.value));
 }
 
 function transReal2ScaledInfo(targetCoord, realCoord) {
-  targetCoord.x = realCoord.x * scale.value;
-  targetCoord.y = realCoord.y * scale.value;
+  Object.assign(targetCoord, imageToScaledPoint(realCoord, scale.value));
 }
 
 function transScaled2CanvasInfo(targetCoord, scaledCoord) {
-  if (scale.value >= gridLimit) {
-    let realCoord = { x: 0, y: 0 };
-    transScaled2RealInfo(realCoord, scaledCoord);
-    transReal2CanvasInfo(targetCoord, realCoord);
-  } else {
-    targetCoord.x = scaledCoord.x + offsetX.value + offsetCanvasLeft;
-    targetCoord.y = scaledCoord.y + offsetY.value + offsetCanvasTop;
-  }
+  Object.assign(targetCoord, scaledToCanvasPoint(scaledCoord, getCoordinateTransform()));
 }
 
-// function transCanvas2ScaledInfo(targetCoord, canvasCoord) {
-//   targetCoord.x = canvasCoord.x - offsetX.value - offsetCanvasLeft;
-//   targetCoord.y = canvasCoord.y - offsetY.value - offsetCanvasTop;
-// }
 function transReal2CanvasInfo(targetCoord, realCoord, setScale = 0) {
-  if (setScale === 0) setScale = scale.value;
-  let xOffsetGrid = 0,
-    yOffsetGrid = 0;
-  if (setScale >= gridLimit) {
-    xOffsetGrid = realCoord.x - sourceLTCoord.x;
-    yOffsetGrid = realCoord.y - sourceLTCoord.y;
-  }
-  targetCoord.x = realCoord.x * setScale + xOffsetGrid + offsetX.value + offsetCanvasLeft;
-  targetCoord.y = realCoord.y * setScale + yOffsetGrid + offsetY.value + offsetCanvasTop;
+  const targetScale = setScale === 0 ? scale.value : setScale;
+  Object.assign(targetCoord, imageToCanvasPoint(realCoord, getCoordinateTransform(targetScale)));
 }
 
 function transCanvas2RealInfo(targetCoord, canvasCoord, setScale = 0) {
-  if (setScale === 0) setScale = scale.value;
-  let xOffsetGrid = 0,
-    yOffsetGrid = 0;
-  if (setScale >= gridLimit) {
-    const xResult = (canvasCoord.x - canvasLTCoord.x) / (setScale + 1);
-    const yResult = (canvasCoord.y - canvasLTCoord.y) / (setScale + 1);
-    xOffsetGrid = Number.isInteger(xResult) ? xResult : Math.floor(xResult) + 1;
-    yOffsetGrid = Number.isInteger(yResult) ? yResult : Math.floor(yResult) + 1;
-  }
+  const targetScale = setScale === 0 ? scale.value : setScale;
+  Object.assign(targetCoord, canvasToImagePoint(canvasCoord, getCoordinateTransform(targetScale)));
+}
 
-  targetCoord.x = Math.floor((canvasCoord.x - xOffsetGrid - offsetX.value - offsetCanvasLeft) / setScale);
-  targetCoord.y = Math.floor((canvasCoord.y - yOffsetGrid - offsetY.value - offsetCanvasTop) / setScale);
+function getCoordinateTransform(targetScale = scale.value) {
+  return {
+    scale: targetScale,
+    gridLimit,
+    sourceLeftTop: sourceLTCoord,
+    canvasLeftTop: canvasLTCoord,
+    offsetX: offsetX.value,
+    offsetY: offsetY.value,
+    canvasOffsetLeft: offsetCanvasLeft,
+    canvasOffsetTop: offsetCanvasTop,
+  };
 }
 
 function updateRectanglePosition(rectCoord) {
-  // 获取 .rectangle 元素
   if (scale.value >= gridLimit) {
     return;
   }
   let rectangle = document.querySelector('.rectangle');
 
-  // 更新 left 和 top 属性
   rectangle.style.left = rectCoord.x + 'px';
   rectangle.style.top = rectCoord.y + 'px';
 }
 
-const viewportWidth = ref(0);
-const viewportHeight = ref(0);
+// Canvas sizing and loading feedback
 async function updateViewSize() {
   if (imgContainerRef.value) {
-    viewportWidth.value = imgContainerRef.value.offsetWidth - 4; // - 4(border 2 * 2)
+    viewportWidth.value = imgContainerRef.value.offsetWidth - 4;
     viewportHeight.value = imgContainerRef.value.offsetHeight - 4;
     await nextTick();
 
-    //Reset ctx.value when update canvasSize
     initCanvasSettings();
     updateViewPortDraw();
   }
@@ -1031,14 +966,12 @@ function initCanvasSettings() {
     ctx.value = canvas.value.getContext('2d');
   }
 
-  // 禁用图像平滑，使图像像素化
   ctx.value.imageSmoothingEnabled = false;
   ctx.value.mozImageSmoothingEnabled = false;
   ctx.value.webkitImageSmoothingEnabled = false;
   ctx.value.msImageSmoothingEnabled = false;
 }
 
-const isImgFileLoading = ref(false);
 function resetIsImgFileLoading(newValue) {
   isImgFileLoading.value = newValue;
   if (isImgFileLoading.value === false && (props.imageObj === null || props.imageObj.src === '')) {
@@ -1048,7 +981,6 @@ function resetIsImgFileLoading(newValue) {
   }
 }
 
-const isImgFileLoadingFailed = ref(false);
 function resetIsImgFileLoadingFailed(newValue) {
   isImgFileLoadingFailed.value = newValue;
 }
