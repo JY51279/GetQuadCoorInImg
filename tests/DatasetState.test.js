@@ -14,7 +14,6 @@ import {
   restoreDatasetMutationSnapshot,
   setQuadInfo,
   updateJson,
-  updateQuadIndex,
 } from '../src/renderer/src/state/DatasetState.js';
 import { KEYS, parsePointString2Array } from '../src/renderer/src/utils/BasicFuncs.js';
 
@@ -115,10 +114,9 @@ describe('Dataset state operations', () => {
 
   it('modifies only the closest point when one point is selected', () => {
     loadDbrDataset();
-    updateQuadIndex(0);
     setQuadInfo([{ x: 9, y: 1 }]);
 
-    expect(updateJson(KEYS.JSON_MODIFY, 1)).toBe(KEYS.OPERATE_SUCCESS);
+    expect(updateJson(KEYS.JSON_MODIFY, 1, 0)).toBe(KEYS.OPERATE_SUCCESS);
     const points = getJsonPerPicPointsArray()[0];
     expect(points).toContainEqual({ x: 9, y: 1 });
     expect(points).not.toContainEqual({ x: 10, y: 0 });
@@ -129,6 +127,17 @@ describe('Dataset state operations', () => {
         { x: 0, y: 10 },
       ]),
     );
+  });
+
+  it('accepts the same explicit quad index after switching images', () => {
+    loadDbrDataset();
+    setQuadInfo([{ x: 9, y: 1 }]);
+    expect(updateJson(KEYS.JSON_MODIFY, 1, 0)).toBe(KEYS.OPERATE_SUCCESS);
+
+    expect(resetPicJson('C:/images/two.png', 1)).toBe(true);
+    setQuadInfo([{ x: 1, y: 9 }]);
+    expect(updateJson(KEYS.JSON_MODIFY, 1, 0)).toBe(KEYS.OPERATE_SUCCESS);
+    expect(getJsonPerPicPointsArray()[0]).toContainEqual({ x: 1, y: 9 });
   });
 
   it('adds and deletes annotations while keeping the item count synchronized', () => {
@@ -143,8 +152,7 @@ describe('Dataset state operations', () => {
     expect(savedDataset.Picture[0]['Barcode Count']).toBe(2);
     expect(savedDataset.Picture[0]['Barcode Info'][1]['Barcode Location']).toBe('20 20 30 20 30 30 20 30');
 
-    updateQuadIndex(1);
-    expect(updateJson(KEYS.JSON_DELETE, 1)).toBe(KEYS.OPERATE_SUCCESS);
+    expect(updateJson(KEYS.JSON_DELETE, 1, 1)).toBe(KEYS.OPERATE_SUCCESS);
     savedDataset = JSON.parse(getJsonFileInfo().str);
     expect(savedDataset.Picture[0]['Barcode Count']).toBe(1);
     expect(savedDataset.Picture[0]['Barcode Info']).toHaveLength(1);

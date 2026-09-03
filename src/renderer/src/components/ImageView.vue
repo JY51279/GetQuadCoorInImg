@@ -87,7 +87,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useMousePressed } from '@vueuse/core';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 import {
@@ -102,12 +102,7 @@ import {
 import { setQuadInfo } from '../state/DatasetState.js';
 import { isPointInPolygon } from '../utils/BasicFuncs.js';
 
-const emits = defineEmits([
-  'update-zoom-view',
-  'output-message',
-  'update-dots-real-coord',
-  'update-json-highlight-index',
-]);
+const emits = defineEmits(['update-zoom-view', 'output-message', 'update-dots-real-coord', 'select-quad-index']);
 
 const props = defineProps({
   imageObj: {
@@ -117,6 +112,10 @@ const props = defineProps({
   canEdit: {
     type: Boolean,
     default: true,
+  },
+  activeQuadIndex: {
+    type: Number,
+    default: -1,
   },
   imageLoadErrorPath: {
     type: String,
@@ -159,7 +158,7 @@ const dotsRealCoord = reactive([]);
 const dotsCanvasCoord = ref([]);
 const realDot2GetZoom = ref({ x: -1, y: -1 });
 let quadsArray = [];
-const highlightQuadIndex = ref(-1);
+const highlightQuadIndex = computed(() => props.activeQuadIndex);
 const showQuadIndex = reactive([]);
 const outerQuadArray = [];
 
@@ -182,11 +181,11 @@ defineExpose({
   clearDots,
   resetPosition,
   initImgInfo,
-  resetHighlightQuadIndex,
   toggleShowQuadIndex,
   addShowQuadIndex,
   clearShowQuadIndex,
   resetQuadsArray,
+  refreshHoveredQuad,
   changeMouseState,
   toggleMode,
   resetIsImgFileLoading,
@@ -405,10 +404,6 @@ watch(highlightQuadIndex, (newHighlightQuadIndex, oldHighlightQuadIndex) => {
   drawCanvasForShowQuads();
 });
 
-function resetHighlightQuadIndex(newIndex) {
-  highlightQuadIndex.value = newIndex;
-}
-
 watch(showQuadIndex, () => {
   drawCanvasForShowQuads();
 });
@@ -462,6 +457,14 @@ function drawCanvasForShowQuads() {
   if (!(highlightQuadIndex.value === -1 || highlightQuadIndex.value >= quadsArray.length))
     drawQuadLine(quadsArray[highlightQuadIndex.value], true);
   getMouseInRectIndices();
+}
+
+function refreshHoveredQuad(event = null) {
+  if (Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)) {
+    mouseCoord.x = event.clientX;
+    mouseCoord.y = event.clientY;
+  }
+  drawCanvasForShowQuads();
 }
 function drawShowQuads() {
   for (let i = 0; i < showQuadIndex.length; ++i) {
@@ -633,18 +636,18 @@ function getMouseInRectIndices() {
   }
   indices2Show.value = indices2Show.value.trimEnd();
 
-  updateJsonHighlightIndex(indices2Show.value, separator);
+  emitHoveredQuadSelection(indices2Show.value, separator);
 }
 
-function updateJsonHighlightIndex(indicesArray, separator) {
+function emitHoveredQuadSelection(indicesArray, separator) {
   if (!isOverviewMode) return;
   const indicesNumberArray = indicesArray.split(separator).map(Number);
   if (indicesNumberArray.length !== 1) {
-    emits('update-json-highlight-index', -1);
+    emits('select-quad-index', -1);
     return;
   }
   const targetIndex = indicesNumberArray[0] - 1;
-  emits('update-json-highlight-index', targetIndex);
+  emits('select-quad-index', targetIndex);
 }
 function toggleMode() {
   isOverviewMode = !isOverviewMode;
@@ -747,7 +750,7 @@ onUnmounted(() => {
 
 // Point selection
 watch(dotsRealCoord, newDotsRealCoord => {
-  setQuadInfo(newDotsRealCoord);
+  setQuadInfo(newDotsRealCoord, props.activeQuadIndex);
   emits('update-dots-real-coord', newDotsRealCoord);
 });
 
@@ -755,6 +758,10 @@ function toggleDot(e) {
   if (isDisabledMouse.value || !props.canEdit || imageSrc === '' || !isNotLongPress) {
     return;
   }
+
+  // A newly loaded image can appear underneath a stationary pointer without
+  // producing a mousemove event. Re-evaluate the hovered quad before editing.
+  refreshHoveredQuad(e);
   if (
     e.clientX < canvasLTCoord.x ||
     e.clientX >= canvasRBCoord.x ||

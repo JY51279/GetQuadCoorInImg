@@ -10,11 +10,12 @@
       ref="imgContainerRef"
       :image-obj="imageObj"
       :can-edit="canOperate"
+      :active-quad-index="activeQuadIndex"
       :image-load-error-path="imageLoadErrorPath"
       @update-zoom-view="updateZoomView"
       @output-message="outputMessage"
       @update-dots-real-coord="updateDotsRealCoord"
-      @update-json-highlight-index="updateJsonHighlightIndex"
+      @select-quad-index="selectQuadIndex"
     ></ImageView>
     <div class="tool-container">
       <div>
@@ -50,7 +51,7 @@
               </button>
             </div>
           </div>
-          <div class="fileInfo-style">矩形次序: <br />{{ quadInfo.quadNum }} / {{ quadInfo.quadTotal }}</div>
+          <div class="fileInfo-style">矩形次序: <br />{{ activeQuadIndex + 1 }} / {{ quadInfo.quadTotal }}</div>
         </div>
         <div class="dotsArea-style">
           <div v-for="(item, index) in dotsRealCoord" :key="index" class="dots">
@@ -77,7 +78,13 @@
       </div>
     </div>
 
-    <JsonView ref="jsonView" @update-quad-info="updateQuadInfo" @init-show-quads="initShowQuads"></JsonView>
+    <JsonView
+      ref="jsonView"
+      :active-quad-index="activeQuadIndex"
+      @select-quad-index="selectQuadIndex"
+      @update-quad-total="updateQuadTotal"
+      @init-show-quads="initShowQuads"
+    ></JsonView>
   </div>
 </template>
 
@@ -92,7 +99,6 @@ import {
   getAdjacentJsonImageTarget,
   getJsonImageDialogContext,
   getJsonImageTarget,
-  updateQuadIndex,
   updateJson,
   getJsonPicNum,
   getJsonFileInfo,
@@ -113,7 +119,8 @@ const jsonView = ref(null);
 const zoomView = ref(null);
 
 // Dataset and current image state
-const quadInfo = reactive({ quadNum: 0, quadTotal: 0 });
+const quadInfo = reactive({ quadTotal: 0 });
+const activeQuadIndex = ref(-1);
 const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
 const jumpImageIndex = ref('');
 const dotsRealCoord = reactive([]);
@@ -145,14 +152,16 @@ const mouseCoord = { x: 0, y: 0 };
 let removeOpenPicFileResponseListener = null;
 let removeChooseJsonFileResponseListener = null;
 
-function updateQuadInfo(quadNum = -1, quadTotal = -1) {
-  if (quadNum !== -1) quadInfo.quadNum = quadNum;
-  if (quadTotal !== -1) quadInfo.quadTotal = quadTotal;
+function selectQuadIndex(newIndex) {
+  const normalizedIndex = Number.isInteger(newIndex) && newIndex >= 0 && newIndex < quadInfo.quadTotal ? newIndex : -1;
+
+  activeQuadIndex.value = normalizedIndex;
 }
-watch(quadInfo, newQuadInfo => {
-  updateQuadIndex(newQuadInfo.quadNum - 1);
-  imgContainerRef.value.resetHighlightQuadIndex(newQuadInfo.quadNum - 1);
-});
+
+function updateQuadTotal(newTotal) {
+  quadInfo.quadTotal = Number.isInteger(newTotal) && newTotal >= 0 ? newTotal : 0;
+  if (activeQuadIndex.value >= quadInfo.quadTotal) selectQuadIndex(-1);
+}
 
 function handleWindowMouseMove(e) {
   mouseCoord.x = e.clientX;
@@ -299,7 +308,7 @@ async function performJsonAction(action) {
   const datasetSnapshot = createDatasetMutationSnapshot();
   try {
     outputMessage('Start operate: ' + action);
-    const updateJsonRes = updateJson(action, initImageScale);
+    const updateJsonRes = updateJson(action, initImageScale, activeQuadIndex.value);
     if (updateJsonRes !== KEYS.OPERATE_SUCCESS) {
       outputMessage(updateJsonRes);
       return;
@@ -419,6 +428,13 @@ async function initProcessInfo(jsonImageIndex = null) {
       return false;
     }
 
+    // Switching images does not fire mousemove when the pointer stays still.
+    // Wait for the new quad overlay, then synchronize its hover selection before
+    // JSON operations are enabled.
+    await nextTick();
+    imgContainerRef.value.refreshHoveredQuad();
+    await nextTick();
+
     const { picNum, picTotalNum } = getJsonPicNum();
     picInfo.picNum = picNum;
     picInfo.picTotalNum = picTotalNum;
@@ -440,7 +456,6 @@ function initShowQuads() {
   imgContainerRef.value.resetQuadsArray(newShowQuadArray, initImageScale);
   clearShowQuads();
   addAll2ShowQuads();
-  updateJsonHighlightIndex(-1);
 }
 // Image request lifecycle
 function chooseImgFile() {
@@ -743,7 +758,7 @@ function updateZoomView() {
 
 // Show quad
 function toggleHighlight2ShowQuads() {
-  imgContainerRef.value.toggleShowQuadIndex(quadInfo.quadNum - 1);
+  imgContainerRef.value.toggleShowQuadIndex(activeQuadIndex.value);
 }
 function addAll2ShowQuads() {
   for (let i = 0; i < quadInfo.quadTotal; ++i) {
@@ -757,10 +772,6 @@ function clearShowQuads() {
 
 function toggleMode() {
   imgContainerRef.value.toggleMode();
-}
-
-function updateJsonHighlightIndex(newIndex) {
-  jsonView.value.updateHighlightedIndex(newIndex);
 }
 </script>
 

@@ -23,13 +23,11 @@ const datasetState = {
   currentImageIndex: -1,
   navigationImageIndex: -1,
   selectedDots: [],
-  selectedQuadIndex: -1,
 };
 
 function clearCurrentAnnotationState() {
   datasetState.currentItems = [];
   datasetState.selectedDots = [];
-  datasetState.selectedQuadIndex = -1;
 }
 
 function normalizeImagePathForComparison(imagePath) {
@@ -115,7 +113,6 @@ export function resetPicJson(imgFilePath, requestedImgIndex = null) {
     }
     datasetState.currentItems = currentPicture[datasetState.productSchema.targetKey];
     datasetState.selectedDots = [];
-    datasetState.selectedQuadIndex = -1;
     return true;
   } catch (err) {
     clearCurrentAnnotationState();
@@ -208,18 +205,14 @@ export function restoreDatasetMutationSnapshot(snapshot) {
   }
 }
 
-export function setQuadInfo(realDots) {
+export function setQuadInfo(realDots, activeQuadIndex = -1) {
   datasetState.selectedDots = realDots.slice();
   if (datasetState.selectedDots.length === 4) {
     setQuadDots2ClockWise(
       datasetState.selectedDots,
-      datasetState.currentItems[datasetState.selectedQuadIndex]?.['Barcode Type'] ?? '',
+      datasetState.currentItems[activeQuadIndex]?.['Barcode Type'] ?? '',
     );
   }
-}
-
-export function updateQuadIndex(newIndex) {
-  datasetState.selectedQuadIndex = newIndex;
 }
 
 function transQuadDotsToString(realDots, initImageScale, baseItem = null) {
@@ -276,14 +269,14 @@ function transQuadDotsToString(realDots, initImageScale, baseItem = null) {
   return targetStr;
 }
 
-export function updateJson(action = KEYS.JSON_MODIFY, initImageScale) {
+export function updateJson(action = KEYS.JSON_MODIFY, initImageScale, activeQuadIndex = -1) {
   let result;
   switch (action) {
     case KEYS.JSON_MODIFY:
-      result = modifyJsonContent(initImageScale);
+      result = modifyJsonContent(initImageScale, activeQuadIndex);
       break;
     case KEYS.JSON_DELETE:
-      result = deleteJsonContent();
+      result = deleteJsonContent(activeQuadIndex);
       break;
     case KEYS.JSON_ADD:
       result = addJsonContent(initImageScale);
@@ -295,30 +288,30 @@ export function updateJson(action = KEYS.JSON_MODIFY, initImageScale) {
   return result;
 }
 
-function modifyJsonContent(initImageScale) {
+function modifyJsonContent(initImageScale, activeQuadIndex) {
   return operateJsonContent(() => {
-    if (datasetState.selectedQuadIndex < 0 || datasetState.selectedQuadIndex >= datasetState.currentItems.length) {
+    if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return 'Failed to find jsonItem.';
     }
     const quadStr = transQuadDotsToString(
       datasetState.selectedDots,
       initImageScale,
-      datasetState.currentItems[datasetState.selectedQuadIndex],
+      datasetState.currentItems[activeQuadIndex],
     );
     if (quadStr === '') {
       return 'Failed to trans dots to string.';
     }
-    datasetState.currentItems[datasetState.selectedQuadIndex][datasetState.productSchema.ItemKey] = quadStr;
+    datasetState.currentItems[activeQuadIndex][datasetState.productSchema.ItemKey] = quadStr;
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to modify jsonItem.');
 }
 
-function deleteJsonContent() {
+function deleteJsonContent(activeQuadIndex) {
   return operateJsonContent(() => {
-    if (datasetState.selectedQuadIndex < 0 || datasetState.selectedQuadIndex >= datasetState.currentItems.length) {
+    if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return 'Failed to find jsonItem.';
     }
-    datasetState.currentItems.splice(datasetState.selectedQuadIndex, 1);
+    datasetState.currentItems.splice(activeQuadIndex, 1);
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to delete jsonItem.');
 }

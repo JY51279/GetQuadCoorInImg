@@ -5,9 +5,9 @@
       v-for="(jsonItem, index) in formattedJsonStrArray"
       :key="index"
       :data-json-index="index"
-      :class="{ 'highlighted-line': index === highlightedIndex }"
+      :class="{ 'highlighted-line': index === activeQuadIndex }"
       class="json-item-container"
-      @mouseenter="updateHighlightedIndex(index)"
+      @mouseenter="selectQuadIndex(index)"
     >
       <span>{{ jsonItem }}</span>
     </div></pre>
@@ -30,35 +30,41 @@ defineExpose({
   modifyJsonItem,
   deleteJsonItem,
   addJsonItem,
-  updateHighlightedIndex,
 });
-const emits = defineEmits(['update-quad-info', 'init-show-quads']);
+const props = defineProps({
+  activeQuadIndex: {
+    type: Number,
+    default: -1,
+  },
+});
+const emits = defineEmits(['select-quad-index', 'update-quad-total', 'init-show-quads']);
 
 let jsonPerPicArray = [];
 const formattedJsonStrArray = ref([]);
 const jsonContainer = ref(null);
 
-const highlightedIndex = ref(-1);
-watch(highlightedIndex, (newIndex, oldIndex) => {
-  if (oldIndex === newIndex) return;
-  if (newIndex > -1 && newIndex < jsonPerPicArray.length) {
-    ensureHighlightVisible();
-    emits('update-quad-info', newIndex + 1);
-  } else {
-    emits('update-quad-info', 0);
-  }
-});
-function updateHighlightedIndex(newIndex) {
-  highlightedIndex.value = Math.min(jsonPerPicArray.length - 1, Math.max(-1, newIndex));
+watch(
+  () => props.activeQuadIndex,
+  (newIndex, oldIndex) => {
+    if (oldIndex === newIndex) return;
+    if (newIndex > -1 && newIndex < jsonPerPicArray.length) {
+      ensureHighlightVisible();
+    }
+  },
+);
+function selectQuadIndex(newIndex) {
+  const normalizedIndex =
+    Number.isInteger(newIndex) && newIndex >= 0 && newIndex < jsonPerPicArray.length ? newIndex : -1;
+  emits('select-quad-index', normalizedIndex);
 }
 
 async function ensureHighlightVisible() {
   await nextTick();
 
   const container = jsonContainer.value;
-  if (!container || highlightedIndex.value < 0) return;
+  if (!container || props.activeQuadIndex < 0) return;
 
-  const highlightedItem = container.querySelector(`[data-json-index="${highlightedIndex.value}"]`);
+  const highlightedItem = container.querySelector(`[data-json-index="${props.activeQuadIndex}"]`);
   if (!highlightedItem) return;
 
   const containerRect = container.getBoundingClientRect();
@@ -83,20 +89,18 @@ function modifyJsonItem() {
 }
 function deleteJsonItem() {
   updateJsonPerPicArray();
-  highlightedIndex.value = Math.min(highlightedIndex.value, jsonPerPicArray.length - 1);
   //scrollToBottom();
 }
 function addJsonItem() {
   updateJsonPerPicArray();
-  highlightedIndex.value = -1;
   scrollToBottom();
 }
 
 function updateLightIndex(direction) {
   if (direction === KEYS.NEXT) {
-    highlightedIndex.value = Math.min(highlightedIndex.value + 1, jsonPerPicArray.length);
+    selectQuadIndex(Math.min(props.activeQuadIndex + 1, jsonPerPicArray.length));
   } else if (direction === KEYS.PREVIOUS) {
-    highlightedIndex.value = Math.max(highlightedIndex.value - 1, -1);
+    selectQuadIndex(Math.max(props.activeQuadIndex - 1, -1));
   }
 }
 function updateJsonPerPicArray() {
@@ -105,9 +109,9 @@ function updateJsonPerPicArray() {
   for (let i = 0; i < formattedJsonStrArray.value.length; i++)
     jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
   jsonPerPicArray = jsonArrayTmp;
-  emits('update-quad-info', -1, jsonPerPicArray.length);
+  emits('update-quad-total', jsonPerPicArray.length);
+  emits('select-quad-index', -1);
   emits('init-show-quads');
-  highlightedIndex.value = -1;
 }
 
 const hasPicJsonFailedFetched = ref(false);
@@ -116,12 +120,12 @@ function initJsonInfo(imgFilePath, jsonImageIndex = null) {
   if (!resetPicJson(imgFilePath, jsonImageIndex)) {
     formattedJsonStrArray.value = [];
     jsonPerPicArray = [];
-    highlightedIndex.value = -1;
     hasPicJsonFailedFetched.value = true;
     picJsonErrorMessage.value = imgFilePath
       ? `No JSON data found for image path:\n${imgFilePath}`
       : 'No JSON data found for the current image.';
-    emits('update-quad-info', -1, 0);
+    emits('update-quad-total', 0);
+    emits('select-quad-index', -1);
     emits('init-show-quads');
     return false;
   }
