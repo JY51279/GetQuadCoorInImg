@@ -98,6 +98,8 @@ import {
   getJsonFileInfo,
   getJsonPerPicPointsArray,
   resetJsonNoValue,
+  createDatasetMutationSnapshot,
+  restoreDatasetMutationSnapshot,
 } from '../state/DatasetState.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 import { loadRendererImage } from '../utils/RendererImageLoader.js';
@@ -129,6 +131,7 @@ const isImageRequestInProgress = ref(false);
 const imageLoadErrorPath = ref('');
 let imageChunkBuffer = '';
 let activeImageRequest = null;
+let imageRequestCounter = 0;
 
 // Notification state
 const NOTIFICATION_DURATION = 3000;
@@ -293,11 +296,20 @@ async function performJsonAction(action) {
   }
 
   isSaving.value = true;
+  const datasetSnapshot = createDatasetMutationSnapshot();
   try {
     outputMessage('Start operate: ' + action);
     const updateJsonRes = updateJson(action, initImageScale);
     if (updateJsonRes !== KEYS.OPERATE_SUCCESS) {
       outputMessage(updateJsonRes);
+      return;
+    }
+
+    if (!(await saveJsonFile())) {
+      if (!restoreDatasetMutationSnapshot(datasetSnapshot)) {
+        outputMessage('Failed to restore JSON state after the save error. Please reload the dataset.');
+        canOperate.value = false;
+      }
       return;
     }
 
@@ -313,7 +325,6 @@ async function performJsonAction(action) {
         break;
     }
     clearDots();
-    await saveJsonFile();
   } finally {
     isSaving.value = false;
   }
@@ -334,15 +345,25 @@ function modifyJsonItem() {
 async function resetJsonValue() {
   if (isSaving.value) return;
 
-  if (resetJsonNoValue()) {
-    outputMessage('Reset No. successfully.');
-    isSaving.value = true;
-    try {
-      await saveJsonFile();
-    } finally {
-      isSaving.value = false;
+  isSaving.value = true;
+  const datasetSnapshot = createDatasetMutationSnapshot();
+  try {
+    if (!resetJsonNoValue()) {
+      outputMessage('Reset No. failed!');
+      return;
     }
-  } else outputMessage('Reset No. failed!');
+
+    if (!(await saveJsonFile())) {
+      if (!restoreDatasetMutationSnapshot(datasetSnapshot)) {
+        outputMessage('Failed to restore JSON state after the save error. Please reload the dataset.');
+        canOperate.value = false;
+      }
+      return;
+    }
+    outputMessage('Reset No. successfully.');
+  } finally {
+    isSaving.value = false;
+  }
 }
 
 async function saveJsonFile() {
@@ -433,10 +454,22 @@ function chooseImgFile() {
   }
   try {
     imageChunkBuffer = '';
-    activeImageRequest = null;
-    ipcRenderer.send('open-image-file-dialog', getJsonImageDialogContext());
+    const requestId = ++imageRequestCounter;
+    activeImageRequest = {
+      requestId,
+      source: 'manual',
+      index: null,
+      path: '',
+      direction: '',
+      attemptedIndexes: new Set(),
+      previousCanOperate: canOperate.value,
+    };
+    isImageRequestInProgress.value = true;
+    canOperate.value = false;
+    ipcRenderer.send('open-image-file-dialog', { ...getJsonImageDialogContext(), requestId });
   } catch (error) {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
+    handleImageRequestFailure(error.message);
   }
 }
 
@@ -480,10 +513,10 @@ function jumpToImageIndex() {
   startDatasetImageRequest(target, '');
 }
 
-function sendImageFileRequest(path) {
+function sendImageFileRequest(path, requestId) {
   imageChunkBuffer = '';
   const { jsonFilePath } = getJsonImageDialogContext();
-  ipcRenderer.send('open-pic-file', { imagePath: path, jsonFilePath });
+  ipcRenderer.send('open-pic-file', { imagePath: path, jsonFilePath, requestId });
   outputMessage('Get file response...');
 }
 
@@ -492,7 +525,9 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
   if (!previousRequest && picInfo.picNum > 0) attemptedIndexes.add(picInfo.picNum - 1);
   attemptedIndexes.add(target.index);
 
+  const requestId = ++imageRequestCounter;
   activeImageRequest = {
+    requestId,
     source: 'dataset',
     index: target.index,
     path: target.path,
@@ -503,21 +538,7 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
   isImageRequestInProgress.value = true;
   canOperate.value = false;
   imgContainerRef.value.resetIsImgFileLoading(true);
-  sendImageFileRequest(target.path);
-}
-
-function ensureManualImageRequest() {
-  if (activeImageRequest) return;
-  activeImageRequest = {
-    source: 'manual',
-    index: null,
-    path: '',
-    direction: '',
-    attemptedIndexes: new Set(),
-    previousCanOperate: canOperate.value,
-  };
-  isImageRequestInProgress.value = true;
-  canOperate.value = false;
+  sendImageFileRequest(target.path, requestId);
 }
 
 function retryDatasetImageRequest() {
@@ -565,7 +586,16 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
 }
 
 async function handleOpenPicFileResponse(_event, response) {
-  ensureManualImageRequest();
+  if (!activeImageRequest || response?.requestId !== activeImageRequest.requestId) return;
+
+  if (response.canceled) {
+    canOperate.value = activeImageRequest.previousCanOperate === true;
+    imgContainerRef.value.changeMouseState(!canOperate.value);
+    imgContainerRef.value.resetIsImgFileLoading(false);
+    resetImageRequestState();
+    return;
+  }
+
   imgContainerRef.value.resetIsImgFileLoading(true);
   imgContainerRef.value.changeMouseState(true);
   if (response.success) {
@@ -755,6 +785,8 @@ function updateJsonHighlightIndex(newIndex) {
   flex-direction: column;
   margin-left: calc(75% - 130px);
   justify-content: space-between;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 .zoomViewBox {
   border: 1px dotted #333;

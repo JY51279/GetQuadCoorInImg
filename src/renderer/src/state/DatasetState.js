@@ -32,6 +32,17 @@ function clearCurrentAnnotationState() {
   datasetState.selectedQuadIndex = -1;
 }
 
+function normalizeImagePathForComparison(imagePath) {
+  const normalizedPath = imagePath.replace(/[\\/]/g, '/');
+  const isWindowsPath = /^[a-zA-Z]:\//.test(normalizedPath) || normalizedPath.startsWith('//');
+  return isWindowsPath ? normalizedPath.toLowerCase() : normalizedPath;
+}
+
+export function areImagePathsEquivalent(leftPath, rightPath) {
+  if (typeof leftPath !== 'string' || typeof rightPath !== 'string') return false;
+  return normalizeImagePathForComparison(leftPath) === normalizeImagePathForComparison(rightPath);
+}
+
 // Special case: DBR "Barcode Type": "datamatrix"
 
 export function prepareJsonProcess(jsonData) {
@@ -125,7 +136,7 @@ function resetImgIndex(imgPath, requestedImgIndex = null) {
     Number.isInteger(requestedImgIndex) &&
     requestedImgIndex >= 0 &&
     requestedImgIndex < datasetState.imagePaths.length &&
-    datasetState.imagePaths[requestedImgIndex] === normalizedImgPath
+    areImagePathsEquivalent(datasetState.imagePaths[requestedImgIndex], normalizedImgPath)
   ) {
     datasetState.currentImageIndex = requestedImgIndex;
     datasetState.navigationImageIndex = requestedImgIndex;
@@ -133,7 +144,7 @@ function resetImgIndex(imgPath, requestedImgIndex = null) {
   }
 
   for (let i = 0; i < datasetState.dataset[ROOT_KEY].length; ++i) {
-    if (datasetState.imagePaths[i] === normalizedImgPath) {
+    if (areImagePathsEquivalent(datasetState.imagePaths[i], normalizedImgPath)) {
       datasetState.currentImageIndex = i;
       datasetState.navigationImageIndex = i;
       return;
@@ -170,6 +181,31 @@ export function getJsonFileInfo() {
     str: transJson2Str(datasetState.dataset),
     path: datasetState.jsonFilePath,
   };
+}
+
+export function createDatasetMutationSnapshot() {
+  return transJson2Str(datasetState.dataset);
+}
+
+export function restoreDatasetMutationSnapshot(snapshot) {
+  try {
+    const restoredDataset = transStr2Json(snapshot);
+    if (!restoredDataset || !Array.isArray(restoredDataset[ROOT_KEY])) return false;
+
+    const currentPicture = restoredDataset[ROOT_KEY][datasetState.currentImageIndex];
+    if (
+      datasetState.currentImageIndex >= 0 &&
+      (!currentPicture || !Array.isArray(currentPicture[datasetState.productSchema.targetKey]))
+    ) {
+      return false;
+    }
+
+    datasetState.dataset = restoredDataset;
+    datasetState.currentItems = currentPicture?.[datasetState.productSchema.targetKey] ?? [];
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function setQuadInfo(realDots) {

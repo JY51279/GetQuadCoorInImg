@@ -25,9 +25,7 @@
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
     "lodash": "^4.17.21",
-    "pngjs": "^7.0.0",
-    "sharp": "^0.35.4",
-    "utif": "^3.1.0"
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config": "^1.0.1",

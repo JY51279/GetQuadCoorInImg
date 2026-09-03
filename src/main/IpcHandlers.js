@@ -9,15 +9,18 @@ import {
 } from './FileOperations.js';
 import { IMAGE_EXTENSIONS, sendImageFile } from './ImageFileReader.js';
 
-function replyInvalidImagePath(event) {
+function replyImageRequestFailure(event, error, requestId = null, canceled = false) {
   event.reply('open-pic-file-response', {
     success: false,
-    error: 'Invalid image path.',
+    requestId,
+    error,
     path: '',
+    ...(canceled ? { canceled: true } : {}),
   });
 }
 
 async function handleOpenImageDialog(event, context) {
+  const requestId = context?.requestId ?? null;
   try {
     const result = await dialog.showOpenDialog({
       defaultPath: getImageDialogDefaultDirectory(context),
@@ -25,11 +28,14 @@ async function handleOpenImageDialog(event, context) {
       filters: [{ name: 'Image Files', extensions: IMAGE_EXTENSIONS }],
     });
 
-    if (!result.canceled && result.filePaths.length > 0) {
-      await sendImageFile(event, result.filePaths[0]);
+    if (result.canceled || result.filePaths.length === 0) {
+      replyImageRequestFailure(event, '', requestId, true);
+      return;
     }
+    await sendImageFile(event, result.filePaths[0], requestId);
   } catch (error) {
     console.error('Error while opening image file dialog:', error);
+    replyImageRequestFailure(event, error.message, requestId);
   }
 }
 
@@ -65,12 +71,13 @@ export function registerIpcHandlers() {
   ipcMain.on('open-pic-file', (event, request) => {
     const imagePath = typeof request === 'string' ? request : request?.imagePath;
     const jsonFilePath = typeof request === 'string' ? '' : request?.jsonFilePath;
+    const requestId = typeof request === 'string' ? null : request?.requestId ?? null;
     const resolvedImagePath = resolveJsonImagePath(imagePath, jsonFilePath);
     if (!resolvedImagePath) {
-      replyInvalidImagePath(event);
+      replyImageRequestFailure(event, 'Invalid image path.', requestId);
       return;
     }
-    void sendImageFile(event, resolvedImagePath);
+    void sendImageFile(event, resolvedImagePath, requestId);
   });
 
   ipcMain.on('open-json-file-dialog', handleOpenJsonDialog);

@@ -72,6 +72,7 @@
       :max="scaleRange"
       step="0.1"
       style="width: 60px"
+      @input="normalizeScaleInput"
     />
     <input
       v-if="imageObj"
@@ -93,6 +94,7 @@ import {
   canvasToImagePoint,
   imageToCanvasPoint,
   imageToScaledPoint,
+  normalizeScale,
   scaledToCanvasPoint,
   scaledToImagePoint,
 } from '../utils/ImageViewGeometry.js';
@@ -686,9 +688,21 @@ function updateOffsetScaled(oldScale, newScale) {
 
 watch(scale, (newScale, oldScale) => {
   if (newScale === 0) return;
-  else updateOffsetScaled(oldScale, newScale);
+  const previousScale = normalizeScale(oldScale, 0.1, scaleRange, 1);
+  const validScale = normalizeScale(newScale, 0.1, scaleRange, previousScale);
+  if (!Object.is(newScale, validScale)) {
+    scale.value = validScale;
+    return;
+  }
+
+  updateOffsetScaled(previousScale, validScale);
   updateViewPortDraw();
 });
+
+function normalizeScaleInput(event) {
+  const fallbackScale = normalizeScale(scale.value, 0.1, scaleRange, 1);
+  scale.value = normalizeScale(event.target.value, 0.1, scaleRange, fallbackScale);
+}
 
 watch(pressed, newVal => {
   if (newVal) {

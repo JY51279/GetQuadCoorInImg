@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { detectProductType, normalizeDataset, PRODUCT_SCHEMAS } from '../src/renderer/src/utils/DatasetSchema.js';
 import {
+  areImagePathsEquivalent,
   commitPreparedJsonProcess,
+  createDatasetMutationSnapshot,
   getAdjacentJsonImageTarget,
   getJsonFileInfo,
   getJsonImageTarget,
@@ -9,6 +11,7 @@ import {
   getJsonPicNum,
   prepareJsonProcess,
   resetPicJson,
+  restoreDatasetMutationSnapshot,
   setQuadInfo,
   updateJson,
   updateQuadIndex,
@@ -83,6 +86,15 @@ describe('Dataset schema', () => {
 });
 
 describe('Dataset state operations', () => {
+  it('matches Windows image paths without case sensitivity', () => {
+    loadDbrDataset();
+
+    expect(areImagePathsEquivalent('C:\\Images\\ONE.PNG', 'c:/images/one.png')).toBe(true);
+    expect(areImagePathsEquivalent('/Images/one.png', '/images/one.png')).toBe(false);
+    expect(resetPicJson('c:/IMAGES/ONE.PNG')).toBe(true);
+    expect(getJsonPicNum()).toEqual({ picNum: 1, picTotalNum: 2 });
+  });
+
   it('navigates images with wrapping and rejects invalid targets', () => {
     loadDbrDataset();
 
@@ -136,6 +148,23 @@ describe('Dataset state operations', () => {
     savedDataset = JSON.parse(getJsonFileInfo().str);
     expect(savedDataset.Picture[0]['Barcode Count']).toBe(1);
     expect(savedDataset.Picture[0]['Barcode Info']).toHaveLength(1);
+  });
+
+  it('restores the data before a mutation when persistence fails', () => {
+    loadDbrDataset();
+    const snapshot = createDatasetMutationSnapshot();
+    setQuadInfo([
+      { x: 20, y: 20 },
+      { x: 30, y: 30 },
+    ]);
+
+    expect(updateJson(KEYS.JSON_ADD, 1)).toBe(KEYS.OPERATE_SUCCESS);
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Count']).toBe(2);
+    expect(restoreDatasetMutationSnapshot(snapshot)).toBe(true);
+
+    const restoredDataset = JSON.parse(getJsonFileInfo().str);
+    expect(restoredDataset.Picture[0]['Barcode Count']).toBe(1);
+    expect(restoredDataset.Picture[0]['Barcode Info']).toHaveLength(1);
   });
 
   it('does not replace committed state when preparation fails', () => {

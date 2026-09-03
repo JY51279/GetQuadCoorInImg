@@ -4,6 +4,7 @@ import {
   canvasToImagePoint,
   imageToCanvasPoint,
   imageToScaledPoint,
+  normalizeScale,
   scaledToCanvasPoint,
   scaledToImagePoint,
 } from '../src/renderer/src/utils/ImageViewGeometry.js';
@@ -11,6 +12,14 @@ import { configureZoomCanvas, drawZoomPreview } from '../src/renderer/src/utils/
 import { loadRendererImage } from '../src/renderer/src/utils/RendererImageLoader.js';
 
 describe('Image view geometry', () => {
+  it('keeps scale values finite and inside the supported range', () => {
+    expect(normalizeScale('2.5')).toBe(2.5);
+    expect(normalizeScale(-2)).toBe(0.1);
+    expect(normalizeScale(100)).toBe(60);
+    expect(normalizeScale('', 0.1, 60, 2)).toBe(0.1);
+    expect(normalizeScale('invalid', 0.1, 60, 2)).toBe(2);
+  });
+
   it('converts normal image, scaled, and canvas coordinates', () => {
     const transform = {
       scale: 2,

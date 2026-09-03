@@ -1,3 +1,9 @@
+export function normalizeScale(value, minimum = 0.1, maximum = 60, fallback = 1) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.min(maximum, Math.max(minimum, numericValue));
+}
+
 export function scaledToImagePoint(scaledPoint, scale) {
   return {
     x: Math.floor(scaledPoint.x / scale),
