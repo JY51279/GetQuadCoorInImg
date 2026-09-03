@@ -7,7 +7,10 @@
   "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",
-    "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
+    "lint": "eslint \"src/**/*.{js,vue}\" \"tests/**/*.js\" electron.vite.config.mjs --fix",
+    "lint:check": "eslint \"src/**/*.{js,vue}\" \"tests/**/*.js\" electron.vite.config.mjs --quiet",
+    "test": "vitest run",
+    "check": "npm run test && npm run lint:check && npm run build",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -38,6 +41,7 @@
     "eslint-plugin-vue": "^9.20.1",
     "prettier": "^3.2.4",
     "vite": "^7.3.6",
+    "vitest": "^4.1.11",
     "vue": "^3.4.15"
   }
 }

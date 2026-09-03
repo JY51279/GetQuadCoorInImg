@@ -1,8 +1,10 @@
-const fs = require('fs');
-const path = require('path');
-const UTIF = require('utif');
-const { PNG } = require('pngjs');
-const sharp = require('sharp');
+import fs from 'fs';
+import path from 'path';
+import UTIF from 'utif';
+import pngjs from 'pngjs';
+import sharp from 'sharp';
+
+const { PNG } = pngjs;
 
 export const IMAGE_EXTENSIONS = [
   'jpg',

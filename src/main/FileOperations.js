@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 let jsonTempFileCounter = 0;
 let lastJsonDirectory = '';
@@ -47,6 +47,7 @@ function getExistingDirectory(directoryPath) {
 }
 
 export async function initializeFileOperations(electronApp) {
+  lastJsonDirectory = '';
   documentsDirectory = electronApp.getPath('documents');
   homeDirectory = electronApp.getPath('home');
   dialogPathSettingsFile = path.join(electronApp.getPath('userData'), 'dialog-paths.json');
