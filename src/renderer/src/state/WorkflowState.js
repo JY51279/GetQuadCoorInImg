@@ -45,9 +45,21 @@ function success(state, operationId = null) {
   return { success: true, state, operationId };
 }
 
+export function canStartOperation(state, type) {
+  return Boolean(state && ALLOWED_START_PHASES[type]?.has(state.phase) && state.operation === null);
+}
+
+export function canEdit(state) {
+  return state?.phase === WORKFLOW_PHASE.READY && state.operation === null;
+}
+
+export function canChangeQuadSelection(state) {
+  return [WORKFLOW_PHASE.READY, WORKFLOW_PHASE.LOADING_IMAGE].includes(state?.phase);
+}
+
 function startOperation(state, type, context = {}) {
   if (!state || !ALLOWED_START_PHASES[type]) return failure(state, 'Unknown workflow operation.');
-  if (state.operation !== null || !ALLOWED_START_PHASES[type].has(state.phase)) {
+  if (!canStartOperation(state, type)) {
     return failure(state, `Cannot start ${type} while workflow is ${state.phase}.`);
   }
 
@@ -87,6 +99,10 @@ export function isCurrentOperation(state, operationId, type = null) {
     state?.operation?.id === operationId &&
     (type === null || state.operation.type === type)
   );
+}
+
+export function operationReturnsTo(state, operationId, phase) {
+  return isCurrentOperation(state, operationId) && STABLE_PHASES.has(phase) && state.operation.returnPhase === phase;
 }
 
 export function updateOperationContext(state, operationId, context = {}) {
@@ -129,6 +145,14 @@ export function commitDataset(state, operationId) {
 
 export function canApplyOperationResult(state, operationId) {
   return isCurrentOperation(state, operationId) && state.operation.datasetVersion === state.datasetVersion;
+}
+
+export function canApplySaveResult(state, operationId, currentImageIndex) {
+  return (
+    canApplyOperationResult(state, operationId) &&
+    state.operation.type === WORKFLOW_OPERATION.SAVE &&
+    state.operation.sourceImageIndex === currentImageIndex
+  );
 }
 
 export function isWorkflowBusy(state) {

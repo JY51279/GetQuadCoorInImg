@@ -3,11 +3,16 @@ import {
   WORKFLOW_OPERATION,
   WORKFLOW_PHASE,
   canApplyOperationResult,
+  canApplySaveResult,
+  canChangeQuadSelection,
+  canEdit,
+  canStartOperation,
   commitDataset,
   completeOperation,
   createWorkflowState,
   failOperation,
   isCurrentOperation,
+  operationReturnsTo,
   startDatasetLoad,
   startImageLoad,
   startSave,
@@ -42,6 +47,30 @@ describe('Workflow state', () => {
     expect(startSave(saving).success).toBe(false);
   });
 
+  it('exposes operation permissions from the same rules used by transitions', () => {
+    const empty = createWorkflowState(WORKFLOW_PHASE.EMPTY);
+    const datasetReady = createWorkflowState(WORKFLOW_PHASE.DATASET_READY);
+    const ready = createWorkflowState(WORKFLOW_PHASE.READY);
+    const saving = startSave(ready).state;
+
+    expect(canStartOperation(empty, WORKFLOW_OPERATION.LOAD_DATASET)).toBe(true);
+    expect(canStartOperation(empty, WORKFLOW_OPERATION.LOAD_IMAGE)).toBe(false);
+    expect(canStartOperation(datasetReady, WORKFLOW_OPERATION.LOAD_IMAGE)).toBe(true);
+    expect(canStartOperation(ready, WORKFLOW_OPERATION.SAVE)).toBe(true);
+    expect(canStartOperation(saving, WORKFLOW_OPERATION.LOAD_DATASET)).toBe(false);
+  });
+
+  it('exposes editing and quad-selection capabilities', () => {
+    const ready = createWorkflowState(WORKFLOW_PHASE.READY);
+    const loadingImage = startImageLoad(ready).state;
+    const saving = startSave(ready).state;
+
+    expect(canEdit(ready)).toBe(true);
+    expect(canEdit(loadingImage)).toBe(false);
+    expect(canChangeQuadSelection(loadingImage)).toBe(true);
+    expect(canChangeQuadSelection(saving)).toBe(false);
+  });
+
   it('does not let a stale operation complete a newer operation', () => {
     const first = startImageLoad(createWorkflowState(WORKFLOW_PHASE.READY));
     const returned = failOperation(first.state, first.operationId).state;
@@ -68,8 +97,19 @@ describe('Workflow state', () => {
     expect(canApplyOperationResult(changedDatasetState, saving.operationId)).toBe(false);
   });
 
+  it('applies a save result only to its captured image', () => {
+    const saving = startSave(createWorkflowState(WORKFLOW_PHASE.READY), { sourceImageIndex: 2 });
+
+    expect(canApplySaveResult(saving.state, saving.operationId, 2)).toBe(true);
+    expect(canApplySaveResult(saving.state, saving.operationId, 3)).toBe(false);
+  });
+
   it('returns to the captured stable phase after failure', () => {
     const started = startImageLoad(createWorkflowState(WORKFLOW_PHASE.DATASET_READY));
+
+    expect(operationReturnsTo(started.state, started.operationId, WORKFLOW_PHASE.DATASET_READY)).toBe(true);
+    expect(operationReturnsTo(started.state, started.operationId, WORKFLOW_PHASE.READY)).toBe(false);
+
     const failed = failOperation(started.state, started.operationId);
 
     expect(failed.success).toBe(true);

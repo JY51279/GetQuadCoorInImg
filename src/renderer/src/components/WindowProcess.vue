@@ -68,9 +68,9 @@
         <button class="button-style" :disabled="picInfo.picTotalNum === 0 || !canLoadImage" @click="chooseImgFile">
           手动选择图片
         </button>
-        <button class="button-style" :disabled="!canOperate || isSaving" @click="modifyJsonItem">Mod JsonItem</button>
-        <button class="button-style" :disabled="!canOperate || isSaving" @click="deleteJsonItem">Del JsonItem</button>
-        <button class="button-style" :disabled="!canOperate || isSaving" @click="addJsonItem">Add JsonItem</button>
+        <button class="button-style" :disabled="!canOperate" @click="modifyJsonItem">Mod JsonItem</button>
+        <button class="button-style" :disabled="!canOperate" @click="deleteJsonItem">Del JsonItem</button>
+        <button class="button-style" :disabled="!canOperate" @click="addJsonItem">Add JsonItem</button>
       </div>
     </div>
 
@@ -109,13 +109,17 @@ import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.
 import {
   WORKFLOW_OPERATION,
   WORKFLOW_PHASE,
-  canApplyOperationResult,
+  canApplySaveResult,
+  canChangeQuadSelection,
+  canEdit as canEditWorkflow,
+  canStartOperation,
   commitDataset,
   completeOperation,
   createWorkflowState,
   failOperation,
   isCurrentOperation,
   isWorkflowBusy,
+  operationReturnsTo,
   startDatasetLoad,
   startImageLoad,
   startSave,
@@ -145,12 +149,9 @@ let initImageScale = 1;
 // Operation and image request state
 const workflowState = ref(createWorkflowState());
 const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
-const canOperate = computed(() => workflowState.value.phase === WORKFLOW_PHASE.READY);
-const canLoadDataset = computed(() => !workflowBusy.value);
-const canLoadImage = computed(
-  () => !workflowBusy.value && [WORKFLOW_PHASE.DATASET_READY, WORKFLOW_PHASE.READY].includes(workflowState.value.phase),
-);
-const isSaving = computed(() => workflowState.value.phase === WORKFLOW_PHASE.SAVING);
+const canOperate = computed(() => canEditWorkflow(workflowState.value));
+const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
+const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const imageLoadErrorPath = ref('');
 let imageChunkBuffer = '';
 let activeImageRequest = null;
@@ -175,17 +176,19 @@ function applyWorkflowTransition(result) {
 }
 
 function selectQuadIndex(newIndex) {
-  if (newIndex !== -1 && ![WORKFLOW_PHASE.READY, WORKFLOW_PHASE.LOADING_IMAGE].includes(workflowState.value.phase)) {
-    return;
-  }
+  if (!canChangeQuadSelection(workflowState.value)) return;
   const normalizedIndex = Number.isInteger(newIndex) && newIndex >= 0 && newIndex < quadInfo.quadTotal ? newIndex : -1;
 
   activeQuadIndex.value = normalizedIndex;
 }
 
+function resetQuadSelection() {
+  activeQuadIndex.value = -1;
+}
+
 function updateQuadTotal(newTotal) {
   quadInfo.quadTotal = Number.isInteger(newTotal) && newTotal >= 0 ? newTotal : 0;
-  if (activeQuadIndex.value >= quadInfo.quadTotal) selectQuadIndex(-1);
+  if (activeQuadIndex.value >= quadInfo.quadTotal) resetQuadSelection();
 }
 
 function handleWindowMouseMove(e) {
@@ -321,71 +324,94 @@ function resetPosition() {
   imgContainerRef.value.resetPosition();
 }
 
-function clearDots(force = false) {
-  if (!force && !canOperate.value) return;
+function resetDots() {
   imgContainerRef.value.clearDots();
 }
 
+function clearDots() {
+  if (!canOperate.value) return;
+  resetDots();
+}
+
 // JSON Operations
-async function performJsonAction(action) {
-  if (!canOperate.value) {
-    outputMessage('JSON operation is disabled until the image matches the dataset.');
-    return;
-  }
+async function runSaveTransaction(mutate, onSaved = () => {}) {
   const sourceImageIndex = getJsonPicNum().picNum - 1;
   const started = startSave(workflowState.value, { sourceImageIndex });
   if (!applyWorkflowTransition(started)) {
     outputMessage(started.error);
-    return;
+    return false;
   }
 
   const operationId = started.operationId;
   const datasetSnapshot = createDatasetMutationSnapshot();
   let completionPhase = null;
+  let operationCompleted = false;
+
+  function finishOperation() {
+    if (operationCompleted) return true;
+    operationCompleted = applyWorkflowTransition(
+      completeOperation(workflowState.value, operationId, completionPhase),
+    );
+    return operationCompleted;
+  }
+
   try {
-    outputMessage('Start operate: ' + action);
-    const updateJsonRes = updateJson(action, initImageScale, activeQuadIndex.value);
-    if (updateJsonRes !== KEYS.OPERATE_SUCCESS) {
-      outputMessage(updateJsonRes);
-      return;
+    const mutationError = mutate();
+    if (mutationError !== null) {
+      outputMessage(mutationError);
+      return false;
     }
 
     const saved = await saveJsonFile();
-    if (!canApplyOperationResult(workflowState.value, operationId)) {
-      outputMessage('Ignored a stale save result because the dataset context changed.');
-      return;
-    }
-    if (getJsonPicNum().picNum - 1 !== sourceImageIndex) {
-      outputMessage('Ignored a save result because the current image changed during the operation.');
-      return;
+    if (!canApplySaveResult(workflowState.value, operationId, getJsonPicNum().picNum - 1)) {
+      outputMessage('Ignored a stale save result because the dataset or image context changed.');
+      return false;
     }
 
     if (!saved) {
       if (!restoreDatasetMutationSnapshot(datasetSnapshot)) {
         outputMessage('Failed to restore JSON state after the save error. Please reload the dataset.');
         completionPhase = WORKFLOW_PHASE.DATASET_READY;
-        selectQuadIndex(-1);
+        resetQuadSelection();
       }
-      return;
+      return false;
     }
 
-    switch (action) {
-      case KEYS.JSON_ADD:
-        jsonView.value.addJsonItem();
-        break;
-      case KEYS.JSON_DELETE:
-        jsonView.value.deleteJsonItem();
-        break;
-      case KEYS.JSON_MODIFY:
-        jsonView.value.modifyJsonItem();
-        break;
-    }
-    clearDots(true);
+    if (!finishOperation()) return false;
+    onSaved();
+    return true;
   } finally {
-    if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) {
-      applyWorkflowTransition(completeOperation(workflowState.value, operationId, completionPhase));
-    }
+    if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) finishOperation();
   }
+}
+
+async function performJsonAction(action) {
+  if (!canOperate.value) {
+    outputMessage('JSON operation is disabled until the image matches the dataset.');
+    return;
+  }
+
+  await runSaveTransaction(
+    () => {
+      outputMessage('Start operate: ' + action);
+      const updateJsonRes = updateJson(action, initImageScale, activeQuadIndex.value);
+      return updateJsonRes === KEYS.OPERATE_SUCCESS ? null : updateJsonRes;
+    },
+    () => {
+      switch (action) {
+        case KEYS.JSON_ADD:
+          jsonView.value.addJsonItem();
+          break;
+        case KEYS.JSON_DELETE:
+          jsonView.value.deleteJsonItem();
+          break;
+        case KEYS.JSON_MODIFY:
+          jsonView.value.modifyJsonItem();
+          break;
+      }
+      resetDots();
+    },
+  );
 }
 
 function addJsonItem() {
@@ -401,42 +427,10 @@ function modifyJsonItem() {
 }
 
 async function resetJsonValue() {
-  const sourceImageIndex = getJsonPicNum().picNum - 1;
-  const started = startSave(workflowState.value, { sourceImageIndex });
-  if (!applyWorkflowTransition(started)) {
-    outputMessage(started.error);
-    return;
-  }
-
-  const operationId = started.operationId;
-  const datasetSnapshot = createDatasetMutationSnapshot();
-  let completionPhase = null;
-  try {
-    if (!resetJsonNoValue()) {
-      outputMessage('Reset No. failed!');
-      return;
-    }
-
-    const saved = await saveJsonFile();
-    if (!canApplyOperationResult(workflowState.value, operationId) || getJsonPicNum().picNum - 1 !== sourceImageIndex) {
-      outputMessage('Ignored a stale save result because the dataset or image context changed.');
-      return;
-    }
-
-    if (!saved) {
-      if (!restoreDatasetMutationSnapshot(datasetSnapshot)) {
-        outputMessage('Failed to restore JSON state after the save error. Please reload the dataset.');
-        completionPhase = WORKFLOW_PHASE.DATASET_READY;
-        selectQuadIndex(-1);
-      }
-      return;
-    }
-    outputMessage('Reset No. successfully.');
-  } finally {
-    if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) {
-      applyWorkflowTransition(completeOperation(workflowState.value, operationId, completionPhase));
-    }
-  }
+  await runSaveTransaction(
+    () => (resetJsonNoValue() ? null : 'Reset No. failed!'),
+    () => outputMessage('Reset No. successfully.'),
+  );
 }
 
 async function saveJsonFile() {
@@ -661,7 +655,11 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
 
   if (retryDatasetImageRequest()) return;
 
-  const canRestorePreviousImage = workflowState.value.operation?.returnPhase === WORKFLOW_PHASE.READY;
+  const canRestorePreviousImage = operationReturnsTo(
+    workflowState.value,
+    failedRequest?.operationId,
+    WORKFLOW_PHASE.READY,
+  );
   if (canRestorePreviousImage) {
     jumpImageIndex.value = picInfo.picNum || '';
     imageLoadErrorPath.value = '';
@@ -673,7 +671,7 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
     picInfo.picNum = 0;
     jumpImageIndex.value = '';
     imageLoadErrorPath.value = failedPath;
-    imgContainerRef.value.clearDots();
+    resetDots();
   }
   if (failedRequest?.operationId) {
     applyWorkflowTransition(failOperation(workflowState.value, failedRequest.operationId));
@@ -689,7 +687,7 @@ async function handleOpenPicFileResponse(_event, response) {
   if (response.canceled) {
     const canceledRequest = activeImageRequest;
     applyWorkflowTransition(failOperation(workflowState.value, canceledRequest.operationId));
-    imgContainerRef.value.changeMouseState(workflowState.value.phase !== WORKFLOW_PHASE.READY);
+    imgContainerRef.value.changeMouseState(!canEditWorkflow(workflowState.value));
     imgContainerRef.value.resetIsImgFileLoading(false);
     resetImageRequestState();
     return;
@@ -740,7 +738,8 @@ function resetImageForDatasetChange(picTotalNum = 0) {
   picInfo.picNum = 0;
   picInfo.picTotalNum = picTotalNum;
   jumpImageIndex.value = '';
-  clearDots(true);
+  resetQuadSelection();
+  resetDots();
   imgContainerRef.value.clearImage();
   imgContainerRef.value.changeMouseState(true);
   imgContainerRef.value.resetIsImgFileLoading(false);
