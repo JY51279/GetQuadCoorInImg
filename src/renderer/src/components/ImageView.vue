@@ -66,22 +66,23 @@
   <div class="scale" style="display: flex; position: fixed; left: 40px; bottom: 25px; width: calc(50%); z-index: 9999">
     <input
       v-if="imageObj"
-      v-model.number="scale"
+      :value="scale"
       type="number"
       min="0.1"
       :max="scaleRange"
       step="0.1"
       style="width: 60px"
-      @input="normalizeScaleInput"
+      @input="applyScaleInput"
     />
     <input
       v-if="imageObj"
-      v-model.number="scale"
+      :value="scale"
       type="range"
       min="1"
       :max="scaleRange"
       step="1"
       style="width: calc(100%)"
+      @input="applyScaleInput"
     />
   </div>
 </template>
@@ -689,22 +690,17 @@ function updateOffsetScaled(oldScale, newScale) {
   offsetY.value -= canvasCoord.y + fineTuning.y - mouseCoord.y;
 }
 
-watch(scale, (newScale, oldScale) => {
-  if (newScale === 0) return;
-  const previousScale = normalizeScale(oldScale, 0.1, scaleRange, 1);
+function applyUserScale(newScale) {
+  const previousScale = normalizeScale(scale.value, 0.1, scaleRange, 1);
   const validScale = normalizeScale(newScale, 0.1, scaleRange, previousScale);
-  if (!Object.is(newScale, validScale)) {
-    scale.value = validScale;
-    return;
-  }
-
+  if (Object.is(previousScale, validScale)) return;
   updateOffsetScaled(previousScale, validScale);
+  scale.value = validScale;
   updateViewPortDraw();
-});
+}
 
-function normalizeScaleInput(event) {
-  const fallbackScale = normalizeScale(scale.value, 0.1, scaleRange, 1);
-  scale.value = normalizeScale(event.target.value, 0.1, scaleRange, fallbackScale);
+function applyScaleInput(event) {
+  applyUserScale(event.target.value);
 }
 
 watch(pressed, newVal => {
@@ -796,6 +792,22 @@ function clearDots() {
 }
 
 // Image lifecycle
+function resetViewportGeometry() {
+  offsetX.value = 0;
+  offsetY.value = 0;
+  Object.assign(canvasLTCoord, { x: 0, y: 0 });
+  Object.assign(canvasRBCoord, { x: 0, y: 0 });
+  Object.assign(sourceLTCoord, { x: 0, y: 0 });
+  Object.assign(sourceRBCoord, { x: 0, y: 0 });
+}
+
+function resetAnnotationOverlay() {
+  quadsArray = [];
+  showQuadIndex.splice(0, showQuadIndex.length);
+  outerQuadArray.splice(0, outerQuadArray.length);
+  indices2Show.value = '';
+}
+
 function clearImage() {
   cancelScheduledViewPortDraw();
   clearImgPixelData();
@@ -803,8 +815,9 @@ function clearImage() {
   initImgWidth.value = 0;
   initImgHeight.value = 0;
   scale.value = 0;
-  offsetX.value = 0;
-  offsetY.value = 0;
+  resetViewportGeometry();
+  resetAnnotationOverlay();
+  realDot2GetZoom.value = { x: -1, y: -1 };
 
   if (ctx.value !== null) {
     ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
@@ -815,9 +828,10 @@ function clearImage() {
 }
 
 async function initImgInfo() {
+  cancelScheduledViewPortDraw();
   scale.value = 0;
-  offsetX.value = 0;
-  offsetY.value = 0;
+  resetViewportGeometry();
+  resetAnnotationOverlay();
   clearDots();
   try {
     if (!props.imageObj?.src) {
@@ -845,7 +859,8 @@ async function initImgInfo() {
     ctx.value = canvas.value.getContext('2d');
     ctxQuad.value = canvasForShowQuads.value.getContext('2d');
     const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
-    scale.value = scaleValue;
+    scale.value = normalizeScale(scaleValue, 0.1, scaleRange, 1);
+    drawViewPortNow();
     await nextTick();
     return true;
   } catch (error) {
@@ -857,15 +872,17 @@ const onWheel = event => {
   if (isDisabledMouse.value) {
     return;
   }
+  let nextScale = scale.value;
   if (event.deltaY < 0) {
-    if (scale.value < 0.9) scale.value += 0.1;
-    else if (scale.value < scaleRange) scale.value = Math.floor(scale.value + 1);
+    if (scale.value < 0.9) nextScale += 0.1;
+    else if (scale.value < scaleRange) nextScale = Math.floor(scale.value + 1);
   } else {
     if (scale.value > 0.2) {
-      if (scale.value <= 1) scale.value -= 0.1;
-      else scale.value = Math.ceil(scale.value - 1);
-    } else scale.value = 0.1;
+      if (scale.value <= 1) nextScale -= 0.1;
+      else nextScale = Math.ceil(scale.value - 1);
+    } else nextScale = 0.1;
   }
+  applyUserScale(nextScale);
 };
 
 // Zoom preview and point positions
