@@ -55,7 +55,6 @@
         <div class="dotsArea-style">
           <div v-for="(item, index) in dotsRealCoord" :key="index" class="dots">
             <span>({{ item.x }}, {{ item.y }})</span>
-            <!-- <button class="button-delete-style" @click="clearOneDot(index)">x</button>-->
           </div>
         </div>
       </div>
@@ -75,11 +74,6 @@
         <button class="button-style" :disabled="!canOperate || isSaving" @click="modifyJsonItem">Mod JsonItem</button>
         <button class="button-style" :disabled="!canOperate || isSaving" @click="deleteJsonItem">Del JsonItem</button>
         <button class="button-style" :disabled="!canOperate || isSaving" @click="addJsonItem">Add JsonItem</button>
-        <!--TODO 目前的布局放不下了才暂时注释了三个不咋重要的！！！
-          <button class="button-style" @click="clearDots">Clear Dots</button>
-        <button class="button-style" @click="clearMessage">Clear Msgs</button>
-        <button class="button-style" @click="resetPosition">Reset Pos</button>
-       -->
       </div>
     </div>
 
@@ -813,22 +807,6 @@ function updateJsonHighlightIndex(newIndex) {
 
 .dots {
   margin-top: 5px;
-}
-/* //#ff5f5f; */
-.button-delete-style {
-  background-color: #4caf50; /* 设置按钮的背景颜色 */
-  color: white; /* 设置按钮文字的颜色 */
-  border: none; /* 移除按钮的边框 */
-  border-radius: 5px; /* 设置按钮的边框圆角 */
-  padding: 5px 5px; /* 设置按钮的内边距 */
-  cursor: pointer; /* 设置鼠标样式为手型 */
-  transition: background-color 0.3s ease; /* 添加过渡效果 */
-  width: 20px; /* 设置按钮的宽度为 30 像素 */
-  height: 20px; /* 设置按钮的高度为 30 像素 */
-  line-height: 5px; /* 设置文字的行高等于按钮的高度，实现文字的垂直居中 */
-}
-.button-delete-style:hover {
-  background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
 }
 .toast-container {
   position: fixed;

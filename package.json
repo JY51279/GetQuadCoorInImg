@@ -7,6 +7,7 @@
   "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "lint": "eslint \"src/**/*.{js,vue}\" \"tests/**/*.js\" electron.vite.config.mjs --fix",
     "lint:check": "eslint \"src/**/*.{js,vue}\" \"tests/**/*.js\" electron.vite.config.mjs --quiet",
     "test": "vitest run",

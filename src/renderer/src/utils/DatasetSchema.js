@@ -66,9 +66,7 @@ function getItemFields(schema) {
 
 function datasetMatchesMainFields(pictures, schema) {
   const mainFields = getMainFields(schema);
-  return pictures.some(
-    picture => isObject(picture) && mainFields.some(fieldName => hasOwn(picture, fieldName)),
-  );
+  return pictures.some(picture => isObject(picture) && mainFields.some(fieldName => hasOwn(picture, fieldName)));
 }
 
 function datasetMatchesItemFields(pictures, schema) {
@@ -78,11 +76,7 @@ function datasetMatchesItemFields(pictures, schema) {
 
     for (const value of Object.values(picture)) {
       if (!Array.isArray(value)) continue;
-      if (
-        value.some(
-          item => isObject(item) && itemFields.some(fieldName => hasOwn(item, fieldName)),
-        )
-      ) {
+      if (value.some(item => isObject(item) && itemFields.some(fieldName => hasOwn(item, fieldName)))) {
         return true;
       }
     }
@@ -131,8 +125,7 @@ function normalizeLocation(value) {
 
   const tokens = value.trim().split(/\s+/);
   const valid =
-    tokens.length === 8 &&
-    tokens.every(token => /^-?\d+$/.test(token) && Number.isSafeInteger(Number(token)));
+    tokens.length === 8 && tokens.every(token => /^-?\d+$/.test(token) && Number.isSafeInteger(Number(token)));
   if (!valid) return { valid: false, value: DEFAULT_LOCATION };
 
   return { valid: true, value: tokens.map(token => String(Number(token))).join(' ') };

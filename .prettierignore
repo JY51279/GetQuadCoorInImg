@@ -1,0 +1,11 @@
+node_modules
+out
+dist
+dist-ssr
+TestUpdateSets
+.vscode
+build
+resources
+src/assets
+package-lock.json
+*.zip

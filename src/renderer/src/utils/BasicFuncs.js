@@ -142,8 +142,7 @@ export function isPointRightOfLine(point, line) {
 }
 //***********************Json*************************/
 export function transStr2Json(jsonStr) {
-  const jsonText =
-    typeof jsonStr === 'string' && jsonStr.charCodeAt(0) === 0xfeff ? jsonStr.slice(1) : jsonStr;
+  const jsonText = typeof jsonStr === 'string' && jsonStr.charCodeAt(0) === 0xfeff ? jsonStr.slice(1) : jsonStr;
   var json = JSON.parse(jsonText);
   return json;
 }

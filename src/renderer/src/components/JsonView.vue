@@ -58,9 +58,7 @@ async function ensureHighlightVisible() {
   const container = jsonContainer.value;
   if (!container || highlightedIndex.value < 0) return;
 
-  const highlightedItem = container.querySelector(
-    `[data-json-index="${highlightedIndex.value}"]`,
-  );
+  const highlightedItem = container.querySelector(`[data-json-index="${highlightedIndex.value}"]`);
   if (!highlightedItem) return;
 
   const containerRect = container.getBoundingClientRect();

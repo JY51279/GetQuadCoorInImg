@@ -236,7 +236,6 @@ function transQuadDotsToString(realDots, initImageScale, baseItem = null) {
   if (jsonDots.length !== 4) return targetStr;
   const barcodeType = baseItem?.['Barcode Type'] ?? '';
   targetStr = serializePointArray2String(jsonDots, POINT_SEPARATOR, barcodeType ?? '');
-  //console.log('targetStr: ' + targetStr);
   if (targetStr === '') return targetStr;
   return targetStr;
 }
