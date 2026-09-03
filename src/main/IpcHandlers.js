@@ -39,7 +39,8 @@ async function handleOpenImageDialog(event, context) {
   }
 }
 
-async function handleOpenJsonDialog(event) {
+export async function handleOpenJsonDialog(event, context) {
+  const requestId = context?.requestId ?? null;
   try {
     const result = await dialog.showOpenDialog({
       defaultPath: getDefaultDialogDirectory(),
@@ -47,7 +48,10 @@ async function handleOpenJsonDialog(event) {
       filters: [{ name: 'JSON Files', extensions: ['json'] }],
     });
 
-    if (result.canceled || result.filePaths.length === 0) return;
+    if (result.canceled || result.filePaths.length === 0) {
+      event.reply('choose-json-file-response', { success: false, canceled: true, requestId });
+      return;
+    }
 
     const filePath = result.filePaths[0];
     rememberJsonDirectory(filePath).catch(error => {
@@ -56,12 +60,13 @@ async function handleOpenJsonDialog(event) {
 
     try {
       const jsonInfo = await readJsonFile(filePath);
-      event.reply('choose-json-file-response', { success: true, jsonInfo });
+      event.reply('choose-json-file-response', { success: true, requestId, jsonInfo });
     } catch (error) {
-      event.reply('choose-json-file-response', { success: false, error: error.message });
+      event.reply('choose-json-file-response', { success: false, requestId, error: error.message });
     }
   } catch (error) {
     console.error('Error while opening JSON file dialog:', error);
+    event.reply('choose-json-file-response', { success: false, requestId, error: error.message });
   }
 }
 

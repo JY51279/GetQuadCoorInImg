@@ -38,13 +38,13 @@
                 step="1"
                 :max="picInfo.picTotalNum || undefined"
                 :placeholder="picInfo.picTotalNum ? `1-${picInfo.picTotalNum}` : '无数据'"
-                :disabled="picInfo.picTotalNum === 0 || isImageRequestInProgress"
+                :disabled="picInfo.picTotalNum === 0 || !canLoadImage"
                 aria-label="图片 index"
                 @keydown.enter.prevent="jumpToImageIndex"
               />
               <button
                 class="image-index-button"
-                :disabled="picInfo.picTotalNum === 0 || isImageRequestInProgress"
+                :disabled="picInfo.picTotalNum === 0 || !canLoadImage"
                 @click="jumpToImageIndex"
               >
                 跳转
@@ -64,12 +64,8 @@
         <Help />
       </div>
       <div class="button-group">
-        <button class="button-style" :disabled="isImageRequestInProgress" @click="chooseJsonFile">Get JsonFile</button>
-        <button
-          class="button-style"
-          :disabled="picInfo.picTotalNum === 0 || isImageRequestInProgress"
-          @click="chooseImgFile"
-        >
+        <button class="button-style" :disabled="!canLoadDataset" @click="chooseJsonFile">Get JsonFile</button>
+        <button class="button-style" :disabled="picInfo.picTotalNum === 0 || !canLoadImage" @click="chooseImgFile">
           手动选择图片
         </button>
         <button class="button-style" :disabled="!canOperate || isSaving" @click="modifyJsonItem">Mod JsonItem</button>
@@ -89,7 +85,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
 import Help from './Help.vue';
@@ -110,6 +106,21 @@ import {
 import { KEYS } from '../utils/BasicFuncs.js';
 import { loadRendererImage } from '../utils/RendererImageLoader.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
+import {
+  WORKFLOW_OPERATION,
+  WORKFLOW_PHASE,
+  canApplyOperationResult,
+  commitDataset,
+  completeOperation,
+  createWorkflowState,
+  failOperation,
+  isCurrentOperation,
+  isWorkflowBusy,
+  startDatasetLoad,
+  startImageLoad,
+  startSave,
+  updateOperationContext,
+} from '../state/WorkflowState.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 
@@ -132,13 +143,18 @@ let imgFilePath = '';
 let initImageScale = 1;
 
 // Operation and image request state
-const canOperate = ref(false);
-const isSaving = ref(false);
-const isImageRequestInProgress = ref(false);
+const workflowState = ref(createWorkflowState());
+const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
+const canOperate = computed(() => workflowState.value.phase === WORKFLOW_PHASE.READY);
+const canLoadDataset = computed(() => !workflowBusy.value);
+const canLoadImage = computed(
+  () => !workflowBusy.value && [WORKFLOW_PHASE.DATASET_READY, WORKFLOW_PHASE.READY].includes(workflowState.value.phase),
+);
+const isSaving = computed(() => workflowState.value.phase === WORKFLOW_PHASE.SAVING);
 const imageLoadErrorPath = ref('');
 let imageChunkBuffer = '';
 let activeImageRequest = null;
-let imageRequestCounter = 0;
+let imageAttemptCounter = 0;
 
 // Notification state
 const NOTIFICATION_DURATION = 3000;
@@ -152,7 +168,16 @@ const mouseCoord = { x: 0, y: 0 };
 let removeOpenPicFileResponseListener = null;
 let removeChooseJsonFileResponseListener = null;
 
+function applyWorkflowTransition(result) {
+  if (!result.success) return false;
+  workflowState.value = result.state;
+  return true;
+}
+
 function selectQuadIndex(newIndex) {
+  if (newIndex !== -1 && ![WORKFLOW_PHASE.READY, WORKFLOW_PHASE.LOADING_IMAGE].includes(workflowState.value.phase)) {
+    return;
+  }
   const normalizedIndex = Number.isInteger(newIndex) && newIndex >= 0 && newIndex < quadInfo.quadTotal ? newIndex : -1;
 
   activeQuadIndex.value = normalizedIndex;
@@ -189,10 +214,10 @@ onUnmounted(() => {
 // Keyboard shortcuts
 const keyActions = {
   w: {
-    default: () => jsonView.value.updateLightIndex(KEYS.PREVIOUS),
+    default: () => changeJsonItemSelection(KEYS.PREVIOUS),
   },
   s: {
-    default: () => jsonView.value.updateLightIndex(KEYS.NEXT),
+    default: () => changeJsonItemSelection(KEYS.NEXT),
     ctrl: () => modifyJsonItem(),
   },
   d: {
@@ -225,10 +250,10 @@ const keyActions = {
     default: () => changeImageByArrowKeys(KEYS.NEXT),
   },
   ArrowUp: {
-    default: () => jsonView.value.updateLightIndex(KEYS.PREVIOUS),
+    default: () => changeJsonItemSelection(KEYS.PREVIOUS),
   },
   ArrowDown: {
-    default: () => jsonView.value.updateLightIndex(KEYS.NEXT),
+    default: () => changeJsonItemSelection(KEYS.NEXT),
   },
   Tab: {
     default: () => toggleMode(),
@@ -283,14 +308,21 @@ function outputMessage(message) {
 
 // Child component commands
 function clearOneDot(index) {
+  if (!canOperate.value) return;
   imgContainerRef.value.deletePt(index);
+}
+
+function changeJsonItemSelection(direction) {
+  if (!canOperate.value) return;
+  jsonView.value.updateLightIndex(direction);
 }
 
 function resetPosition() {
   imgContainerRef.value.resetPosition();
 }
 
-function clearDots() {
+function clearDots(force = false) {
+  if (!force && !canOperate.value) return;
   imgContainerRef.value.clearDots();
 }
 
@@ -300,12 +332,16 @@ async function performJsonAction(action) {
     outputMessage('JSON operation is disabled until the image matches the dataset.');
     return;
   }
-  if (isSaving.value) {
+  const sourceImageIndex = getJsonPicNum().picNum - 1;
+  const started = startSave(workflowState.value, { sourceImageIndex });
+  if (!applyWorkflowTransition(started)) {
+    outputMessage(started.error);
     return;
   }
 
-  isSaving.value = true;
+  const operationId = started.operationId;
   const datasetSnapshot = createDatasetMutationSnapshot();
+  let completionPhase = null;
   try {
     outputMessage('Start operate: ' + action);
     const updateJsonRes = updateJson(action, initImageScale, activeQuadIndex.value);
@@ -314,10 +350,21 @@ async function performJsonAction(action) {
       return;
     }
 
-    if (!(await saveJsonFile())) {
+    const saved = await saveJsonFile();
+    if (!canApplyOperationResult(workflowState.value, operationId)) {
+      outputMessage('Ignored a stale save result because the dataset context changed.');
+      return;
+    }
+    if (getJsonPicNum().picNum - 1 !== sourceImageIndex) {
+      outputMessage('Ignored a save result because the current image changed during the operation.');
+      return;
+    }
+
+    if (!saved) {
       if (!restoreDatasetMutationSnapshot(datasetSnapshot)) {
         outputMessage('Failed to restore JSON state after the save error. Please reload the dataset.');
-        canOperate.value = false;
+        completionPhase = WORKFLOW_PHASE.DATASET_READY;
+        selectQuadIndex(-1);
       }
       return;
     }
@@ -333,9 +380,11 @@ async function performJsonAction(action) {
         jsonView.value.modifyJsonItem();
         break;
     }
-    clearDots();
+    clearDots(true);
   } finally {
-    isSaving.value = false;
+    if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) {
+      applyWorkflowTransition(completeOperation(workflowState.value, operationId, completionPhase));
+    }
   }
 }
 
@@ -352,26 +401,41 @@ function modifyJsonItem() {
 }
 
 async function resetJsonValue() {
-  if (isSaving.value) return;
+  const sourceImageIndex = getJsonPicNum().picNum - 1;
+  const started = startSave(workflowState.value, { sourceImageIndex });
+  if (!applyWorkflowTransition(started)) {
+    outputMessage(started.error);
+    return;
+  }
 
-  isSaving.value = true;
+  const operationId = started.operationId;
   const datasetSnapshot = createDatasetMutationSnapshot();
+  let completionPhase = null;
   try {
     if (!resetJsonNoValue()) {
       outputMessage('Reset No. failed!');
       return;
     }
 
-    if (!(await saveJsonFile())) {
+    const saved = await saveJsonFile();
+    if (!canApplyOperationResult(workflowState.value, operationId) || getJsonPicNum().picNum - 1 !== sourceImageIndex) {
+      outputMessage('Ignored a stale save result because the dataset or image context changed.');
+      return;
+    }
+
+    if (!saved) {
       if (!restoreDatasetMutationSnapshot(datasetSnapshot)) {
         outputMessage('Failed to restore JSON state after the save error. Please reload the dataset.');
-        canOperate.value = false;
+        completionPhase = WORKFLOW_PHASE.DATASET_READY;
+        selectQuadIndex(-1);
       }
       return;
     }
     outputMessage('Reset No. successfully.');
   } finally {
-    isSaving.value = false;
+    if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) {
+      applyWorkflowTransition(completeOperation(workflowState.value, operationId, completionPhase));
+    }
   }
 }
 
@@ -407,13 +471,11 @@ async function initProcessInfo(jsonImageIndex = null) {
   try {
     if (!imageObj.value || imageObj.value.src === '') {
       outputMessage('initProcessInfo Error.');
-      canOperate.value = false;
       imgContainerRef.value.resetIsImgFileLoading(false);
       return false;
     } else {
       await nextTick();
       if (!(await imgContainerRef.value.initImgInfo())) {
-        canOperate.value = false;
         imgContainerRef.value.resetIsImgFileLoading(false);
         return false;
       }
@@ -423,7 +485,6 @@ async function initProcessInfo(jsonImageIndex = null) {
     if (!jsonView.value.initJsonInfo(imgFilePath, jsonImageIndex)) {
       picInfo.picNum = 0;
       jumpImageIndex.value = '';
-      canOperate.value = false;
       imgContainerRef.value.resetIsImgFileLoading(false);
       return false;
     }
@@ -439,11 +500,9 @@ async function initProcessInfo(jsonImageIndex = null) {
     picInfo.picNum = picNum;
     picInfo.picTotalNum = picTotalNum;
     jumpImageIndex.value = picNum;
-    canOperate.value = true;
     imgContainerRef.value.resetIsImgFileLoading(false);
     return true;
   } catch (error) {
-    canOperate.value = false;
     imgContainerRef.value.resetIsImgFileLoading(false);
     console.error(`Error name: ${error.name}`);
     console.error(`Error message: ${error.message}`);
@@ -459,8 +518,8 @@ function initShowQuads() {
 }
 // Image request lifecycle
 function chooseImgFile() {
-  if (isImageRequestInProgress.value) {
-    outputMessage('Please wait for the current image to finish loading.');
+  if (!canLoadImage.value) {
+    outputMessage(workflowBusy.value ? 'Please wait for the current operation to finish.' : 'No dataset is available.');
     return;
   }
   if (picInfo.picTotalNum === 0) {
@@ -468,19 +527,24 @@ function chooseImgFile() {
     return;
   }
   try {
+    const sourceImageIndex = getJsonPicNum().picNum - 1;
+    const started = startImageLoad(workflowState.value, { sourceImageIndex, targetImageIndex: null });
+    if (!applyWorkflowTransition(started)) {
+      outputMessage(started.error);
+      return;
+    }
+
     imageChunkBuffer = '';
-    const requestId = ++imageRequestCounter;
+    const requestId = ++imageAttemptCounter;
     activeImageRequest = {
       requestId,
+      operationId: started.operationId,
       source: 'manual',
       index: null,
       path: '',
       direction: '',
       attemptedIndexes: new Set(),
-      previousCanOperate: canOperate.value,
     };
-    isImageRequestInProgress.value = true;
-    canOperate.value = false;
     ipcRenderer.send('open-image-file-dialog', { ...getJsonImageDialogContext(), requestId });
   } catch (error) {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
@@ -489,8 +553,8 @@ function chooseImgFile() {
 }
 
 function changeImageByArrowKeys(direction) {
-  if (isImageRequestInProgress.value) {
-    outputMessage('Please wait for the current image to finish loading.');
+  if (!canLoadImage.value) {
+    outputMessage('Please wait for the current operation to finish.');
     return;
   }
 
@@ -503,8 +567,8 @@ function changeImageByArrowKeys(direction) {
 }
 
 function jumpToImageIndex() {
-  if (isImageRequestInProgress.value) {
-    outputMessage('Please wait for the current image to finish loading.');
+  if (!canLoadImage.value) {
+    outputMessage('Please wait for the current operation to finish.');
     return;
   }
 
@@ -540,20 +604,37 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
   if (!previousRequest && picInfo.picNum > 0) attemptedIndexes.add(picInfo.picNum - 1);
   attemptedIndexes.add(target.index);
 
-  const requestId = ++imageRequestCounter;
+  let operationId;
+  if (previousRequest) {
+    operationId = previousRequest.operationId;
+    const updated = updateOperationContext(workflowState.value, operationId, { targetImageIndex: target.index });
+    if (!applyWorkflowTransition(updated)) return false;
+  } else {
+    const sourceImageIndex = getJsonPicNum().picNum - 1;
+    const started = startImageLoad(workflowState.value, {
+      sourceImageIndex,
+      targetImageIndex: target.index,
+    });
+    if (!applyWorkflowTransition(started)) {
+      outputMessage(started.error);
+      return false;
+    }
+    operationId = started.operationId;
+  }
+
+  const requestId = ++imageAttemptCounter;
   activeImageRequest = {
     requestId,
+    operationId,
     source: 'dataset',
     index: target.index,
     path: target.path,
     direction,
     attemptedIndexes,
-    previousCanOperate: previousRequest?.previousCanOperate ?? canOperate.value,
   };
-  isImageRequestInProgress.value = true;
-  canOperate.value = false;
   imgContainerRef.value.resetIsImgFileLoading(true);
   sendImageFileRequest(target.path, requestId);
+  return true;
 }
 
 function retryDatasetImageRequest() {
@@ -571,7 +652,6 @@ function retryDatasetImageRequest() {
 function resetImageRequestState() {
   activeImageRequest = null;
   imageChunkBuffer = '';
-  isImageRequestInProgress.value = false;
 }
 
 function handleImageRequestFailure(errorMessage, failedPath = '') {
@@ -581,9 +661,8 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
 
   if (retryDatasetImageRequest()) return;
 
-  const canRestorePreviousImage = failedRequest?.previousCanOperate === true;
+  const canRestorePreviousImage = workflowState.value.operation?.returnPhase === WORKFLOW_PHASE.READY;
   if (canRestorePreviousImage) {
-    canOperate.value = true;
     jumpImageIndex.value = picInfo.picNum || '';
     imageLoadErrorPath.value = '';
     imgContainerRef.value.changeMouseState(false);
@@ -596,16 +675,21 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
     imageLoadErrorPath.value = failedPath;
     imgContainerRef.value.clearDots();
   }
+  if (failedRequest?.operationId) {
+    applyWorkflowTransition(failOperation(workflowState.value, failedRequest.operationId));
+  }
   imgContainerRef.value.resetIsImgFileLoading(false);
   resetImageRequestState();
 }
 
 async function handleOpenPicFileResponse(_event, response) {
   if (!activeImageRequest || response?.requestId !== activeImageRequest.requestId) return;
+  if (!isCurrentOperation(workflowState.value, activeImageRequest.operationId, WORKFLOW_OPERATION.LOAD_IMAGE)) return;
 
   if (response.canceled) {
-    canOperate.value = activeImageRequest.previousCanOperate === true;
-    imgContainerRef.value.changeMouseState(!canOperate.value);
+    const canceledRequest = activeImageRequest;
+    applyWorkflowTransition(failOperation(workflowState.value, canceledRequest.operationId));
+    imgContainerRef.value.changeMouseState(workflowState.value.phase !== WORKFLOW_PHASE.READY);
     imgContainerRef.value.resetIsImgFileLoading(false);
     resetImageRequestState();
     return;
@@ -632,6 +716,13 @@ async function handleOpenPicFileResponse(_event, response) {
     imageLoadErrorPath.value = '';
     const requestedJsonImageIndex = completedRequest?.source === 'dataset' ? completedRequest.index : null;
     const isReady = await initProcessInfo(requestedJsonImageIndex);
+    applyWorkflowTransition(
+      completeOperation(
+        workflowState.value,
+        completedRequest.operationId,
+        isReady ? WORKFLOW_PHASE.READY : WORKFLOW_PHASE.DATASET_READY,
+      ),
+    );
     resetImageRequestState();
     outputMessage(isReady ? 'Load Pic Successfully.' : 'Image loaded, but no matching JSON data was found.');
   } else {
@@ -649,7 +740,7 @@ function resetImageForDatasetChange(picTotalNum = 0) {
   picInfo.picNum = 0;
   picInfo.picTotalNum = picTotalNum;
   jumpImageIndex.value = '';
-  clearDots();
+  clearDots(true);
   imgContainerRef.value.clearImage();
   imgContainerRef.value.changeMouseState(true);
   imgContainerRef.value.resetIsImgFileLoading(false);
@@ -657,26 +748,45 @@ function resetImageForDatasetChange(picTotalNum = 0) {
 }
 
 function chooseJsonFile() {
-  if (isImageRequestInProgress.value) {
-    outputMessage('Please wait for the current image to finish loading.');
+  if (!canLoadDataset.value) {
+    outputMessage('Please wait for the current operation to finish.');
+    return;
+  }
+  const started = startDatasetLoad(workflowState.value);
+  if (!applyWorkflowTransition(started)) {
+    outputMessage(started.error);
     return;
   }
   try {
-    ipcRenderer.send('open-json-file-dialog');
+    ipcRenderer.send('open-json-file-dialog', { requestId: started.operationId });
   } catch (error) {
     console.error('Error while sending IPC message open-json-file-dialog:', error);
+    applyWorkflowTransition(failOperation(workflowState.value, started.operationId));
   }
+}
+
+function failDatasetLoad(operationId, message = '') {
+  if (message) outputMessage(message);
+  applyWorkflowTransition(failOperation(workflowState.value, operationId));
 }
 
 // Dataset loading
 async function handleChooseJsonFileResponse(_event, response) {
+  const operationId = response?.requestId;
+  if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return;
+
+  if (response.canceled) {
+    failDatasetLoad(operationId);
+    return;
+  }
+
   try {
     if (response.success) {
       const jsonData = response.jsonInfo;
       jsonData.path = jsonData.path.replace(/[\\/]/g, '/');
       const preparedJson = prepareJsonProcess(jsonData);
       if (!preparedJson.success) {
-        outputMessage(`Failed to load JSON: ${preparedJson.error}`);
+        failDatasetLoad(operationId, `Failed to load JSON: ${preparedJson.error}`);
         return;
       }
 
@@ -684,34 +794,29 @@ async function handleChooseJsonFileResponse(_event, response) {
         jsonFilePath: preparedJson.path,
         imagePaths: preparedJson.imagePaths,
       });
+      if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return;
       if (!resolvedPathResult.success) {
-        outputMessage(`Failed to resolve JSON image paths: ${resolvedPathResult.error}`);
+        failDatasetLoad(operationId, `Failed to resolve JSON image paths: ${resolvedPathResult.error}`);
         return;
       }
       preparedJson.imagePaths = resolvedPathResult.imagePaths.map(imagePath => imagePath.replace(/[\\/]/g, '/'));
 
       if (preparedJson.changed) {
-        if (isSaving.value) {
-          outputMessage('Failed to load JSON: another save operation is still in progress.');
+        if (!(await saveJsonFileInfo(preparedJson.fileInfo))) {
+          failDatasetLoad(operationId);
           return;
         }
-
-        isSaving.value = true;
-        try {
-          if (!(await saveJsonFileInfo(preparedJson.fileInfo))) return;
-        } finally {
-          isSaving.value = false;
-        }
+        if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return;
       }
 
       if (!commitPreparedJsonProcess(preparedJson)) {
-        outputMessage('Failed to load JSON: unable to commit the prepared dataset.');
+        failDatasetLoad(operationId, 'Failed to load JSON: unable to commit the prepared dataset.');
         return;
       }
+      if (!applyWorkflowTransition(commitDataset(workflowState.value, operationId))) return;
 
       loadedProductType.value = preparedJson.productType;
       jsonFileName.value = jsonData.fileName;
-      canOperate.value = false;
       resetImageForDatasetChange(preparedJson.data.Picture.length);
       if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
 
@@ -726,13 +831,13 @@ async function handleChooseJsonFileResponse(_event, response) {
         startDatasetImageRequest(firstImageTarget, KEYS.NEXT);
       }
     } else {
-      const errorMessage = response.error;
+      const errorMessage = response.error || 'Unknown JSON loading error.';
       console.error('Failed to read JSON file:', errorMessage);
-      outputMessage(`Failed to read JSON file: ${errorMessage}`);
+      failDatasetLoad(operationId, `Failed to read JSON file: ${errorMessage}`);
     }
   } catch (error) {
     console.error('An error occurred while processing JSON file:', error);
-    outputMessage(`Failed to process JSON file: ${error.message}`);
+    failDatasetLoad(operationId, `Failed to process JSON file: ${error.message}`);
   }
 }
 
