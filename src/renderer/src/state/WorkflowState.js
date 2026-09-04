@@ -101,6 +101,10 @@ export function isCurrentOperation(state, operationId, type = null) {
   );
 }
 
+export function isOperationActive(state, type) {
+  return Boolean(state && OPERATION_PHASES[type] === state.phase && state.operation?.type === type);
+}
+
 export function operationReturnsTo(state, operationId, phase) {
   return isCurrentOperation(state, operationId) && STABLE_PHASES.has(phase) && state.operation.returnPhase === phase;
 }

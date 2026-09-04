@@ -10,9 +10,11 @@
       ref="imgContainerRef"
       :image-obj="imageObj"
       :can-edit="canOperate"
+      :can-interact="canInteractWithImage"
+      :is-loading="isImageLoading"
       :active-quad-index="activeQuadIndex"
       :selected-dots="selectedDots"
-      :image-load-error-path="imageLoadErrorPath"
+      :image-load-error="imageLoadError"
       @update-zoom-view="updateZoomView"
       @output-message="outputMessage"
       @update-selected-dots="updateSelectedDots"
@@ -120,6 +122,7 @@ import {
   createWorkflowState,
   failOperation,
   isCurrentOperation,
+  isOperationActive,
   isWorkflowBusy,
   operationReturnsTo,
   startDatasetLoad,
@@ -153,7 +156,9 @@ const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
 const canOperate = computed(() => canEditWorkflow(workflowState.value));
 const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
 const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
-const imageLoadErrorPath = ref('');
+const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
+const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(imageObj.value?.src));
+const imageLoadError = ref(null);
 let imageChunkBuffer = '';
 let activeImageRequest = null;
 let imageAttemptCounter = 0;
@@ -466,21 +471,15 @@ async function initProcessInfo(jsonImageIndex = null) {
   try {
     if (!imageObj.value || imageObj.value.src === '') {
       outputMessage('initProcessInfo Error.');
-      imgContainerRef.value.resetIsImgFileLoading(false);
       return false;
     } else {
       await nextTick();
-      if (!(await imgContainerRef.value.initImgInfo())) {
-        imgContainerRef.value.resetIsImgFileLoading(false);
-        return false;
-      }
-      imgContainerRef.value.changeMouseState(false);
+      if (!(await imgContainerRef.value.initImgInfo())) return false;
     }
 
     if (!jsonView.value.initJsonInfo(imgFilePath, jsonImageIndex)) {
       picInfo.picNum = 0;
       jumpImageIndex.value = '';
-      imgContainerRef.value.resetIsImgFileLoading(false);
       return false;
     }
 
@@ -495,10 +494,8 @@ async function initProcessInfo(jsonImageIndex = null) {
     picInfo.picNum = picNum;
     picInfo.picTotalNum = picTotalNum;
     jumpImageIndex.value = picNum;
-    imgContainerRef.value.resetIsImgFileLoading(false);
     return true;
   } catch (error) {
-    imgContainerRef.value.resetIsImgFileLoading(false);
     console.error(`Error name: ${error.name}`);
     console.error(`Error message: ${error.message}`);
     console.error(`Stack trace: ${error.stack}`);
@@ -528,6 +525,7 @@ function chooseImgFile() {
       return;
     }
 
+    imageLoadError.value = null;
     imageChunkBuffer = '';
     const requestId = ++imageAttemptCounter;
     activeImageRequest = {
@@ -621,7 +619,7 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
     direction,
     attemptedIndexes,
   };
-  imgContainerRef.value.resetIsImgFileLoading(true);
+  imageLoadError.value = null;
   sendImageFileRequest(target.path, requestId);
   return true;
 }
@@ -657,21 +655,22 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
   );
   if (canRestorePreviousImage) {
     jumpImageIndex.value = picInfo.picNum || '';
-    imageLoadErrorPath.value = '';
-    imgContainerRef.value.changeMouseState(false);
+    imageLoadError.value = null;
   } else {
     imageObj.value = null;
     imgFileName.value = '';
     imgFilePath = '';
     picInfo.picNum = 0;
     jumpImageIndex.value = '';
-    imageLoadErrorPath.value = failedPath;
+    imageLoadError.value = {
+      path: failedPath,
+      message: errorMessage || 'Unknown image loading error.',
+    };
     resetDots();
   }
   if (failedRequest?.operationId) {
     applyWorkflowTransition(failOperation(workflowState.value, failedRequest.operationId));
   }
-  imgContainerRef.value.resetIsImgFileLoading(false);
   resetImageRequestState();
 }
 
@@ -682,14 +681,10 @@ async function handleOpenPicFileResponse(_event, response) {
   if (response.canceled) {
     const canceledRequest = activeImageRequest;
     applyWorkflowTransition(failOperation(workflowState.value, canceledRequest.operationId));
-    imgContainerRef.value.changeMouseState(!canEditWorkflow(workflowState.value));
-    imgContainerRef.value.resetIsImgFileLoading(false);
     resetImageRequestState();
     return;
   }
 
-  imgContainerRef.value.resetIsImgFileLoading(true);
-  imgContainerRef.value.changeMouseState(true);
   if (response.success) {
     imageChunkBuffer += response.picInfo.str;
     if (response.picInfo.fileName === '') return;
@@ -706,7 +701,7 @@ async function handleOpenPicFileResponse(_event, response) {
 
     imgFileName.value = response.picInfo.fileName;
     imgFilePath = response.picInfo.path.replace(/\\/g, '/');
-    imageLoadErrorPath.value = '';
+    imageLoadError.value = null;
     const requestedJsonImageIndex = completedRequest?.source === 'dataset' ? completedRequest.targetImageIndex : null;
     const isReady = await initProcessInfo(requestedJsonImageIndex);
     applyWorkflowTransition(
@@ -728,7 +723,7 @@ function resetImageForDatasetChange(picTotalNum = 0) {
   imageObj.value = null;
   imgFileName.value = '';
   imgFilePath = '';
-  imageLoadErrorPath.value = '';
+  imageLoadError.value = null;
   resetImageRequestState();
   picInfo.picNum = 0;
   picInfo.picTotalNum = picTotalNum;
@@ -736,8 +731,6 @@ function resetImageForDatasetChange(picTotalNum = 0) {
   resetQuadSelection();
   resetDots();
   imgContainerRef.value.clearImage();
-  imgContainerRef.value.changeMouseState(true);
-  imgContainerRef.value.resetIsImgFileLoading(false);
   jsonView.value.initJsonInfo('');
 }
 

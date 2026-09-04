@@ -25,12 +25,12 @@
                   position: absolute;
                   pointer-events: none;`"
     ></canvas>
-    <div v-if="isImgFileLoading" class="loading-overlay">Loading...</div>
-    <div v-if="isImgFileLoadingFailed" class="loading-overlay">
+    <div v-if="isLoading" class="loading-overlay">Loading...</div>
+    <div v-else-if="imageLoadError" class="loading-overlay">
       <div class="image-error-content">
         <div class="image-error-title">Failed to load image</div>
         <div class="image-error-label">Path:</div>
-        <div class="image-error-path">{{ imageLoadErrorPath || 'Unknown path' }}</div>
+        <div class="image-error-path">{{ imageLoadError.path || 'Unknown path' }}</div>
       </div>
     </div>
     <div
@@ -113,6 +113,14 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  canInteract: {
+    type: Boolean,
+    default: false,
+  },
+  isLoading: {
+    type: Boolean,
+    default: false,
+  },
   activeQuadIndex: {
     type: Number,
     default: -1,
@@ -121,9 +129,9 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
-  imageLoadErrorPath: {
-    type: String,
-    default: '',
+  imageLoadError: {
+    type: Object,
+    default: null,
   },
 });
 
@@ -166,12 +174,9 @@ const showQuadIndex = reactive([]);
 const outerQuadArray = [];
 
 // Interaction and feedback state
-const isDisabledMouse = ref(false);
 const mouseIsOverContainer = ref(false);
 const mouseCoord = reactive({ x: 0, y: 0 });
 const indices2Show = ref('');
-const isImgFileLoading = ref(false);
-const isImgFileLoadingFailed = ref(false);
 let isOverviewMode = false;
 let mouseMoved = false;
 let timer = null;
@@ -186,9 +191,7 @@ defineExpose({
   clearShowQuadIndex,
   resetQuadsArray,
   refreshHoveredQuad,
-  changeMouseState,
   toggleMode,
-  resetIsImgFileLoading,
   clearImage,
 });
 
@@ -208,7 +211,7 @@ function deletePt(ptIndex) {
 }
 
 function deleteDot(e) {
-  if (isDisabledMouse.value || !props.canEdit) return;
+  if (!props.canEdit) return;
   const { existingDotIndex } = getDotInfo(e);
   if (!deletePt(existingDotIndex)) {
     outputMessage('Error delete the pt in canvas!');
@@ -568,15 +571,11 @@ function updateViewPortDraw() {
   });
 }
 
-function changeMouseState(newState = false) {
-  isDisabledMouse.value = newState;
-}
-
 // Pan and zoom interaction
 const { x, y } = useMouse();
 const { pressed } = useMousePressed({ target: imgContainerRef });
 watch([x, y], ([newX, newY], [oldX, oldY]) => {
-  if (isDisabledMouse.value) return;
+  if (!props.canInteract) return;
   if (pressed.value) {
     updateOffsetMoved(oldX, oldY, newX, newY);
   } else {
@@ -752,7 +751,7 @@ watch(
 );
 
 function toggleDot(e) {
-  if (isDisabledMouse.value || !props.canEdit || imageSrc === '' || !isNotLongPress) {
+  if (!props.canEdit || imageSrc === '' || !isNotLongPress) {
     return;
   }
 
@@ -869,7 +868,7 @@ async function initImgInfo() {
   }
 }
 const onWheel = event => {
-  if (isDisabledMouse.value) {
+  if (!props.canInteract) {
     return;
   }
   let nextScale = scale.value;
@@ -887,7 +886,7 @@ const onWheel = event => {
 
 // Zoom preview and point positions
 function updateZoomView(e) {
-  if (isDisabledMouse.value || !props.imageObj || imageSrc === '') {
+  if (!props.canInteract || !props.imageObj || imageSrc === '') {
     return;
   }
   let rectCoord = updateRealDots2GetZoom(e);
@@ -1002,18 +1001,6 @@ function initCanvasSettings() {
   ctx.value.msImageSmoothingEnabled = false;
 }
 
-function resetIsImgFileLoading(newValue) {
-  isImgFileLoading.value = newValue;
-  if (isImgFileLoading.value === false && (props.imageObj === null || props.imageObj.src === '')) {
-    resetIsImgFileLoadingFailed(true);
-  } else {
-    resetIsImgFileLoadingFailed(false);
-  }
-}
-
-function resetIsImgFileLoadingFailed(newValue) {
-  isImgFileLoadingFailed.value = newValue;
-}
 </script>
 
 <style scoped>

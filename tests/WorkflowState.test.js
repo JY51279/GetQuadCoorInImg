@@ -12,6 +12,7 @@ import {
   createWorkflowState,
   failOperation,
   isCurrentOperation,
+  isOperationActive,
   operationReturnsTo,
   startDatasetLoad,
   startImageLoad,
@@ -68,6 +69,8 @@ describe('Workflow state', () => {
     expect(canEdit(loadingImage)).toBe(false);
     expect(canChangeQuadSelection(loadingImage)).toBe(true);
     expect(canChangeQuadSelection(saving)).toBe(false);
+    expect(isOperationActive(loadingImage, WORKFLOW_OPERATION.LOAD_IMAGE)).toBe(true);
+    expect(isOperationActive(saving, WORKFLOW_OPERATION.LOAD_IMAGE)).toBe(false);
   });
 
   it('does not let a stale operation complete a newer operation', () => {
