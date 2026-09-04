@@ -100,10 +100,9 @@ import {
   scaledToImagePoint,
 } from '../utils/ImageViewGeometry.js';
 
-import { setQuadInfo } from '../state/DatasetState.js';
 import { isPointInPolygon } from '../utils/BasicFuncs.js';
 
-const emits = defineEmits(['update-zoom-view', 'output-message', 'update-dots-real-coord', 'select-quad-index']);
+const emits = defineEmits(['update-zoom-view', 'output-message', 'update-selected-dots', 'select-quad-index']);
 
 const props = defineProps({
   imageObj: {
@@ -117,6 +116,10 @@ const props = defineProps({
   activeQuadIndex: {
     type: Number,
     default: -1,
+  },
+  selectedDots: {
+    type: Array,
+    default: () => [],
   },
   imageLoadErrorPath: {
     type: String,
@@ -155,7 +158,6 @@ let imgPixelDataWidth = 0;
 let imgPixelDataHeight = 0;
 
 // Annotation state
-const dotsRealCoord = reactive([]);
 const dotsCanvasCoord = ref([]);
 const realDot2GetZoom = ref({ x: -1, y: -1 });
 let quadsArray = [];
@@ -176,10 +178,7 @@ let timer = null;
 let isNotLongPress = true;
 
 defineExpose({
-  dotsRealCoord,
   realDot2GetZoom,
-  deletePt,
-  clearDots,
   resetPosition,
   initImgInfo,
   toggleShowQuadIndex,
@@ -199,9 +198,10 @@ function outputMessage(message) {
 
 // Point editing
 function deletePt(ptIndex) {
-  if (Number.isInteger(ptIndex) && ptIndex >= 0 && ptIndex < dotsCanvasCoord.value.length) {
-    dotsCanvasCoord.value.splice(ptIndex, 1);
-    dotsRealCoord.splice(ptIndex, 1);
+  if (Number.isInteger(ptIndex) && ptIndex >= 0 && ptIndex < props.selectedDots.length) {
+    const nextSelectedDots = props.selectedDots.map(dot => ({ ...dot }));
+    nextSelectedDots.splice(ptIndex, 1);
+    emits('update-selected-dots', nextSelectedDots);
     return true;
   }
   return false;
@@ -225,7 +225,7 @@ function getDotInfo(e) {
   transCanvas2RealInfo(realCoord, canvasCoord); // 得到原始图片对应坐标
   transReal2CanvasInfo(canvasCoord, realCoord); // 得到贴合后画布确切坐标
 
-  const existingDotIndex = dotsRealCoord.findIndex(
+  const existingDotIndex = props.selectedDots.findIndex(
     realDot => Math.abs(realDot.x - realCoord.x) < 2 && Math.abs(realDot.y - realCoord.y) < 2,
   );
   return { canvasCoord, realCoord, existingDotIndex };
@@ -745,10 +745,11 @@ onUnmounted(() => {
 });
 
 // Point selection
-watch(dotsRealCoord, newDotsRealCoord => {
-  setQuadInfo(newDotsRealCoord, props.activeQuadIndex);
-  emits('update-dots-real-coord', newDotsRealCoord);
-});
+watch(
+  () => props.selectedDots,
+  () => updateDotsCanvasCoord(),
+  { deep: true },
+);
 
 function toggleDot(e) {
   if (isDisabledMouse.value || !props.canEdit || imageSrc === '' || !isNotLongPress) {
@@ -772,11 +773,10 @@ function toggleDot(e) {
   if (existingDotIndex !== -1) {
     deletePt(existingDotIndex);
     outputMessage('Delete the pt.');
-  } else if (dotsCanvasCoord.value.length >= 4) {
+  } else if (props.selectedDots.length >= 4) {
     outputMessage('Already set 4 pts.');
   } else {
-    dotsRealCoord.push({ x: realCoord.x, y: realCoord.y });
-    updateDotsCanvasCoord();
+    emits('update-selected-dots', [...props.selectedDots.map(dot => ({ ...dot })), { x: realCoord.x, y: realCoord.y }]);
   }
 }
 
@@ -788,7 +788,7 @@ function resetPosition() {
 
 function clearDots() {
   dotsCanvasCoord.value = [];
-  dotsRealCoord.splice(0, dotsRealCoord.length);
+  emits('update-selected-dots', []);
 }
 
 // Image lifecycle
@@ -917,23 +917,15 @@ function updateRealDots2GetZoom(e) {
   return canvasCoord;
 }
 function updateDotsCanvasCoord() {
-  const realDotsNum = dotsRealCoord.length;
-  if (dotsCanvasCoord.value.length !== realDotsNum) {
-    dotsCanvasCoord.value.push({ x: 0, y: 0 });
-    transReal2CanvasInfo(dotsCanvasCoord.value[realDotsNum - 1], dotsRealCoord[realDotsNum - 1]);
+  dotsCanvasCoord.value = props.selectedDots.map(realDot => {
+    const canvasDot = { x: 0, y: 0 };
+    transReal2CanvasInfo(canvasDot, realDot);
     if (scale.value >= gridLimit) {
-      dotsCanvasCoord.value[realDotsNum - 1].x += 1;
-      dotsCanvasCoord.value[realDotsNum - 1].y += 1;
+      canvasDot.x += 1;
+      canvasDot.y += 1;
     }
-  } else {
-    for (let i = 0; i < realDotsNum; ++i) {
-      transReal2CanvasInfo(dotsCanvasCoord.value[i], dotsRealCoord[i]);
-      if (scale.value >= gridLimit) {
-        dotsCanvasCoord.value[i].x += 1;
-        dotsCanvasCoord.value[i].y += 1;
-      }
-    }
-  }
+    return canvasDot;
+  });
 }
 
 // Coordinate adapters for component state

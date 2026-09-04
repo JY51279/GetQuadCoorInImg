@@ -21,12 +21,10 @@ const datasetState = {
   currentItems: [],
   productSchema: {},
   currentImageIndex: -1,
-  selectedDots: [],
 };
 
 function clearCurrentAnnotationState() {
   datasetState.currentItems = [];
-  datasetState.selectedDots = [];
 }
 
 function normalizeImagePathForComparison(imagePath) {
@@ -112,7 +110,6 @@ export function resetPicJson(imgFilePath, requestedImgIndex = null) {
     }
     datasetState.currentImageIndex = resolvedImageIndex;
     datasetState.currentItems = currentPicture[datasetState.productSchema.targetKey];
-    datasetState.selectedDots = [];
     return true;
   } catch (err) {
     datasetState.currentImageIndex = -1;
@@ -202,14 +199,12 @@ export function restoreDatasetMutationSnapshot(snapshot) {
   }
 }
 
-export function setQuadInfo(realDots, activeQuadIndex = -1) {
-  datasetState.selectedDots = realDots.slice();
-  if (datasetState.selectedDots.length === 4) {
-    setQuadDots2ClockWise(
-      datasetState.selectedDots,
-      datasetState.currentItems[activeQuadIndex]?.['Barcode Type'] ?? '',
-    );
+function prepareSelectedDots(realDots, activeQuadIndex) {
+  const selectedDots = Array.isArray(realDots) ? realDots.map(dot => ({ ...dot })) : [];
+  if (selectedDots.length === 4) {
+    setQuadDots2ClockWise(selectedDots, datasetState.currentItems[activeQuadIndex]?.['Barcode Type'] ?? '');
   }
+  return selectedDots;
 }
 
 function transQuadDotsToString(realDots, initImageScale, baseItem = null) {
@@ -266,17 +261,18 @@ function transQuadDotsToString(realDots, initImageScale, baseItem = null) {
   return targetStr;
 }
 
-export function updateJson(action = KEYS.JSON_MODIFY, initImageScale, activeQuadIndex = -1) {
+export function updateJson(action = KEYS.JSON_MODIFY, initImageScale, activeQuadIndex = -1, realDots = []) {
+  const selectedDots = prepareSelectedDots(realDots, activeQuadIndex);
   let result;
   switch (action) {
     case KEYS.JSON_MODIFY:
-      result = modifyJsonContent(initImageScale, activeQuadIndex);
+      result = modifyJsonContent(initImageScale, activeQuadIndex, selectedDots);
       break;
     case KEYS.JSON_DELETE:
       result = deleteJsonContent(activeQuadIndex);
       break;
     case KEYS.JSON_ADD:
-      result = addJsonContent(initImageScale);
+      result = addJsonContent(initImageScale, selectedDots);
       break;
     default:
       console.log('Unknown action');
@@ -285,13 +281,13 @@ export function updateJson(action = KEYS.JSON_MODIFY, initImageScale, activeQuad
   return result;
 }
 
-function modifyJsonContent(initImageScale, activeQuadIndex) {
+function modifyJsonContent(initImageScale, activeQuadIndex, selectedDots) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return 'Failed to find jsonItem.';
     }
     const quadStr = transQuadDotsToString(
-      datasetState.selectedDots,
+      selectedDots,
       initImageScale,
       datasetState.currentItems[activeQuadIndex],
     );
@@ -313,16 +309,16 @@ function deleteJsonContent(activeQuadIndex) {
   }, 'Failed to delete jsonItem.');
 }
 
-function addJsonContent(initImageScale) {
+function addJsonContent(initImageScale, selectedDots) {
   return operateJsonContent(() => {
     const newItem = createDefaultJsonItem();
-    if (datasetState.selectedDots.length >= 2 && datasetState.selectedDots.length <= 4) {
-      const quadStr = transQuadDotsToString(datasetState.selectedDots, initImageScale);
+    if (selectedDots.length >= 2 && selectedDots.length <= 4) {
+      const quadStr = transQuadDotsToString(selectedDots, initImageScale);
       if (quadStr === '') {
         return 'Failed to trans dots to string.';
       }
       newItem[datasetState.productSchema.ItemKey] = quadStr;
-    } else if (datasetState.selectedDots.length > 4) {
+    } else if (selectedDots.length > 4) {
       return 'Failed to add jsonItem: no more than 4 points are allowed.';
     }
 

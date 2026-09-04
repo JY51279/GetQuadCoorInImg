@@ -11,10 +11,11 @@
       :image-obj="imageObj"
       :can-edit="canOperate"
       :active-quad-index="activeQuadIndex"
+      :selected-dots="selectedDots"
       :image-load-error-path="imageLoadErrorPath"
       @update-zoom-view="updateZoomView"
       @output-message="outputMessage"
-      @update-dots-real-coord="updateDotsRealCoord"
+      @update-selected-dots="updateSelectedDots"
       @select-quad-index="selectQuadIndex"
     ></ImageView>
     <div class="tool-container">
@@ -54,7 +55,7 @@
           <div class="fileInfo-style">矩形次序: <br />{{ activeQuadIndex + 1 }} / {{ quadInfo.quadTotal }}</div>
         </div>
         <div class="dotsArea-style">
-          <div v-for="(item, index) in dotsRealCoord" :key="index" class="dots">
+          <div v-for="(item, index) in selectedDots" :key="index" class="dots">
             <span>({{ item.x }}, {{ item.y }})</span>
           </div>
         </div>
@@ -138,7 +139,7 @@ const quadInfo = reactive({ quadTotal: 0 });
 const activeQuadIndex = ref(-1);
 const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
 const jumpImageIndex = ref('');
-const dotsRealCoord = reactive([]);
+const selectedDots = reactive([]);
 const imageObj = ref(new Image());
 const imgFileName = ref(null);
 const jsonFileName = ref(null);
@@ -312,7 +313,7 @@ function outputMessage(message) {
 // Child component commands
 function clearOneDot(index) {
   if (!canOperate.value) return;
-  imgContainerRef.value.deletePt(index);
+  if (Number.isInteger(index) && index >= 0 && index < selectedDots.length) selectedDots.splice(index, 1);
 }
 
 function changeJsonItemSelection(direction) {
@@ -325,7 +326,7 @@ function resetPosition() {
 }
 
 function resetDots() {
-  imgContainerRef.value.clearDots();
+  selectedDots.splice(0, selectedDots.length);
 }
 
 function clearDots() {
@@ -394,7 +395,7 @@ async function performJsonAction(action) {
   await runSaveTransaction(
     () => {
       outputMessage('Start operate: ' + action);
-      const updateJsonRes = updateJson(action, initImageScale, activeQuadIndex.value);
+      const updateJsonRes = updateJson(action, initImageScale, activeQuadIndex.value, selectedDots);
       return updateJsonRes === KEYS.OPERATE_SUCCESS ? null : updateJsonRes;
     },
     () => {
@@ -834,11 +835,12 @@ async function handleChooseJsonFileResponse(_event, response) {
   }
 }
 
-function updateDotsRealCoord(newDotsRealCoord) {
-  dotsRealCoord.splice(0, dotsRealCoord.length, ...newDotsRealCoord);
+function updateSelectedDots(newSelectedDots) {
+  if (!Array.isArray(newSelectedDots)) return;
+  selectedDots.splice(0, selectedDots.length, ...newSelectedDots.map(dot => ({ ...dot })));
 }
 
-watch(dotsRealCoord, () => {
+watch(selectedDots, () => {
   updateZoomView();
 });
 
@@ -848,7 +850,7 @@ function updateZoomView() {
   if (!imageObj.value?.complete || !origin || origin.x === -1) return;
 
   try {
-    drawZoomPreview(zoomView.value, imageObj.value, origin, dotsRealCoord);
+    drawZoomPreview(zoomView.value, imageObj.value, origin, selectedDots);
   } catch (error) {
     console.error('Failed to draw the zoom preview:', error);
   }
