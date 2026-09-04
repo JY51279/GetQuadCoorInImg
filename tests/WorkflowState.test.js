@@ -16,7 +16,6 @@ import {
   startDatasetLoad,
   startImageLoad,
   startSave,
-  updateOperationContext,
 } from '../src/renderer/src/state/WorkflowState.js';
 
 describe('Workflow state', () => {
@@ -116,15 +115,4 @@ describe('Workflow state', () => {
     expect(failed.state.phase).toBe(WORKFLOW_PHASE.DATASET_READY);
   });
 
-  it('updates retry context without changing the operation identity', () => {
-    const started = startImageLoad(createWorkflowState(WORKFLOW_PHASE.READY), { targetImageIndex: 1 });
-    const updated = updateOperationContext(started.state, started.operationId, { targetImageIndex: 2 });
-
-    expect(updated.success).toBe(true);
-    expect(updated.state.operation).toMatchObject({
-      id: started.operationId,
-      targetImageIndex: 2,
-      returnPhase: WORKFLOW_PHASE.READY,
-    });
-  });
 });

@@ -105,21 +105,6 @@ export function operationReturnsTo(state, operationId, phase) {
   return isCurrentOperation(state, operationId) && STABLE_PHASES.has(phase) && state.operation.returnPhase === phase;
 }
 
-export function updateOperationContext(state, operationId, context = {}) {
-  if (!isCurrentOperation(state, operationId)) return failure(state, 'The workflow operation is no longer current.');
-  return success({
-    ...state,
-    operation: {
-      ...state.operation,
-      ...context,
-      id: state.operation.id,
-      type: state.operation.type,
-      returnPhase: state.operation.returnPhase,
-      datasetVersion: state.operation.datasetVersion,
-    },
-  });
-}
-
 export function completeOperation(state, operationId, nextPhase = null) {
   if (!isCurrentOperation(state, operationId)) return failure(state, 'The workflow operation is no longer current.');
   const completedPhase = nextPhase ?? state.operation.returnPhase;

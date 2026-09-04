@@ -21,7 +21,6 @@ const datasetState = {
   currentItems: [],
   productSchema: {},
   currentImageIndex: -1,
-  navigationImageIndex: -1,
   selectedDots: [],
 };
 
@@ -83,7 +82,6 @@ export function commitPreparedJsonProcess(preparedJson) {
   datasetState.imagePaths = preparedJson.imagePaths;
   datasetState.productSchema = preparedJson.classKeys;
   datasetState.currentImageIndex = -1;
-  datasetState.navigationImageIndex = -1;
   clearCurrentAnnotationState();
   return true;
 }
@@ -97,36 +95,35 @@ export function getJsonImageDialogContext() {
 }
 
 export function resetPicJson(imgFilePath, requestedImgIndex = null) {
-  resetImgIndex(imgFilePath, requestedImgIndex);
-
-  if (datasetState.currentImageIndex === -1) {
+  const resolvedImageIndex = findImageIndex(imgFilePath, requestedImgIndex);
+  if (resolvedImageIndex === -1) {
+    datasetState.currentImageIndex = -1;
     clearCurrentAnnotationState();
     return false;
   }
 
   try {
-    const currentPicture = datasetState.dataset[ROOT_KEY][datasetState.currentImageIndex];
+    const currentPicture = datasetState.dataset[ROOT_KEY][resolvedImageIndex];
     if (!Object.prototype.hasOwnProperty.call(currentPicture, datasetState.productSchema.targetKey)) {
+      datasetState.currentImageIndex = -1;
       clearCurrentAnnotationState();
       window.alert('The selected product type does not match the dataset type.');
       return false;
     }
+    datasetState.currentImageIndex = resolvedImageIndex;
     datasetState.currentItems = currentPicture[datasetState.productSchema.targetKey];
     datasetState.selectedDots = [];
     return true;
   } catch (err) {
+    datasetState.currentImageIndex = -1;
     clearCurrentAnnotationState();
     console.error('An error occurred while accessing the JSON array:', err);
     return false;
   }
 }
 
-function resetImgIndex(imgPath, requestedImgIndex = null) {
-  if (imgPath === '') {
-    datasetState.currentImageIndex = -1;
-    datasetState.navigationImageIndex = -1;
-    return;
-  }
+function findImageIndex(imgPath, requestedImgIndex = null) {
+  if (imgPath === '') return -1;
 
   const normalizedImgPath = imgPath.replace(/[\\/]/g, '/');
   if (
@@ -135,19 +132,19 @@ function resetImgIndex(imgPath, requestedImgIndex = null) {
     requestedImgIndex < datasetState.imagePaths.length &&
     areImagePathsEquivalent(datasetState.imagePaths[requestedImgIndex], normalizedImgPath)
   ) {
-    datasetState.currentImageIndex = requestedImgIndex;
-    datasetState.navigationImageIndex = requestedImgIndex;
-    return;
+    return requestedImgIndex;
   }
 
   for (let i = 0; i < datasetState.dataset[ROOT_KEY].length; ++i) {
     if (areImagePathsEquivalent(datasetState.imagePaths[i], normalizedImgPath)) {
-      datasetState.currentImageIndex = i;
-      datasetState.navigationImageIndex = i;
-      return;
+      return i;
     }
   }
-  datasetState.currentImageIndex = -1;
+  return -1;
+}
+
+export function getCurrentJsonImageIndex() {
+  return datasetState.currentImageIndex;
 }
 
 export function getJsonPicNum() {
@@ -365,7 +362,6 @@ function createJsonImageTarget(index) {
     return { success: false, error: 'Invalid JSON image index.' };
   }
 
-  datasetState.navigationImageIndex = index;
   return { success: true, index, path: datasetState.imagePaths[index] };
 }
 
@@ -373,14 +369,15 @@ export function getJsonImageTarget(index) {
   return createJsonImageTarget(index);
 }
 
-export function getAdjacentJsonImageTarget(direction) {
+export function getAdjacentJsonImageTarget(direction, baseIndex = datasetState.currentImageIndex) {
   if (!Array.isArray(datasetState.dataset[ROOT_KEY]) || datasetState.dataset[ROOT_KEY].length === 0) {
     return { success: false, error: 'No image data is available in the loaded JSON dataset.' };
   }
 
   const totalImages = datasetState.dataset[ROOT_KEY].length;
-  const baseIndex =
-    datasetState.navigationImageIndex >= 0 ? datasetState.navigationImageIndex : datasetState.currentImageIndex;
+  if (!Number.isInteger(baseIndex) || baseIndex < -1 || baseIndex >= totalImages) {
+    return { success: false, error: 'Invalid JSON image index.' };
+  }
   if (direction === KEYS.NEXT) {
     return createJsonImageTarget((baseIndex + 1) % totalImages);
   }

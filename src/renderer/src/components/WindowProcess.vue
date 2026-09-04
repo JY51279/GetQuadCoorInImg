@@ -93,6 +93,7 @@ import {
   prepareJsonProcess,
   commitPreparedJsonProcess,
   getAdjacentJsonImageTarget,
+  getCurrentJsonImageIndex,
   getJsonImageDialogContext,
   getJsonImageTarget,
   updateJson,
@@ -123,7 +124,6 @@ import {
   startDatasetLoad,
   startImageLoad,
   startSave,
-  updateOperationContext,
 } from '../state/WorkflowState.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
@@ -335,7 +335,7 @@ function clearDots() {
 
 // JSON Operations
 async function runSaveTransaction(mutate, onSaved = () => {}) {
-  const sourceImageIndex = getJsonPicNum().picNum - 1;
+  const sourceImageIndex = getCurrentJsonImageIndex();
   const started = startSave(workflowState.value, { sourceImageIndex });
   if (!applyWorkflowTransition(started)) {
     outputMessage(started.error);
@@ -363,7 +363,7 @@ async function runSaveTransaction(mutate, onSaved = () => {}) {
     }
 
     const saved = await saveJsonFile();
-    if (!canApplySaveResult(workflowState.value, operationId, getJsonPicNum().picNum - 1)) {
+    if (!canApplySaveResult(workflowState.value, operationId, getCurrentJsonImageIndex())) {
       outputMessage('Ignored a stale save result because the dataset or image context changed.');
       return false;
     }
@@ -521,8 +521,7 @@ function chooseImgFile() {
     return;
   }
   try {
-    const sourceImageIndex = getJsonPicNum().picNum - 1;
-    const started = startImageLoad(workflowState.value, { sourceImageIndex, targetImageIndex: null });
+    const started = startImageLoad(workflowState.value);
     if (!applyWorkflowTransition(started)) {
       outputMessage(started.error);
       return;
@@ -534,7 +533,7 @@ function chooseImgFile() {
       requestId,
       operationId: started.operationId,
       source: 'manual',
-      index: null,
+      targetImageIndex: null,
       path: '',
       direction: '',
       attemptedIndexes: new Set(),
@@ -552,7 +551,7 @@ function changeImageByArrowKeys(direction) {
     return;
   }
 
-  const target = getAdjacentJsonImageTarget(direction);
+  const target = getAdjacentJsonImageTarget(direction, getCurrentJsonImageIndex());
   if (!target.success) {
     outputMessage(target.error);
     return;
@@ -595,20 +594,15 @@ function sendImageFileRequest(path, requestId) {
 
 function startDatasetImageRequest(target, direction, previousRequest = null) {
   const attemptedIndexes = previousRequest?.attemptedIndexes ?? new Set();
-  if (!previousRequest && picInfo.picNum > 0) attemptedIndexes.add(picInfo.picNum - 1);
+  const currentImageIndex = getCurrentJsonImageIndex();
+  if (!previousRequest && currentImageIndex >= 0) attemptedIndexes.add(currentImageIndex);
   attemptedIndexes.add(target.index);
 
   let operationId;
   if (previousRequest) {
     operationId = previousRequest.operationId;
-    const updated = updateOperationContext(workflowState.value, operationId, { targetImageIndex: target.index });
-    if (!applyWorkflowTransition(updated)) return false;
   } else {
-    const sourceImageIndex = getJsonPicNum().picNum - 1;
-    const started = startImageLoad(workflowState.value, {
-      sourceImageIndex,
-      targetImageIndex: target.index,
-    });
+    const started = startImageLoad(workflowState.value);
     if (!applyWorkflowTransition(started)) {
       outputMessage(started.error);
       return false;
@@ -621,7 +615,7 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
     requestId,
     operationId,
     source: 'dataset',
-    index: target.index,
+    targetImageIndex: target.index,
     path: target.path,
     direction,
     attemptedIndexes,
@@ -635,7 +629,7 @@ function retryDatasetImageRequest() {
   const failedRequest = activeImageRequest;
   if (failedRequest?.source !== 'dataset') return false;
 
-  const nextTarget = getAdjacentJsonImageTarget(failedRequest.direction);
+  const nextTarget = getAdjacentJsonImageTarget(failedRequest.direction, failedRequest.targetImageIndex);
   if (!nextTarget.success || failedRequest.attemptedIndexes.has(nextTarget.index)) return false;
 
   outputMessage(`Skipping unavailable image and trying JSON item ${nextTarget.index + 1}.`);
@@ -712,7 +706,7 @@ async function handleOpenPicFileResponse(_event, response) {
     imgFileName.value = response.picInfo.fileName;
     imgFilePath = response.picInfo.path.replace(/\\/g, '/');
     imageLoadErrorPath.value = '';
-    const requestedJsonImageIndex = completedRequest?.source === 'dataset' ? completedRequest.index : null;
+    const requestedJsonImageIndex = completedRequest?.source === 'dataset' ? completedRequest.targetImageIndex : null;
     const isReady = await initProcessInfo(requestedJsonImageIndex);
     applyWorkflowTransition(
       completeOperation(

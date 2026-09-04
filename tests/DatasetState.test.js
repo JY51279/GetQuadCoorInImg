@@ -5,6 +5,7 @@ import {
   commitPreparedJsonProcess,
   createDatasetMutationSnapshot,
   getAdjacentJsonImageTarget,
+  getCurrentJsonImageIndex,
   getJsonFileInfo,
   getJsonImageTarget,
   getJsonPerPicPointsArray,
@@ -99,17 +100,55 @@ describe('Dataset state operations', () => {
 
     expect(getJsonPicNum()).toEqual({ picNum: 1, picTotalNum: 2 });
     expect(getJsonImageTarget(1)).toEqual({ success: true, index: 1, path: 'C:/images/two.png' });
+    expect(getCurrentJsonImageIndex()).toBe(0);
     expect(getAdjacentJsonImageTarget(KEYS.NEXT)).toEqual({
       success: true,
-      index: 0,
-      path: 'C:/images/one.png',
+      index: 1,
+      path: 'C:/images/two.png',
     });
     expect(getAdjacentJsonImageTarget(KEYS.PREVIOUS)).toEqual({
       success: true,
       index: 1,
       path: 'C:/images/two.png',
     });
+    expect(getAdjacentJsonImageTarget(KEYS.NEXT, 1)).toEqual({
+      success: true,
+      index: 0,
+      path: 'C:/images/one.png',
+    });
     expect(getJsonImageTarget(2)).toEqual({ success: false, error: 'Invalid JSON image index.' });
+  });
+
+  it('starts a replacement dataset from its first image instead of the previous high index', () => {
+    const oldData = {
+      Picture: Array.from({ length: 198 }, (_, index) =>
+        createPicture('DBR', `C:/old-images/${index + 1}.png`),
+      ),
+    };
+    const oldPrepared = prepareJsonProcess({
+      str: JSON.stringify(oldData),
+      path: 'C:/datasets/old.json',
+    });
+    expect(commitPreparedJsonProcess(oldPrepared)).toBe(true);
+    expect(resetPicJson('C:/old-images/198.png', 197)).toBe(true);
+    expect(getJsonPicNum().picNum).toBe(198);
+
+    const newData = {
+      Picture: [createPicture('DBR', 'C:/new-images/one.png'), createPicture('DBR', 'C:/new-images/two.png')],
+    };
+    const newPrepared = prepareJsonProcess({
+      str: JSON.stringify(newData),
+      path: 'C:/datasets/new.json',
+    });
+    expect(commitPreparedJsonProcess(newPrepared)).toBe(true);
+    expect(getCurrentJsonImageIndex()).toBe(-1);
+    expect(getJsonPicNum()).toEqual({ picNum: 0, picTotalNum: 2 });
+
+    const firstTarget = getAdjacentJsonImageTarget(KEYS.NEXT);
+    expect(firstTarget).toEqual({ success: true, index: 0, path: 'C:/new-images/one.png' });
+    expect(getCurrentJsonImageIndex()).toBe(-1);
+    expect(resetPicJson(firstTarget.path, firstTarget.index)).toBe(true);
+    expect(getJsonPicNum()).toEqual({ picNum: 1, picTotalNum: 2 });
   });
 
   it('modifies only the closest point when one point is selected', () => {
