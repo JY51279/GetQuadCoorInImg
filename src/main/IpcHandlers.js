@@ -7,20 +7,11 @@ import {
   resolveJsonImagePath,
   saveJsonFileAtomically,
 } from './FileOperations.js';
-import { IMAGE_EXTENSIONS, sendImageFile } from './ImageFileReader.js';
+import { IMAGE_EXTENSIONS, prepareImageFile } from './ImageFileReader.js';
 
-function replyImageRequestFailure(event, error, requestId = null, canceled = false) {
-  event.reply('open-pic-file-response', {
-    success: false,
-    requestId,
-    error,
-    path: '',
-    ...(canceled ? { canceled: true } : {}),
-  });
-}
-
-async function handleOpenImageDialog(event, context) {
+export async function handleOpenImageDialog(_event, context) {
   const requestId = context?.requestId ?? null;
+  let selectedPath = '';
   try {
     const result = await dialog.showOpenDialog({
       defaultPath: getImageDialogDefaultDirectory(context),
@@ -29,13 +20,31 @@ async function handleOpenImageDialog(event, context) {
     });
 
     if (result.canceled || result.filePaths.length === 0) {
-      replyImageRequestFailure(event, '', requestId, true);
-      return;
+      return { success: false, canceled: true, requestId };
     }
-    await sendImageFile(event, result.filePaths[0], requestId);
+    selectedPath = result.filePaths[0];
+    const imageInfo = await prepareImageFile(selectedPath);
+    return { success: true, requestId, imageInfo };
   } catch (error) {
     console.error('Error while opening image file dialog:', error);
-    replyImageRequestFailure(event, error.message, requestId);
+    return { success: false, requestId, error: error.message, path: selectedPath };
+  }
+}
+
+export async function handlePrepareImage(_event, request) {
+  const imagePath = typeof request === 'string' ? request : request?.imagePath;
+  const jsonFilePath = typeof request === 'string' ? '' : request?.jsonFilePath;
+  const requestId = typeof request === 'string' ? null : request?.requestId ?? null;
+  const resolvedImagePath = resolveJsonImagePath(imagePath, jsonFilePath);
+  if (!resolvedImagePath) {
+    return { success: false, requestId, error: 'Invalid image path.', path: '' };
+  }
+
+  try {
+    const imageInfo = await prepareImageFile(resolvedImagePath);
+    return { success: true, requestId, imageInfo };
+  } catch (error) {
+    return { success: false, requestId, error: error.message, path: resolvedImagePath };
   }
 }
 
@@ -71,19 +80,8 @@ export async function handleOpenJsonDialog(event, context) {
 }
 
 export function registerIpcHandlers() {
-  ipcMain.on('open-image-file-dialog', handleOpenImageDialog);
-
-  ipcMain.on('open-pic-file', (event, request) => {
-    const imagePath = typeof request === 'string' ? request : request?.imagePath;
-    const jsonFilePath = typeof request === 'string' ? '' : request?.jsonFilePath;
-    const requestId = typeof request === 'string' ? null : request?.requestId ?? null;
-    const resolvedImagePath = resolveJsonImagePath(imagePath, jsonFilePath);
-    if (!resolvedImagePath) {
-      replyImageRequestFailure(event, 'Invalid image path.', requestId);
-      return;
-    }
-    void sendImageFile(event, resolvedImagePath, requestId);
-  });
+  ipcMain.handle('open-image-file-dialog', handleOpenImageDialog);
+  ipcMain.handle('prepare-image', handlePrepareImage);
 
   ipcMain.on('open-json-file-dialog', handleOpenJsonDialog);
 

@@ -224,11 +224,21 @@ function prepareSelectedDots(realDots, activeQuadIndex) {
   return selectedDots;
 }
 
-function transQuadDotsToString(realDots, initImageScale, baseItem = null) {
-  // 根据initImageScale缩放坐标，但不要修改工作图片中的原始点
+function normalizeCoordinateScale(coordinateScale) {
+  const x = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.x;
+  const y = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.y;
+  if (!Number.isFinite(x) || x < 0 || !Number.isFinite(y) || y < 0) return null;
+  return { x, y };
+}
+
+function transQuadDotsToString(realDots, coordinateScale, baseItem = null) {
+  const normalizedScale = normalizeCoordinateScale(coordinateScale);
+  if (normalizedScale === null) return '';
+
+  // 根据显示图相对原图的横纵缩放比例换算坐标，但不要修改工作图片中的原始点
   let jsonDots = realDots.map(dot => ({
-    x: Math.round(dot.x / initImageScale),
-    y: Math.round(dot.y / initImageScale),
+    x: normalizedScale.x === 0 ? 0 : Math.round(dot.x / normalizedScale.x),
+    y: normalizedScale.y === 0 ? 0 : Math.round(dot.y / normalizedScale.y),
   }));
 
   // 判断是否为一个元素，并仅修改与当前点最近的点
@@ -278,18 +288,18 @@ function transQuadDotsToString(realDots, initImageScale, baseItem = null) {
   return targetStr;
 }
 
-export function updateJson(action = KEYS.JSON_MODIFY, initImageScale, activeQuadIndex = -1, realDots = []) {
+export function updateJson(action = KEYS.JSON_MODIFY, coordinateScale, activeQuadIndex = -1, realDots = []) {
   const selectedDots = prepareSelectedDots(realDots, activeQuadIndex);
   let result;
   switch (action) {
     case KEYS.JSON_MODIFY:
-      result = modifyJsonContent(initImageScale, activeQuadIndex, selectedDots);
+      result = modifyJsonContent(coordinateScale, activeQuadIndex, selectedDots);
       break;
     case KEYS.JSON_DELETE:
       result = deleteJsonContent(activeQuadIndex);
       break;
     case KEYS.JSON_ADD:
-      result = addJsonContent(initImageScale, selectedDots);
+      result = addJsonContent(coordinateScale, selectedDots);
       break;
     default:
       console.log('Unknown action');
@@ -298,14 +308,14 @@ export function updateJson(action = KEYS.JSON_MODIFY, initImageScale, activeQuad
   return result;
 }
 
-function modifyJsonContent(initImageScale, activeQuadIndex, selectedDots) {
+function modifyJsonContent(coordinateScale, activeQuadIndex, selectedDots) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return 'Failed to find jsonItem.';
     }
     const quadStr = transQuadDotsToString(
       selectedDots,
-      initImageScale,
+      coordinateScale,
       datasetState.currentItems[activeQuadIndex],
     );
     if (quadStr === '') {
@@ -326,11 +336,11 @@ function deleteJsonContent(activeQuadIndex) {
   }, 'Failed to delete jsonItem.');
 }
 
-function addJsonContent(initImageScale, selectedDots) {
+function addJsonContent(coordinateScale, selectedDots) {
   return operateJsonContent(() => {
     const newItem = createDefaultJsonItem();
     if (selectedDots.length >= 2 && selectedDots.length <= 4) {
-      const quadStr = transQuadDotsToString(selectedDots, initImageScale);
+      const quadStr = transQuadDotsToString(selectedDots, coordinateScale);
       if (quadStr === '') {
         return 'Failed to trans dots to string.';
       }

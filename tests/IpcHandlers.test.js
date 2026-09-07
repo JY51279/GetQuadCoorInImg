@@ -11,7 +11,7 @@ vi.mock('electron', () => ({
   ipcMain: { on: electronMocks.on, handle: electronMocks.handle },
 }));
 
-import { handleOpenJsonDialog } from '../src/main/IpcHandlers.js';
+import { handleOpenJsonDialog, registerIpcHandlers } from '../src/main/IpcHandlers.js';
 
 describe('Main-process IPC handlers', () => {
   beforeEach(() => {
@@ -42,5 +42,13 @@ describe('Main-process IPC handlers', () => {
       requestId: 42,
       error: 'dialog failed',
     });
+  });
+
+  it('uses request-response IPC for image preparation instead of image data events', () => {
+    registerIpcHandlers();
+
+    expect(electronMocks.handle).toHaveBeenCalledWith('open-image-file-dialog', expect.any(Function));
+    expect(electronMocks.handle).toHaveBeenCalledWith('prepare-image', expect.any(Function));
+    expect(electronMocks.on).not.toHaveBeenCalledWith('open-pic-file', expect.any(Function));
   });
 });

@@ -1,9 +1,26 @@
-import { app, shell, BrowserWindow } from 'electron';
+import { app, shell, BrowserWindow, nativeImage, net, protocol } from 'electron';
 import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
 import { initializeFileOperations } from './FileOperations.js';
 import { registerIpcHandlers } from './IpcHandlers.js';
+import {
+  IMAGE_PROTOCOL_SCHEME,
+  initializeImageFileReader,
+  registerImageProtocol,
+} from './ImageFileReader.js';
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: IMAGE_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
 
 function createWindow() {
   // Create the browser window.
@@ -38,7 +55,7 @@ function createWindow() {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
-          'Content-Security-Policy': ["img-src 'self' data: blob:;"],
+          'Content-Security-Policy': [`img-src 'self' data: blob: ${IMAGE_PROTOCOL_SCHEME}:;`],
         },
       });
     });
@@ -56,6 +73,8 @@ function createWindow() {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
   await initializeFileOperations(app);
+  await initializeImageFileReader(app, nativeImage);
+  registerImageProtocol(protocol, net);
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron');
 

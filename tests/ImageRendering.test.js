@@ -98,27 +98,17 @@ describe('Zoom preview renderer', () => {
 
 describe('Renderer image loader', () => {
   const originalImage = globalThis.Image;
-  const originalDocument = globalThis.document;
 
   afterEach(() => {
     globalThis.Image = originalImage;
-    globalThis.document = originalDocument;
   });
 
   function installImageMocks() {
     const imageSizes = new Map([
       ['small-image', { width: 640, height: 480 }],
-      ['large-image', { width: 4000, height: 2000 }],
-      ['resized-image', { width: 3072, height: 1536 }],
+      ['prepared-image', { width: 3072, height: 1536 }],
     ]);
     const createdImages = [];
-    const drawImage = vi.fn();
-    const canvas = {
-      width: 0,
-      height: 0,
-      getContext: () => ({ drawImage }),
-      toDataURL: () => 'resized-image',
-    };
 
     globalThis.Image = class MockImage {
       constructor() {
@@ -140,33 +130,30 @@ describe('Renderer image loader', () => {
           }
           this.width = size.width;
           this.height = size.height;
+          this.naturalWidth = size.width;
+          this.naturalHeight = size.height;
           this.complete = true;
           this.onload?.();
         });
       }
     };
-    globalThis.document = { createElement: vi.fn(() => canvas) };
 
-    return { canvas, createdImages, drawImage };
+    return { createdImages };
   }
 
-  it('keeps small images at their original size', async () => {
+  it('loads a prepared image without allocating a resize canvas', async () => {
     const { createdImages } = installImageMocks();
-    const result = await loadRendererImage('small-image');
+    const result = await loadRendererImage('prepared-image');
 
-    expect(result.image).toBe(createdImages[0]);
-    expect(result.initialScale).toBe(1);
-    expect(globalThis.document.createElement).not.toHaveBeenCalled();
+    expect(result).toBe(createdImages[0]);
+    expect(result.crossOrigin).toBe('anonymous');
+    expect(result.naturalWidth).toBe(3072);
+    expect(createdImages).toHaveLength(1);
   });
 
-  it('limits large images to a longest side of 3072 pixels', async () => {
-    const { canvas, createdImages, drawImage } = installImageMocks();
-    const result = await loadRendererImage('large-image');
+  it('rejects when the prepared image URL cannot be decoded', async () => {
+    installImageMocks();
 
-    expect(result.initialScale).toBeCloseTo(0.768);
-    expect(canvas.width).toBe(3072);
-    expect(canvas.height).toBe(1536);
-    expect(drawImage).toHaveBeenCalledWith(createdImages[0], 0, 0, 3072, 1536);
-    expect(result.image).toBe(createdImages[1]);
+    await expect(loadRendererImage('missing-image')).rejects.toThrow('Unknown mock image.');
   });
 });

@@ -160,11 +160,6 @@ const sourceRBCoord = { x: 0, y: 0 };
 let imageSrc = '';
 let viewportDrawFrameId = null;
 
-// Image pixel cache
-let imgPixelData = null;
-let imgPixelDataWidth = 0;
-let imgPixelDataHeight = 0;
-
 // Annotation state
 const dotsCanvasCoord = ref([]);
 const realDot2GetZoom = ref({ x: -1, y: -1 });
@@ -234,50 +229,7 @@ function getDotInfo(e) {
   return { canvasCoord, realCoord, existingDotIndex };
 }
 
-// Image pixel cache and base image rendering
-function clearImgPixelData() {
-  imgPixelData = null;
-  imgPixelDataWidth = 0;
-  imgPixelDataHeight = 0;
-}
-
-function updateImgData() {
-  clearImgPixelData();
-  if (!props.imageObj) return;
-
-  const canvasTmp = document.createElement('canvas');
-  canvasTmp.width = initImgWidth.value;
-  canvasTmp.height = initImgHeight.value;
-
-  const ctxTmp = canvasTmp.getContext('2d');
-  if (ctxTmp === null) throw new Error('Failed to create the image pixel canvas context.');
-  ctxTmp.drawImage(props.imageObj, 0, 0);
-
-  const imageData = ctxTmp.getImageData(0, 0, canvasTmp.width, canvasTmp.height);
-  imgPixelData = imageData.data;
-  imgPixelDataWidth = imageData.width;
-  imgPixelDataHeight = imageData.height;
-}
-
-function getPixelColor(sourceX, sourceY) {
-  if (
-    imgPixelData === null ||
-    sourceX < 0 ||
-    sourceX >= imgPixelDataWidth ||
-    sourceY < 0 ||
-    sourceY >= imgPixelDataHeight
-  ) {
-    return null;
-  }
-
-  const pixelOffset = (sourceY * imgPixelDataWidth + sourceX) * 4;
-  const red = imgPixelData[pixelOffset];
-  const green = imgPixelData[pixelOffset + 1];
-  const blue = imgPixelData[pixelOffset + 2];
-  const alpha = imgPixelData[pixelOffset + 3] / 255;
-  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-}
-
+// Base image rendering
 function drawCanvas() {
   if (canvas.value === null || ctx.value === null || props.imageObj === null) {
     outputMessage('drawCanvas canvas Error.');
@@ -333,8 +285,8 @@ function drawCanvas() {
       dh,
     );
   } else {
-    drawGrid();
     drawImgInGrid(sw, sh);
+    drawGrid();
   }
 }
 
@@ -363,23 +315,18 @@ function drawGrid() {
 
 function drawImgInGrid(sourceWidth, sourceHeight) {
   const space = scale.value + 1;
-  const dw = scale.value,
-    dh = scale.value;
-  const startX = canvasLTCoord.x + 1,
-    startY = canvasLTCoord.y + 1;
-  for (let shOffset = 0; shOffset < sourceHeight; ++shOffset) {
-    const canvasY = startY + shOffset * space;
-    const sourceY = sourceLTCoord.y + shOffset;
-    for (let swOffset = 0; swOffset < sourceWidth; ++swOffset) {
-      const canvasX = startX + swOffset * space;
-      const sourceX = sourceLTCoord.x + swOffset;
-
-      const pixelColor = getPixelColor(sourceX, sourceY);
-      if (pixelColor === null) continue;
-      ctx.value.fillStyle = pixelColor;
-      ctx.value.fillRect(canvasX, canvasY, dw, dh);
-    }
-  }
+  initCanvasSettings();
+  ctx.value.drawImage(
+    props.imageObj,
+    sourceLTCoord.x,
+    sourceLTCoord.y,
+    sourceWidth,
+    sourceHeight,
+    canvasLTCoord.x + 1,
+    canvasLTCoord.y + 1,
+    sourceWidth * space,
+    sourceHeight * space,
+  );
 }
 
 // Annotation overlay rendering
@@ -391,15 +338,17 @@ function isValidQuadPoints(quadPoints) {
   );
 }
 
-function resetQuadsArray(newQuadArray, initImageScale) {
+function resetQuadsArray(newQuadArray, coordinateScale) {
+  const scaleX = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.x;
+  const scaleY = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.y;
   quadsArray = Array.isArray(newQuadArray)
     ? newQuadArray.map(quad => (Array.isArray(quad) ? quad.map(dot => ({ ...dot })) : quad))
     : [];
   quadsArray.forEach(quad => {
-    if (!isValidQuadPoints(quad)) return;
+    if (!isValidQuadPoints(quad) || !Number.isFinite(scaleX) || !Number.isFinite(scaleY)) return;
     quad.forEach(dot => {
-      dot.x = Math.round(dot.x * initImageScale);
-      dot.y = Math.round(dot.y * initImageScale);
+      dot.x = scaleX === 0 ? 0 : Math.round(dot.x * scaleX);
+      dot.y = scaleY === 0 ? 0 : Math.round(dot.y * scaleY);
     });
   });
 }
@@ -738,7 +687,6 @@ onUnmounted(() => {
   window.removeEventListener('resize', updateViewSize);
   window.removeEventListener('mousemove', handleWindowMouseMove);
   cancelScheduledViewPortDraw();
-  clearImgPixelData();
   if (timer !== null) {
     clearTimeout(timer);
     timer = null;
@@ -811,7 +759,6 @@ function resetAnnotationOverlay() {
 
 function clearImage() {
   cancelScheduledViewPortDraw();
-  clearImgPixelData();
   imageSrc = '';
   initImgWidth.value = 0;
   initImgHeight.value = 0;
@@ -841,16 +788,9 @@ async function initImgInfo() {
     }
 
     imageSrc = props.imageObj.src;
-    let img = new Image();
-    await new Promise((resolve, reject) => {
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = imageSrc;
-    });
-
-    initImgWidth.value = img.width;
-    initImgHeight.value = img.height;
-    updateImgData();
+    const img = props.imageObj;
+    initImgWidth.value = img.naturalWidth || img.width;
+    initImgHeight.value = img.naturalHeight || img.height;
     if (ctx.value !== null) {
       ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
     }
@@ -992,7 +932,7 @@ async function updateViewSize() {
 }
 
 function initCanvasSettings() {
-  if (canvas.value === null || scale.value >= gridLimit) return;
+  if (canvas.value === null) return;
   if (ctx.value === null) {
     ctx.value = canvas.value.getContext('2d');
   }

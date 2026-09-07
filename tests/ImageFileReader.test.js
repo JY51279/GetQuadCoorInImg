@@ -4,30 +4,37 @@ import path from 'path';
 import zlib from 'zlib';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DIRECT_IMAGE_MIME_TYPES, IMAGE_EXTENSIONS, sendImageFile } from '../src/main/ImageFileReader.js';
+import {
+  DIRECT_IMAGE_MIME_TYPES,
+  IMAGE_EXTENSIONS,
+  MAX_INPUT_FILE_BYTES,
+  calculateCoordinateScale,
+  calculateDisplaySize,
+  initializeImageFileReader,
+  prepareImageFile,
+  registerImageProtocol,
+} from '../src/main/ImageFileReader.js';
 
 const temporaryDirectories = [];
 
-async function createTemporaryDirectory() {
+async function createImageEnvironment() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'quadtool-image-test-'));
   temporaryDirectories.push(directory);
-  return directory;
+  await initializeImageFileReader({ getPath: () => directory });
+  return { directory, cacheDirectory: path.join(directory, 'image-cache') };
 }
 
-function collectReplies() {
-  const replies = [];
-  return {
-    replies,
-    event: {
-      reply(channel, payload) {
-        replies.push({ channel, payload });
-      },
+async function createSolidImage(filePath, width, height, format = 'png') {
+  await sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: { r: 10, g: 20, b: 30 },
     },
-  };
-}
-
-function joinImageChunks(replies) {
-  return replies.map(reply => reply.payload.picInfo.str).join('');
+  })
+    .toFormat(format)
+    .toFile(filePath);
 }
 
 afterEach(async () => {
@@ -43,97 +50,150 @@ describe('Main-process image file reader', () => {
     expect(DIRECT_IMAGE_MIME_TYPES.svg).toBe('image/svg+xml');
   });
 
-  it('streams a normal image in reconstructable Base64 chunks', async () => {
-    const root = await createTemporaryDirectory();
-    const imagePath = path.join(root, 'large.png');
-    const imageBytes = Buffer.alloc(900000, 173);
-    await fs.writeFile(imagePath, imageBytes);
-    const response = collectReplies();
+  it('calculates a display size constrained by both dimensions and pixel count', () => {
+    expect(calculateDisplaySize(10000, 5000)).toEqual({ width: 4000, height: 2000 });
+    expect(calculateDisplaySize(800, 600)).toEqual({ width: 800, height: 600 });
+  });
 
-    await sendImageFile(response.event, imagePath, 17);
+  it('uses endpoint-aware coordinate scales without changing image dimensions', () => {
+    const coordinateScale = calculateCoordinateScale(10000, 4000);
+    expect(coordinateScale).toBeCloseTo(3999 / 9999);
+    expect(Math.round(9999 * coordinateScale)).toBe(3999);
+    expect(Math.round(3999 / coordinateScale)).toBe(9999);
+    expect(calculateCoordinateScale(1, 1)).toBe(1);
+    expect(calculateCoordinateScale(2, 1)).toBe(0);
+  });
 
-    expect(response.replies.length).toBeGreaterThanOrEqual(2);
-    expect(response.replies.every(reply => reply.channel === 'open-pic-file-response')).toBe(true);
-    expect(response.replies.every(reply => reply.payload.requestId === 17)).toBe(true);
-    expect(joinImageChunks(response.replies)).toBe(`data:image/png;base64,${imageBytes.toString('base64')}`);
-    expect(response.replies.at(-1).payload.picInfo).toMatchObject({
+  it('registers a small browser-readable image without copying its bytes through IPC', async () => {
+    const { directory, cacheDirectory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'sample.png');
+    await createSolidImage(imagePath, 8, 4);
+
+    const result = await prepareImageFile(imagePath);
+
+    expect(result).toMatchObject({
+      url: expect.stringMatching(/^quad-image:\/\/cache\/[a-f0-9]{64}$/),
       path: imagePath,
-      fileName: 'large.png',
+      fileName: 'sample.png',
+      originalWidth: 8,
+      originalHeight: 4,
+      displayWidth: 8,
+      displayHeight: 4,
+      coordinateScaleX: 1,
+      coordinateScaleY: 1,
+      mimeType: 'image/png',
     });
+    expect(await fs.readdir(cacheDirectory)).toEqual([]);
   });
 
-  it('uses the standard JPEG MIME type', async () => {
-    const root = await createTemporaryDirectory();
-    const imagePath = path.join(root, 'sample.jpg');
-    const imageBytes = Buffer.from([1, 2, 3, 4]);
-    await fs.writeFile(imagePath, imageBytes);
-    const response = collectReplies();
+  it('creates one bounded PNG cache image when the source exceeds display limits', async () => {
+    const { directory, cacheDirectory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'large.jpg');
+    await createSolidImage(imagePath, 4, 2, 'jpeg');
 
-    await sendImageFile(response.event, imagePath, 19);
+    const result = await prepareImageFile(imagePath, { maxPixels: 2, maxDimension: 4 });
+    const cacheFiles = await fs.readdir(cacheDirectory);
+    const metadata = await sharp(path.join(cacheDirectory, cacheFiles[0])).metadata();
 
-    expect(joinImageChunks(response.replies)).toBe(`data:image/jpeg;base64,${imageBytes.toString('base64')}`);
+    expect(result).toMatchObject({
+      originalWidth: 4,
+      originalHeight: 2,
+      displayWidth: 2,
+      displayHeight: 1,
+      coordinateScaleX: 1 / 3,
+      coordinateScaleY: 0,
+      mimeType: 'image/png',
+    });
+    expect(cacheFiles).toHaveLength(1);
+    expect(cacheFiles[0]).toMatch(/^[a-f0-9]{64}\.png$/);
+    expect(metadata).toMatchObject({ width: 2, height: 1, format: 'png' });
   });
 
-  it('returns one failure response for an unsupported extension', async () => {
-    const root = await createTemporaryDirectory();
-    const imagePath = path.join(root, 'image.txt');
-    const response = collectReplies();
+  it('rejects unsupported extensions before attempting to decode them', async () => {
+    const { directory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'image.txt');
+    await fs.writeFile(imagePath, 'not an image');
 
-    await sendImageFile(response.event, imagePath, 23);
-
-    expect(response.replies).toEqual([
-      {
-        channel: 'open-pic-file-response',
-        payload: {
-          success: false,
-          requestId: 23,
-          error: 'Unsupported image format',
-          path: imagePath,
-        },
-      },
-    ]);
+    await expect(prepareImageFile(imagePath)).rejects.toThrow('Unsupported image format');
   });
 
-  it('converts TIFF data to PNG before sending it', async () => {
-    const root = await createTemporaryDirectory();
-    const imagePath = path.join(root, 'sample.tiff');
-    await sharp({
-      create: {
-        width: 2,
-        height: 2,
-        channels: 3,
-        background: { r: 10, g: 20, b: 30 },
-      },
-    })
-      .tiff()
-      .toFile(imagePath);
-    const response = collectReplies();
+  it('rejects oversized encoded files before decoding them', async () => {
+    const { directory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'oversized.bmp');
+    const file = await fs.open(imagePath, 'w');
+    await file.truncate(MAX_INPUT_FILE_BYTES + 1);
+    await file.close();
 
-    await sendImageFile(response.event, imagePath, 31);
+    await expect(prepareImageFile(imagePath)).rejects.toThrow('64 MB input limit');
+  });
 
-    expect(response.replies.every(reply => reply.payload.success === true)).toBe(true);
-    expect(response.replies.every(reply => reply.payload.requestId === 31)).toBe(true);
-    const dataUrl = joinImageChunks(response.replies);
-    expect(dataUrl.startsWith('data:image/png;base64,')).toBe(true);
-    const pngBytes = Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64');
-    expect([...pngBytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
-    expect(response.replies.at(-1).payload.picInfo.path).toBe(imagePath);
-  }, 15000);
+  it('converts TIFF data to a cached PNG', async () => {
+    const { directory, cacheDirectory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'sample.tiff');
+    await createSolidImage(imagePath, 2, 2, 'tiff');
 
-  it('converts compressed SVG data to PNG before sending it', async () => {
-    const root = await createTemporaryDirectory();
-    const imagePath = path.join(root, 'sample.svgz');
+    const result = await prepareImageFile(imagePath);
+    const cacheFiles = await fs.readdir(cacheDirectory);
+
+    expect(result.mimeType).toBe('image/png');
+    expect(cacheFiles).toHaveLength(1);
+    expect((await sharp(path.join(cacheDirectory, cacheFiles[0])).metadata()).format).toBe('png');
+  });
+
+  it('converts compressed SVG data to a cached PNG', async () => {
+    const { directory, cacheDirectory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'sample.svgz');
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="red"/></svg>';
     await fs.writeFile(imagePath, zlib.gzipSync(svg));
-    const response = collectReplies();
 
-    await sendImageFile(response.event, imagePath, 37);
+    const result = await prepareImageFile(imagePath);
+    const cacheFiles = await fs.readdir(cacheDirectory);
 
-    expect(response.replies.every(reply => reply.payload.success === true)).toBe(true);
-    const dataUrl = joinImageChunks(response.replies);
-    expect(dataUrl.startsWith('data:image/png;base64,')).toBe(true);
-    const pngBytes = Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64');
-    expect([...pngBytes.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(result.mimeType).toBe('image/png');
+    expect(cacheFiles).toHaveLength(1);
+    expect((await sharp(path.join(cacheDirectory, cacheFiles[0])).metadata()).format).toBe('png');
+  });
+
+  it('rasterizes ordinary SVG data instead of sending vector content to the renderer', async () => {
+    const { directory, cacheDirectory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'sample.svg');
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="blue"/></svg>';
+    await fs.writeFile(imagePath, svg);
+
+    const result = await prepareImageFile(imagePath);
+    const cacheFiles = await fs.readdir(cacheDirectory);
+
+    expect(result.mimeType).toBe('image/png');
+    expect(cacheFiles).toHaveLength(1);
+  });
+
+  it('serves only registered image assets through the custom protocol', async () => {
+    const { directory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'sample.png');
+    await createSolidImage(imagePath, 2, 2);
+    const imageInfo = await prepareImageFile(imagePath);
+    let protocolHandler;
+    const protocol = {
+      handle(_scheme, handler) {
+        protocolHandler = handler;
+      },
+    };
+    const electronNet = {
+      fetch: async () => new Response(await fs.readFile(imagePath)),
+    };
+    registerImageProtocol(protocol, electronNet);
+
+    const response = await protocolHandler({ url: imageInfo.url });
+    const missingResponse = await protocolHandler({ url: 'quad-image://cache/not-registered' });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(Buffer.from(await response.arrayBuffer()).subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    expect(missingResponse.status).toBe(404);
   });
 });

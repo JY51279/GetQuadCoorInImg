@@ -227,6 +227,16 @@ describe('Dataset state operations', () => {
     );
   });
 
+  it('maps displayed points back with independent horizontal and vertical scales', () => {
+    loadDbrDataset();
+
+    expect(updateJson(KEYS.JSON_MODIFY, { x: 0.5, y: 0.25 }, 0, [{ x: 5, y: 2 }])).toBe(
+      KEYS.OPERATE_SUCCESS,
+    );
+
+    expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 10, y: 8 });
+  });
+
   it('accepts the same explicit quad index after switching images', () => {
     loadDbrDataset();
     expect(updateJson(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }])).toBe(KEYS.OPERATE_SUCCESS);

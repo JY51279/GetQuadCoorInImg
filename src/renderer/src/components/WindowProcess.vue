@@ -156,7 +156,7 @@ const imgFileName = ref(null);
 const jsonFileName = ref(null);
 const loadedProductType = ref('');
 let imgFilePath = '';
-let initImageScale = 1;
+let imageCoordinateScale = { x: 1, y: 1 };
 
 // Operation and image request state
 const workflowState = ref(createWorkflowState());
@@ -167,7 +167,6 @@ const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKF
 const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(imageObj.value?.src));
 const imageLoadError = ref(null);
-let imageChunkBuffer = '';
 let activeImageRequest = null;
 let imageAttemptCounter = 0;
 
@@ -180,7 +179,6 @@ let notificationId = 0;
 
 // Window input and listener state
 const mouseCoord = { x: 0, y: 0 };
-let removeOpenPicFileResponseListener = null;
 let removeChooseJsonFileResponseListener = null;
 
 function applyWorkflowTransition(result) {
@@ -209,16 +207,13 @@ onMounted(() => {
   configureZoomCanvas(zoomView.value);
   window.addEventListener('mousemove', handleWindowMouseMove);
   window.addEventListener('keydown', handleKeyDown);
-  removeOpenPicFileResponseListener = ipcRenderer.on('open-pic-file-response', handleOpenPicFileResponse);
   removeChooseJsonFileResponseListener = ipcRenderer.on('choose-json-file-response', handleChooseJsonFileResponse);
 });
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleWindowMouseMove);
   window.removeEventListener('keydown', handleKeyDown);
-  removeOpenPicFileResponseListener?.();
   removeChooseJsonFileResponseListener?.();
-  removeOpenPicFileResponseListener = null;
   removeChooseJsonFileResponseListener = null;
   clearMessage();
 });
@@ -407,7 +402,7 @@ async function performJsonAction(action) {
   await runSaveTransaction(
     () => {
       outputMessage('Start operate: ' + action);
-      const updateJsonRes = updateJson(action, initImageScale, activeQuadIndex.value, selectedDots);
+      const updateJsonRes = updateJson(action, imageCoordinateScale, activeQuadIndex.value, selectedDots);
       return updateJsonRes === KEYS.OPERATE_SUCCESS ? null : updateJsonRes;
     },
     () => {
@@ -517,7 +512,7 @@ async function initProcessInfo(jsonImageIndex = null) {
 }
 
 function renderAnnotationQuads() {
-  imgContainerRef.value.resetQuadsArray(annotationView.value.quads, initImageScale);
+  imgContainerRef.value.resetQuadsArray(annotationView.value.quads, imageCoordinateScale);
   clearShowQuads();
   addAll2ShowQuads();
 }
@@ -551,7 +546,6 @@ function chooseImgFile() {
     }
 
     imageLoadError.value = null;
-    imageChunkBuffer = '';
     const requestId = ++imageAttemptCounter;
     activeImageRequest = {
       requestId,
@@ -562,7 +556,7 @@ function chooseImgFile() {
       direction: '',
       attemptedIndexes: new Set(),
     };
-    ipcRenderer.send('open-image-file-dialog', { ...getJsonImageDialogContext(), requestId });
+    void requestPreparedImage('open-image-file-dialog', { ...getJsonImageDialogContext(), requestId });
   } catch (error) {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
     handleImageRequestFailure(error.message);
@@ -611,10 +605,20 @@ function jumpToImageIndex() {
 }
 
 function sendImageFileRequest(path, requestId) {
-  imageChunkBuffer = '';
   const { jsonFilePath } = getJsonImageDialogContext();
-  ipcRenderer.send('open-pic-file', { imagePath: path, jsonFilePath, requestId });
+  void requestPreparedImage('prepare-image', { imagePath: path, jsonFilePath, requestId });
   outputMessage('Get file response...');
+}
+
+async function requestPreparedImage(channel, request) {
+  try {
+    const response = await ipcRenderer.invoke(channel, request);
+    await handlePreparedImageResponse(response);
+  } catch (error) {
+    if (activeImageRequest?.requestId === request.requestId) {
+      handleImageRequestFailure(error.message, activeImageRequest.path);
+    }
+  }
 }
 
 function startDatasetImageRequest(target, direction, previousRequest = null) {
@@ -664,7 +668,6 @@ function retryDatasetImageRequest() {
 
 function resetImageRequestState() {
   activeImageRequest = null;
-  imageChunkBuffer = '';
 }
 
 function handleImageRequestFailure(errorMessage, failedPath = '') {
@@ -701,7 +704,7 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
   resetImageRequestState();
 }
 
-async function handleOpenPicFileResponse(_event, response) {
+async function handlePreparedImageResponse(response) {
   if (!activeImageRequest || response?.requestId !== activeImageRequest.requestId) return;
   if (!isCurrentOperation(workflowState.value, activeImageRequest.operationId, WORKFLOW_OPERATION.LOAD_IMAGE)) return;
 
@@ -713,21 +716,32 @@ async function handleOpenPicFileResponse(_event, response) {
   }
 
   if (response.success) {
-    imageChunkBuffer += response.picInfo.str;
-    if (response.picInfo.fileName === '') return;
-
     const completedRequest = activeImageRequest;
+    const imageInfo = response.imageInfo;
     try {
-      const loadedImage = await loadRendererImage(imageChunkBuffer);
-      imageObj.value = loadedImage.image;
-      initImageScale = loadedImage.initialScale;
+      const loadedImage = await loadRendererImage(imageInfo.url);
+      if (
+        !activeImageRequest ||
+        activeImageRequest.requestId !== completedRequest.requestId ||
+        !isCurrentOperation(workflowState.value, completedRequest.operationId, WORKFLOW_OPERATION.LOAD_IMAGE)
+      ) {
+        return;
+      }
+      if (loadedImage.naturalWidth !== imageInfo.displayWidth || loadedImage.naturalHeight !== imageInfo.displayHeight) {
+        throw new Error('The prepared image dimensions do not match the loaded image.');
+      }
+      imageObj.value = loadedImage;
+      imageCoordinateScale = {
+        x: imageInfo.coordinateScaleX,
+        y: imageInfo.coordinateScaleY,
+      };
     } catch (error) {
-      handleImageRequestFailure(error.message, response.picInfo.path || completedRequest?.path || '');
+      handleImageRequestFailure(error.message, imageInfo?.path || completedRequest?.path || '');
       return;
     }
 
-    imgFileName.value = response.picInfo.fileName;
-    imgFilePath = response.picInfo.path.replace(/\\/g, '/');
+    imgFileName.value = imageInfo.fileName;
+    imgFilePath = imageInfo.path.replace(/\\/g, '/');
     imageLoadError.value = null;
     const requestedJsonImageIndex = completedRequest?.source === 'dataset' ? completedRequest.targetImageIndex : null;
     const isReady = await initProcessInfo(requestedJsonImageIndex);
