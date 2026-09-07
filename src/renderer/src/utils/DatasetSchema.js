@@ -159,7 +159,11 @@ function fail(error) {
   return { success: false, error };
 }
 
-export function normalizeDataset(rawDataset) {
+function createLossyIssue(type, path, message) {
+  return { type, path, message };
+}
+
+export function analyzeDataset(rawDataset) {
   if (!isObject(rawDataset)) {
     return fail('JSON root must be an object.');
   }
@@ -171,6 +175,73 @@ export function normalizeDataset(rawDataset) {
   if (!productResult.success) return productResult;
 
   const schema = getProductSchema(productResult.productType);
+  const lossyIssues = [];
+
+  for (let pictureIndex = 0; pictureIndex < rawDataset[ROOT_KEY].length; pictureIndex++) {
+    const picture = rawDataset[ROOT_KEY][pictureIndex];
+    const picturePath = `${ROOT_KEY}[${pictureIndex}]`;
+    if (!isObject(picture)) {
+      lossyIssues.push(createLossyIssue('remove-picture', picturePath, 'remove this item because it is not an object'));
+      continue;
+    }
+
+    const imageSource = picture[IMAGE_SOURCE_KEY];
+    if (typeof imageSource !== 'string' || imageSource.trim() === '') {
+      lossyIssues.push(
+        createLossyIssue(
+          'remove-picture',
+          picturePath,
+          `remove this item because ${IMAGE_SOURCE_KEY} is missing or empty`,
+        ),
+      );
+      continue;
+    }
+
+    if (hasOwn(picture, schema.targetKey) && !Array.isArray(picture[schema.targetKey])) {
+      return fail(`${schema.targetKey} must be an array at ${picturePath}.`);
+    }
+
+    const items = picture[schema.targetKey] ?? [];
+    for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+      const item = items[itemIndex];
+      if (!isObject(item)) {
+        return fail(`${schema.targetKey}[${itemIndex}] must be an object at ${picturePath}.`);
+      }
+
+      if (!normalizeLocation(item[schema.ItemKey]).valid) {
+        lossyIssues.push(
+          createLossyIssue(
+            'reset-location',
+            `${picturePath}.${schema.targetKey}[${itemIndex}].${schema.ItemKey}`,
+            `replace the invalid or missing coordinate value with ${DEFAULT_LOCATION}`,
+          ),
+        );
+      }
+    }
+  }
+
+  return {
+    success: true,
+    productType: schema.class,
+    lossyIssues,
+    requiresLossyRepair: lossyIssues.length > 0,
+  };
+}
+
+export function normalizeDataset(rawDataset, { allowLossyRepairs = false } = {}) {
+  const analysis = analyzeDataset(rawDataset);
+  if (!analysis.success) return analysis;
+
+  if (analysis.requiresLossyRepair && !allowLossyRepairs) {
+    return {
+      ...analysis,
+      changed: false,
+      wouldChange: true,
+      repairs: createRepairStats(),
+    };
+  }
+
+  const schema = getProductSchema(analysis.productType);
   const dataset = cloneJsonValue(rawDataset);
   const repairs = createRepairStats();
   const pictures = [];
@@ -250,7 +321,20 @@ export function normalizeDataset(rawDataset) {
     data: dataset,
     changed,
     repairs,
+    lossyIssues: analysis.lossyIssues,
+    requiresLossyRepair: false,
   };
+}
+
+export function formatLossyRepairSummary(lossyIssues, detailLimit = 8) {
+  if (!Array.isArray(lossyIssues) || lossyIssues.length === 0) return '';
+
+  const visibleIssues = lossyIssues.slice(0, detailLimit);
+  const lines = visibleIssues.map(issue => `- ${issue.path}: ${issue.message}.`);
+  if (lossyIssues.length > visibleIssues.length) {
+    lines.push(`- ...and ${lossyIssues.length - visibleIssues.length} more lossy repair(s).`);
+  }
+  return `The dataset requires ${lossyIssues.length} lossy repair(s):\n${lines.join('\n')}`;
 }
 
 export function formatRepairSummary(repairs) {

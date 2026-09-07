@@ -444,14 +444,17 @@ async function saveJsonFile() {
   return saveJsonFileInfo(getJsonFileInfo());
 }
 
-async function saveJsonFileInfo(jsonFileInfo) {
+async function saveJsonFileInfo(jsonFileInfo, { backupOriginal = false } = {}) {
   try {
-    const response = await ipcRenderer.invoke('save-json-file', jsonFileInfo);
+    const response = await ipcRenderer.invoke('save-json-file', { ...jsonFileInfo, backupOriginal });
     if (!response.success) {
       const errorMessage = response.error || 'Unknown error';
       console.error('Failed to save JSON file:', errorMessage);
       outputMessage(`Failed to save JSON: ${errorMessage}`);
       return false;
+    }
+    if (response.backupPath) {
+      outputMessage(`Temporary JSON backup created and scheduled for automatic deletion in 7 days: ${response.backupPath}`);
     }
     return true;
   } catch (error) {
@@ -793,10 +796,27 @@ async function handleChooseJsonFileResponse(_event, response) {
     if (response.success) {
       const jsonData = response.jsonInfo;
       jsonData.path = jsonData.path.replace(/[\\/]/g, '/');
-      const preparedJson = prepareJsonProcess(jsonData);
+      let preparedJson = prepareJsonProcess(jsonData);
       if (!preparedJson.success) {
         failDatasetLoad(operationId, `Failed to load JSON: ${preparedJson.error}`);
         return;
+      }
+
+      if (preparedJson.requiresLossyRepair) {
+        const confirmed = window.confirm(
+          `${preparedJson.lossyRepairSummary}\n\nThese changes can discard original data. Continue? ` +
+            'A temporary backup will be retained for 7 days and then deleted automatically.',
+        );
+        if (!confirmed) {
+          failDatasetLoad(operationId, 'Dataset loading was canceled before any lossy repair was applied.');
+          return;
+        }
+
+        preparedJson = prepareJsonProcess(jsonData, { allowLossyRepairs: true });
+        if (!preparedJson.success) {
+          failDatasetLoad(operationId, `Failed to repair JSON: ${preparedJson.error}`);
+          return;
+        }
       }
 
       const resolvedPathResult = await ipcRenderer.invoke('resolve-json-image-paths', {
@@ -811,7 +831,11 @@ async function handleChooseJsonFileResponse(_event, response) {
       preparedJson.imagePaths = resolvedPathResult.imagePaths.map(imagePath => imagePath.replace(/[\\/]/g, '/'));
 
       if (preparedJson.changed) {
-        if (!(await saveJsonFileInfo(preparedJson.fileInfo))) {
+        if (
+          !(await saveJsonFileInfo(preparedJson.fileInfo, {
+            backupOriginal: preparedJson.lossyRepairsApplied,
+          }))
+        ) {
           failDatasetLoad(operationId);
           return;
         }

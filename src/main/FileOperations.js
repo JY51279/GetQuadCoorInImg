@@ -1,11 +1,67 @@
 import fs from 'fs';
 import path from 'path';
 
+export const LOSSY_REPAIR_BACKUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 let jsonTempFileCounter = 0;
+let jsonBackupFileCounter = 0;
 let lastJsonDirectory = '';
 let dialogPathSettingsFile = '';
+let lossyRepairBackupDirectory = '';
 let documentsDirectory = '';
 let homeDirectory = '';
+
+async function removeBackupFile(backupPath) {
+  try {
+    await fs.promises.unlink(backupPath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error('Failed to remove expired JSON backup:', error);
+  }
+}
+
+async function cleanupExpiredLossyRepairBackups(referenceTime = Date.now()) {
+  if (!lossyRepairBackupDirectory) return;
+
+  const entries = await fs.promises.readdir(lossyRepairBackupDirectory, { withFileTypes: true });
+  const expirationThreshold = referenceTime - LOSSY_REPAIR_BACKUP_RETENTION_MS;
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.bak')) continue;
+
+    const backupPath = path.join(lossyRepairBackupDirectory, entry.name);
+    try {
+      const stats = await fs.promises.stat(backupPath);
+      if (stats.mtimeMs <= expirationThreshold) await removeBackupFile(backupPath);
+    } catch (error) {
+      if (error.code !== 'ENOENT') console.error('Failed to inspect JSON backup:', error);
+    }
+  }
+}
+
+function scheduleBackupCleanup(backupPath) {
+  const timer = setTimeout(() => {
+    void removeBackupFile(backupPath);
+  }, LOSSY_REPAIR_BACKUP_RETENTION_MS);
+  timer.unref?.();
+}
+
+async function createLossyRepairBackup(filePath) {
+  if (!lossyRepairBackupDirectory) {
+    throw new Error('Lossy repair backup storage is not initialized.');
+  }
+
+  await cleanupExpiredLossyRepairBackups();
+  const fileName = path.basename(filePath);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = path.join(
+    lossyRepairBackupDirectory,
+    `${fileName}.before-lossy-repair.${timestamp}.${++jsonBackupFileCounter}.bak`,
+  );
+  await fs.promises.copyFile(filePath, backupPath, fs.constants.COPYFILE_EXCL);
+  const createdAt = new Date();
+  await fs.promises.utimes(backupPath, createdAt, createdAt);
+  scheduleBackupCleanup(backupPath);
+  return backupPath;
+}
 
 export async function saveJsonFileAtomically(data) {
   if (!data || typeof data.path !== 'string' || data.path.length === 0) {
@@ -21,8 +77,12 @@ export async function saveJsonFileAtomically(data) {
   const directory = path.dirname(filePath);
   const fileName = path.basename(filePath);
   const tempFilePath = path.join(directory, `.${fileName}.${process.pid}.${Date.now()}.${++jsonTempFileCounter}.tmp`);
+  let backupPath = '';
 
   try {
+    if (data.backupOriginal === true) {
+      backupPath = await createLossyRepairBackup(filePath);
+    }
     await fs.promises.writeFile(tempFilePath, data.str, 'utf-8');
     await fs.promises.rename(tempFilePath, filePath);
   } catch (error) {
@@ -35,6 +95,8 @@ export async function saveJsonFileAtomically(data) {
     }
     throw error;
   }
+
+  return { backupPath };
 }
 
 function getExistingDirectory(directoryPath) {
@@ -50,7 +112,11 @@ export async function initializeFileOperations(electronApp) {
   lastJsonDirectory = '';
   documentsDirectory = electronApp.getPath('documents');
   homeDirectory = electronApp.getPath('home');
-  dialogPathSettingsFile = path.join(electronApp.getPath('userData'), 'dialog-paths.json');
+  const userDataDirectory = electronApp.getPath('userData');
+  dialogPathSettingsFile = path.join(userDataDirectory, 'dialog-paths.json');
+  lossyRepairBackupDirectory = path.join(userDataDirectory, 'lossy-repair-backups');
+  await fs.promises.mkdir(lossyRepairBackupDirectory, { recursive: true });
+  await cleanupExpiredLossyRepairBackups();
 
   try {
     const settingsText = await fs.promises.readFile(dialogPathSettingsFile, 'utf-8');

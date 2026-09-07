@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { detectProductType, normalizeDataset, PRODUCT_SCHEMAS } from '../src/renderer/src/utils/DatasetSchema.js';
+import {
+  analyzeDataset,
+  detectProductType,
+  normalizeDataset,
+  PRODUCT_SCHEMAS,
+} from '../src/renderer/src/utils/DatasetSchema.js';
 import {
   areImagePathsEquivalent,
   commitPreparedJsonProcess,
@@ -53,7 +58,7 @@ describe('Dataset schema', () => {
     expect(result).toEqual({ success: true, productType });
   });
 
-  it('repairs invalid DBR fields without changing the input object', () => {
+  it('reports lossy DBR repairs before applying them and does not change the input object', () => {
     const source = {
       Picture: [
         null,
@@ -66,7 +71,25 @@ describe('Dataset schema', () => {
       ],
     };
 
-    const result = normalizeDataset(source);
+    const analysis = analyzeDataset(source);
+    expect(analysis.success).toBe(true);
+    expect(analysis.requiresLossyRepair).toBe(true);
+    expect(analysis.lossyIssues).toEqual([
+      expect.objectContaining({ type: 'remove-picture', path: 'Picture[0]' }),
+      expect.objectContaining({
+        type: 'reset-location',
+        path: 'Picture[1].Barcode Info[0].Barcode Location',
+      }),
+    ]);
+
+    const pendingResult = normalizeDataset(source);
+    expect(pendingResult.success).toBe(true);
+    expect(pendingResult.requiresLossyRepair).toBe(true);
+    expect(pendingResult.data).toBeUndefined();
+    expect(source.Picture).toHaveLength(2);
+    expect(source.Picture[1]['Barcode Info'][0]).toEqual({ 'Barcode Location': 'invalid' });
+
+    const result = normalizeDataset(source, { allowLossyRepairs: true });
     expect(result.success).toBe(true);
     expect(result.productType).toBe('DBR');
     expect(result.changed).toBe(true);
@@ -81,6 +104,33 @@ describe('Dataset schema', () => {
     });
     expect(source.Picture).toHaveLength(2);
     expect(source.Picture[1]['Barcode Info'][0]).toEqual({ 'Barcode Location': 'invalid' });
+  });
+
+  it('applies non-lossy normalization without asking for lossy repair approval', () => {
+    const source = {
+      Picture: [
+        {
+          'Image Source': 'image.png',
+          'No.': '9',
+          'Barcode Count': '7',
+          'Barcode Info': [{ 'Barcode Location': '0 0 10 0 10 10 0 10' }],
+        },
+      ],
+    };
+
+    const result = normalizeDataset(source);
+    expect(result.success).toBe(true);
+    expect(result.requiresLossyRepair).toBe(false);
+    expect(result.changed).toBe(true);
+    expect(result.data.Picture[0]).toMatchObject({
+      'No.': '1',
+      'Barcode Count': 1,
+    });
+    expect(result.data.Picture[0]['Barcode Info'][0]).toMatchObject({
+      'Barcode Hex': '',
+      'Barcode Text': '',
+      'Barcode Type': '',
+    });
   });
 });
 
@@ -235,5 +285,31 @@ describe('Dataset state operations', () => {
       { x: 1, y: 2 },
       { x: 3, y: 4 },
     ]);
+  });
+
+  it('requires explicit approval before preparing a dataset with lossy repairs', () => {
+    const data = {
+      Picture: [
+        {
+          'Image Source': 'C:/images/one.png',
+          'Barcode Count': 1,
+          'Barcode Info': [{ 'Barcode Location': 'invalid' }],
+        },
+      ],
+    };
+    const jsonData = { str: JSON.stringify(data), path: 'C:/datasets/lossy.json' };
+
+    const pending = prepareJsonProcess(jsonData);
+    expect(pending.success).toBe(true);
+    expect(pending.requiresLossyRepair).toBe(true);
+    expect(pending.lossyRepairSummary).toContain('Picture[0].Barcode Info[0].Barcode Location');
+    expect(pending.fileInfo).toBeUndefined();
+    expect(commitPreparedJsonProcess(pending)).toBe(false);
+
+    const approved = prepareJsonProcess(jsonData, { allowLossyRepairs: true });
+    expect(approved.success).toBe(true);
+    expect(approved.requiresLossyRepair).toBe(false);
+    expect(approved.lossyRepairsApplied).toBe(true);
+    expect(JSON.parse(approved.fileInfo.str).Picture[0]['Barcode Info'][0]['Barcode Location']).toBe('0 0 0 0 0 0 0 0');
   });
 });

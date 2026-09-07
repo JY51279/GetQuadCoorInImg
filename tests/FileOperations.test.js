@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  LOSSY_REPAIR_BACKUP_RETENTION_MS,
   getDefaultDialogDirectory,
   getImageDialogDefaultDirectory,
   initializeFileOperations,
@@ -70,6 +71,56 @@ describe('Main-process file operations', () => {
       fileName: 'sample.json',
     });
     expect((await fs.readdir(root)).filter(fileName => fileName.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('backs up the original JSON before a lossy repair replaces it', async () => {
+    const root = await createTemporaryDirectory();
+    const datasetDirectory = path.join(root, 'dataset');
+    const userData = path.join(root, 'user-data');
+    await Promise.all([datasetDirectory, userData].map(directory => fs.mkdir(directory)));
+    await initializeFileOperations({
+      getPath(name) {
+        return { documents: root, home: root, userData }[name];
+      },
+    });
+
+    const jsonPath = path.join(datasetDirectory, 'sample.json');
+    const originalJson = '{"value":"original"}';
+    const repairedJson = '{"value":"repaired"}';
+    await fs.writeFile(jsonPath, originalJson, 'utf-8');
+
+    const result = await saveJsonFileAtomically({
+      path: jsonPath,
+      str: repairedJson,
+      backupOriginal: true,
+    });
+
+    expect(path.dirname(result.backupPath)).toBe(path.join(userData, 'lossy-repair-backups'));
+    expect(path.basename(result.backupPath)).toMatch(/^sample\.json\.before-lossy-repair\..+\.\d+\.bak$/);
+    expect(await fs.readFile(result.backupPath, 'utf-8')).toBe(originalJson);
+    expect(await fs.readFile(jsonPath, 'utf-8')).toBe(repairedJson);
+    expect(await fs.readdir(datasetDirectory)).toEqual(['sample.json']);
+  });
+
+  it('automatically removes expired lossy repair backups but keeps recent ones', async () => {
+    const root = await createTemporaryDirectory();
+    const userData = path.join(root, 'user-data');
+    const backupDirectory = path.join(userData, 'lossy-repair-backups');
+    await fs.mkdir(backupDirectory, { recursive: true });
+    const expiredBackup = path.join(backupDirectory, 'expired.bak');
+    const recentBackup = path.join(backupDirectory, 'recent.bak');
+    await Promise.all([fs.writeFile(expiredBackup, 'expired'), fs.writeFile(recentBackup, 'recent')]);
+    const expiredTime = new Date(Date.now() - LOSSY_REPAIR_BACKUP_RETENTION_MS - 1000);
+    await fs.utimes(expiredBackup, expiredTime, expiredTime);
+
+    await initializeFileOperations({
+      getPath(name) {
+        return { documents: root, home: root, userData }[name];
+      },
+    });
+
+    await expect(fs.stat(expiredBackup)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await fs.readFile(recentBackup, 'utf-8')).toBe('recent');
   });
 
   it('does not leak the previous directory when file operations are initialized again', async () => {

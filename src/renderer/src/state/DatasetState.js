@@ -7,7 +7,13 @@ import {
   transJson2Str,
   transStr2Json,
 } from '../utils/BasicFuncs.js';
-import { DEFAULT_LOCATION, formatRepairSummary, getProductSchema, normalizeDataset } from '../utils/DatasetSchema.js';
+import {
+  DEFAULT_LOCATION,
+  formatLossyRepairSummary,
+  formatRepairSummary,
+  getProductSchema,
+  normalizeDataset,
+} from '../utils/DatasetSchema.js';
 
 const ROOT_KEY = 'Picture';
 const IMAGE_SOURCE_KEY = 'Image Source';
@@ -40,15 +46,24 @@ export function areImagePathsEquivalent(leftPath, rightPath) {
 
 // Special case: DBR "Barcode Type": "datamatrix"
 
-export function prepareJsonProcess(jsonData) {
+export function prepareJsonProcess(jsonData, { allowLossyRepairs = false } = {}) {
   try {
     if (!jsonData || typeof jsonData.str !== 'string' || typeof jsonData.path !== 'string') {
       return { success: false, error: 'Invalid JSON file information.' };
     }
 
     const parsedJson = transStr2Json(jsonData.str);
-    const normalizedResult = normalizeDataset(parsedJson);
+    const normalizedResult = normalizeDataset(parsedJson, { allowLossyRepairs });
     if (!normalizedResult.success) return normalizedResult;
+
+    if (normalizedResult.requiresLossyRepair) {
+      return {
+        ...normalizedResult,
+        success: true,
+        path: jsonData.path,
+        lossyRepairSummary: formatLossyRepairSummary(normalizedResult.lossyIssues),
+      };
+    }
 
     const preparedClassKeys = getProductSchema(normalizedResult.productType);
     const preparedImagePaths = normalizedResult.data[ROOT_KEY].map(picture =>
@@ -66,6 +81,7 @@ export function prepareJsonProcess(jsonData) {
         path: jsonData.path,
       },
       repairSummary: formatRepairSummary(normalizedResult.repairs),
+      lossyRepairsApplied: allowLossyRepairs && normalizedResult.lossyIssues.length > 0,
     };
   } catch (err) {
     return { success: false, error: err.message };
@@ -73,7 +89,15 @@ export function prepareJsonProcess(jsonData) {
 }
 
 export function commitPreparedJsonProcess(preparedJson) {
-  if (!preparedJson?.success) return false;
+  if (
+    !preparedJson?.success ||
+    preparedJson.requiresLossyRepair ||
+    !preparedJson.data ||
+    !Array.isArray(preparedJson.imagePaths) ||
+    !preparedJson.classKeys
+  ) {
+    return false;
+  }
 
   datasetState.dataset = preparedJson.data;
   datasetState.jsonFilePath = preparedJson.path;

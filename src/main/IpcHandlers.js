@@ -101,8 +101,8 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('save-json-file', async (_event, data) => {
     try {
-      await saveJsonFileAtomically(data);
-      return { success: true };
+      const result = await saveJsonFileAtomically(data);
+      return { success: true, ...result };
     } catch (error) {
       console.error('Failed to save JSON:', error.message);
       return { success: false, error: error.message };
