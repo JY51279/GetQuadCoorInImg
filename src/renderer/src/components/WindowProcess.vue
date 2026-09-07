@@ -29,7 +29,9 @@
           <div class="fileInfo-style">产品类型: {{ loadedProductType || '未加载' }}</div>
           <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
           <div class="fileInfo-style">图片: {{ imgFileName }}</div>
-          <div class="fileInfo-style">图片次序: <br />{{ picInfo.picNum }} / {{ picInfo.picTotalNum }}</div>
+          <div class="fileInfo-style">
+            图片次序: <br />{{ imagePositionView.currentIndex + 1 }} / {{ imagePositionView.total }}
+          </div>
           <div class="fileInfo-style">
             跳转到图片:
             <div class="image-index-jump">
@@ -39,15 +41,15 @@
                 type="number"
                 min="1"
                 step="1"
-                :max="picInfo.picTotalNum || undefined"
-                :placeholder="picInfo.picTotalNum ? `1-${picInfo.picTotalNum}` : '无数据'"
-                :disabled="picInfo.picTotalNum === 0 || !canLoadImage"
+                :max="imagePositionView.total || undefined"
+                :placeholder="imagePositionView.total ? `1-${imagePositionView.total}` : '无数据'"
+                :disabled="imagePositionView.total === 0 || !canLoadImage"
                 aria-label="图片 index"
                 @keydown.enter.prevent="jumpToImageIndex"
               />
               <button
                 class="image-index-button"
-                :disabled="picInfo.picTotalNum === 0 || !canLoadImage"
+                :disabled="imagePositionView.total === 0 || !canLoadImage"
                 @click="jumpToImageIndex"
               >
                 跳转
@@ -68,7 +70,11 @@
       </div>
       <div class="button-group">
         <button class="button-style" :disabled="!canLoadDataset" @click="chooseJsonFile">Get JsonFile</button>
-        <button class="button-style" :disabled="picInfo.picTotalNum === 0 || !canLoadImage" @click="chooseImgFile">
+        <button
+          class="button-style"
+          :disabled="imagePositionView.total === 0 || !canLoadImage"
+          @click="chooseImgFile"
+        >
           手动选择图片
         </button>
         <button class="button-style" :disabled="!canOperate" @click="modifyJsonItem">Mod JsonItem</button>
@@ -101,7 +107,7 @@ import {
   getJsonImageDialogContext,
   getJsonImageTarget,
   updateJson,
-  getJsonPicNum,
+  getJsonImagePosition,
   getJsonFileInfo,
   resetPicJson,
   resetJsonNoValue,
@@ -142,7 +148,7 @@ const zoomView = ref(null);
 const activeQuadIndex = ref(-1);
 const annotationView = ref({ formattedItems: [], quads: [], errorMessage: '' });
 const quadTotal = computed(() => annotationView.value.formattedItems.length);
-const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
+const imagePositionView = ref({ currentIndex: -1, total: 0 });
 const jumpImageIndex = ref('');
 const selectedDots = reactive([]);
 const imageObj = ref(new Image());
@@ -461,6 +467,12 @@ function clearMessage() {
   notifications.value = [];
 }
 
+function refreshImagePositionView() {
+  const position = getJsonImagePosition();
+  imagePositionView.value = position;
+  return position;
+}
+
 // Dataset and image initialization
 async function initProcessInfo(jsonImageIndex = null) {
   try {
@@ -478,7 +490,7 @@ async function initProcessInfo(jsonImageIndex = null) {
           ? `No JSON data found for image path:\n${imgFilePath}`
           : 'No JSON data found for the current image.',
       );
-      picInfo.picNum = 0;
+      refreshImagePositionView();
       jumpImageIndex.value = '';
       return false;
     }
@@ -491,10 +503,8 @@ async function initProcessInfo(jsonImageIndex = null) {
     imgContainerRef.value.refreshHoveredQuad();
     await nextTick();
 
-    const { picNum, picTotalNum } = getJsonPicNum();
-    picInfo.picNum = picNum;
-    picInfo.picTotalNum = picTotalNum;
-    jumpImageIndex.value = picNum;
+    const position = refreshImagePositionView();
+    jumpImageIndex.value = position.currentIndex + 1;
     return true;
   } catch (error) {
     console.error(`Error name: ${error.name}`);
@@ -526,7 +536,7 @@ function chooseImgFile() {
     outputMessage(workflowBusy.value ? 'Please wait for the current operation to finish.' : 'No dataset is available.');
     return;
   }
-  if (picInfo.picTotalNum === 0) {
+  if (getJsonImagePosition().total === 0) {
     outputMessage('Please load a JSON dataset with image items first.');
     return;
   }
@@ -583,8 +593,9 @@ function jumpToImageIndex() {
   }
 
   const pictureNumber = Number(inputValue);
-  if (!Number.isSafeInteger(pictureNumber) || pictureNumber < 1 || pictureNumber > picInfo.picTotalNum) {
-    outputMessage(`Image index must be between 1 and ${picInfo.picTotalNum}.`);
+  const { total } = getJsonImagePosition();
+  if (!Number.isSafeInteger(pictureNumber) || pictureNumber < 1 || pictureNumber > total) {
+    outputMessage(`Image index must be between 1 and ${total}.`);
     return;
   }
 
@@ -666,13 +677,14 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
     WORKFLOW_PHASE.READY,
   );
   if (canRestorePreviousImage) {
-    jumpImageIndex.value = picInfo.picNum || '';
+    const position = refreshImagePositionView();
+    jumpImageIndex.value = position.currentIndex >= 0 ? position.currentIndex + 1 : '';
     imageLoadError.value = null;
   } else {
     imageObj.value = null;
     imgFileName.value = '';
     imgFilePath = '';
-    picInfo.picNum = 0;
+    refreshImagePositionView();
     jumpImageIndex.value = '';
     imageLoadError.value = {
       path: failedPath,
@@ -731,14 +743,13 @@ async function handleOpenPicFileResponse(_event, response) {
   }
 }
 
-function resetImageForDatasetChange(picTotalNum = 0) {
+function resetImageForDatasetChange() {
   imageObj.value = null;
   imgFileName.value = '';
   imgFilePath = '';
   imageLoadError.value = null;
   resetImageRequestState();
-  picInfo.picNum = 0;
-  picInfo.picTotalNum = picTotalNum;
+  refreshImagePositionView();
   jumpImageIndex.value = '';
   resetDots();
   imgContainerRef.value.clearImage();
@@ -815,7 +826,7 @@ async function handleChooseJsonFileResponse(_event, response) {
 
       loadedProductType.value = preparedJson.productType;
       jsonFileName.value = jsonData.fileName;
-      resetImageForDatasetChange(preparedJson.data.Picture.length);
+      resetImageForDatasetChange();
       if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
 
       if (preparedJson.data.Picture.length === 0) {

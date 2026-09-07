@@ -144,10 +144,11 @@ export function getCurrentJsonImageIndex() {
   return datasetState.currentImageIndex;
 }
 
-export function getJsonPicNum() {
+export function getJsonImagePosition() {
+  const pictures = datasetState.dataset[ROOT_KEY];
   return {
-    picNum: datasetState.currentImageIndex + 1,
-    picTotalNum: datasetState.dataset[ROOT_KEY].length,
+    currentIndex: datasetState.currentImageIndex,
+    total: Array.isArray(pictures) ? pictures.length : 0,
   };
 }
 
