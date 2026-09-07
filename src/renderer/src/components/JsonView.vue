@@ -2,7 +2,7 @@
   <div ref="jsonContainer" class="json-container">
     <pre class="json-all-container">
       <div
-      v-for="(jsonItem, index) in formattedJsonStrArray"
+      v-for="(jsonItem, index) in formattedItems"
       :key="index"
       :data-json-index="index"
       :class="{ 'highlighted-line': index === activeQuadIndex }"
@@ -11,50 +11,48 @@
     >
       <span>{{ jsonItem }}</span>
     </div></pre>
-    <div v-if="hasPicJsonFailedFetched" class="loading-overlay">
-      <div class="json-error-content">{{ picJsonErrorMessage }}</div>
+    <div v-if="errorMessage" class="loading-overlay">
+      <div class="json-error-content">{{ errorMessage }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { nextTick, ref, watch } from 'vue';
-import { getJsonPerPicStrArray, resetPicJson } from '../state/DatasetState.js';
-import { KEYS } from '../utils/BasicFuncs.js';
-// eslint-disable-next-line no-unused-vars
 
 defineExpose({
-  //暴露想要传递的值或方法
-  updateLightIndex,
-  initJsonInfo,
-  modifyJsonItem,
-  deleteJsonItem,
-  addJsonItem,
+  scrollToBottom,
 });
 const props = defineProps({
   activeQuadIndex: {
     type: Number,
     default: -1,
   },
+  formattedItems: {
+    type: Array,
+    default: () => [],
+  },
+  errorMessage: {
+    type: String,
+    default: '',
+  },
 });
-const emits = defineEmits(['select-quad-index', 'update-quad-total', 'init-show-quads']);
+const emits = defineEmits(['select-quad-index']);
 
-let jsonPerPicArray = [];
-const formattedJsonStrArray = ref([]);
 const jsonContainer = ref(null);
 
 watch(
   () => props.activeQuadIndex,
   (newIndex, oldIndex) => {
     if (oldIndex === newIndex) return;
-    if (newIndex > -1 && newIndex < jsonPerPicArray.length) {
+    if (newIndex > -1 && newIndex < props.formattedItems.length) {
       ensureHighlightVisible();
     }
   },
 );
 function selectQuadIndex(newIndex) {
   const normalizedIndex =
-    Number.isInteger(newIndex) && newIndex >= 0 && newIndex < jsonPerPicArray.length ? newIndex : -1;
+    Number.isInteger(newIndex) && newIndex >= 0 && newIndex < props.formattedItems.length ? newIndex : -1;
   emits('select-quad-index', normalizedIndex);
 }
 
@@ -83,58 +81,6 @@ async function scrollToBottom() {
   if (container) {
     container.scrollTop = container.scrollHeight;
   }
-}
-function modifyJsonItem() {
-  updateJsonPerPicArray();
-}
-function deleteJsonItem() {
-  updateJsonPerPicArray();
-  //scrollToBottom();
-}
-function addJsonItem() {
-  updateJsonPerPicArray();
-  scrollToBottom();
-}
-
-function updateLightIndex(direction) {
-  if (direction === KEYS.NEXT) {
-    selectQuadIndex(Math.min(props.activeQuadIndex + 1, jsonPerPicArray.length));
-  } else if (direction === KEYS.PREVIOUS) {
-    selectQuadIndex(Math.max(props.activeQuadIndex - 1, -1));
-  }
-}
-function updateJsonPerPicArray() {
-  formattedJsonStrArray.value = getJsonPerPicStrArray();
-  const jsonArrayTmp = [];
-  for (let i = 0; i < formattedJsonStrArray.value.length; i++)
-    jsonArrayTmp.push(JSON.parse(formattedJsonStrArray.value[i]));
-  jsonPerPicArray = jsonArrayTmp;
-  emits('update-quad-total', jsonPerPicArray.length);
-  emits('select-quad-index', -1);
-  emits('init-show-quads');
-}
-
-const hasPicJsonFailedFetched = ref(false);
-const picJsonErrorMessage = ref('');
-function initJsonInfo(imgFilePath, jsonImageIndex = null) {
-  if (!resetPicJson(imgFilePath, jsonImageIndex)) {
-    formattedJsonStrArray.value = [];
-    jsonPerPicArray = [];
-    hasPicJsonFailedFetched.value = true;
-    picJsonErrorMessage.value = imgFilePath
-      ? `No JSON data found for image path:\n${imgFilePath}`
-      : 'No JSON data found for the current image.';
-    emits('update-quad-total', 0);
-    emits('select-quad-index', -1);
-    emits('init-show-quads');
-    return false;
-  }
-
-  hasPicJsonFailedFetched.value = false;
-  picJsonErrorMessage.value = '';
-
-  updateJsonPerPicArray();
-  return true;
 }
 </script>
 

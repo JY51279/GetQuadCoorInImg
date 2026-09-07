@@ -151,21 +151,13 @@ export function getJsonPicNum() {
   };
 }
 
-export function getJsonPerPicPointsArray() {
-  let jsonPerPicPointsArray = [];
-  for (let i = 0; i < datasetState.currentItems.length; i++) {
-    const strTmp = datasetState.currentItems[i][datasetState.productSchema.ItemKey];
-    const pointsTmp = parsePointString2Array(strTmp, POINT_SEPARATOR);
-    jsonPerPicPointsArray.push(pointsTmp);
-  }
-  return jsonPerPicPointsArray;
-}
-export function getJsonPerPicStrArray() {
-  let jsonPerPicStrArray = [];
-  for (let i = 0; i < datasetState.currentItems.length; i++) {
-    jsonPerPicStrArray.push(transJson2Str(datasetState.currentItems[i]));
-  }
-  return jsonPerPicStrArray;
+export function getCurrentAnnotationView() {
+  return {
+    formattedItems: datasetState.currentItems.map(item => transJson2Str(item)),
+    quads: datasetState.currentItems.map(item =>
+      parsePointString2Array(item[datasetState.productSchema.ItemKey], POINT_SEPARATOR),
+    ),
+  };
 }
 export function getJsonFileInfo() {
   return {

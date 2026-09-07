@@ -54,7 +54,7 @@
               </button>
             </div>
           </div>
-          <div class="fileInfo-style">矩形次序: <br />{{ activeQuadIndex + 1 }} / {{ quadInfo.quadTotal }}</div>
+          <div class="fileInfo-style">矩形次序: <br />{{ activeQuadIndex + 1 }} / {{ quadTotal }}</div>
         </div>
         <div class="dotsArea-style">
           <div v-for="(item, index) in selectedDots" :key="index" class="dots">
@@ -80,9 +80,9 @@
     <JsonView
       ref="jsonView"
       :active-quad-index="activeQuadIndex"
+      :formatted-items="annotationView.formattedItems"
+      :error-message="annotationView.errorMessage"
       @select-quad-index="selectQuadIndex"
-      @update-quad-total="updateQuadTotal"
-      @init-show-quads="initShowQuads"
     ></JsonView>
   </div>
 </template>
@@ -96,13 +96,14 @@ import {
   prepareJsonProcess,
   commitPreparedJsonProcess,
   getAdjacentJsonImageTarget,
+  getCurrentAnnotationView,
   getCurrentJsonImageIndex,
   getJsonImageDialogContext,
   getJsonImageTarget,
   updateJson,
   getJsonPicNum,
   getJsonFileInfo,
-  getJsonPerPicPointsArray,
+  resetPicJson,
   resetJsonNoValue,
   createDatasetMutationSnapshot,
   restoreDatasetMutationSnapshot,
@@ -138,8 +139,9 @@ const jsonView = ref(null);
 const zoomView = ref(null);
 
 // Dataset and current image state
-const quadInfo = reactive({ quadTotal: 0 });
 const activeQuadIndex = ref(-1);
+const annotationView = ref({ formattedItems: [], quads: [], errorMessage: '' });
+const quadTotal = computed(() => annotationView.value.formattedItems.length);
 const picInfo = reactive({ picNum: 0, picTotalNum: 0 });
 const jumpImageIndex = ref('');
 const selectedDots = reactive([]);
@@ -183,18 +185,13 @@ function applyWorkflowTransition(result) {
 
 function selectQuadIndex(newIndex) {
   if (!canChangeQuadSelection(workflowState.value)) return;
-  const normalizedIndex = Number.isInteger(newIndex) && newIndex >= 0 && newIndex < quadInfo.quadTotal ? newIndex : -1;
+  const normalizedIndex = Number.isInteger(newIndex) && newIndex >= 0 && newIndex < quadTotal.value ? newIndex : -1;
 
   activeQuadIndex.value = normalizedIndex;
 }
 
 function resetQuadSelection() {
   activeQuadIndex.value = -1;
-}
-
-function updateQuadTotal(newTotal) {
-  quadInfo.quadTotal = Number.isInteger(newTotal) && newTotal >= 0 ? newTotal : 0;
-  if (activeQuadIndex.value >= quadInfo.quadTotal) resetQuadSelection();
 }
 
 function handleWindowMouseMove(e) {
@@ -323,7 +320,11 @@ function clearOneDot(index) {
 
 function changeJsonItemSelection(direction) {
   if (!canOperate.value) return;
-  jsonView.value.updateLightIndex(direction);
+  if (direction === KEYS.NEXT) {
+    selectQuadIndex(Math.min(activeQuadIndex.value + 1, quadTotal.value));
+  } else if (direction === KEYS.PREVIOUS) {
+    selectQuadIndex(Math.max(activeQuadIndex.value - 1, -1));
+  }
 }
 
 function resetPosition() {
@@ -378,7 +379,7 @@ async function runSaveTransaction(mutate, onSaved = () => {}) {
       if (!restoreDatasetMutationSnapshot(datasetSnapshot)) {
         outputMessage('Failed to restore JSON state after the save error. Please reload the dataset.');
         completionPhase = WORKFLOW_PHASE.DATASET_READY;
-        resetQuadSelection();
+        clearCurrentAnnotations('JSON state is unavailable. Please reload the dataset.');
       }
       return false;
     }
@@ -404,17 +405,8 @@ async function performJsonAction(action) {
       return updateJsonRes === KEYS.OPERATE_SUCCESS ? null : updateJsonRes;
     },
     () => {
-      switch (action) {
-        case KEYS.JSON_ADD:
-          jsonView.value.addJsonItem();
-          break;
-        case KEYS.JSON_DELETE:
-          jsonView.value.deleteJsonItem();
-          break;
-        case KEYS.JSON_MODIFY:
-          jsonView.value.modifyJsonItem();
-          break;
-      }
+      refreshCurrentAnnotations();
+      if (action === KEYS.JSON_ADD) nextTick(() => jsonView.value?.scrollToBottom());
       resetDots();
     },
   );
@@ -435,7 +427,10 @@ function modifyJsonItem() {
 async function resetJsonValue() {
   await runSaveTransaction(
     () => (resetJsonNoValue() ? null : 'Reset No. failed!'),
-    () => outputMessage('Reset No. successfully.'),
+    () => {
+      refreshCurrentAnnotations();
+      outputMessage('Reset No. successfully.');
+    },
   );
 }
 
@@ -477,11 +472,17 @@ async function initProcessInfo(jsonImageIndex = null) {
       if (!(await imgContainerRef.value.initImgInfo())) return false;
     }
 
-    if (!jsonView.value.initJsonInfo(imgFilePath, jsonImageIndex)) {
+    if (!resetPicJson(imgFilePath, jsonImageIndex)) {
+      clearCurrentAnnotations(
+        imgFilePath
+          ? `No JSON data found for image path:\n${imgFilePath}`
+          : 'No JSON data found for the current image.',
+      );
       picInfo.picNum = 0;
       jumpImageIndex.value = '';
       return false;
     }
+    refreshCurrentAnnotations();
 
     // Switching images does not fire mousemove when the pointer stays still.
     // Wait for the new quad overlay, then synchronize its hover selection before
@@ -502,11 +503,22 @@ async function initProcessInfo(jsonImageIndex = null) {
   }
 }
 
-function initShowQuads() {
-  const newShowQuadArray = getJsonPerPicPointsArray();
-  imgContainerRef.value.resetQuadsArray(newShowQuadArray, initImageScale);
+function renderAnnotationQuads() {
+  imgContainerRef.value.resetQuadsArray(annotationView.value.quads, initImageScale);
   clearShowQuads();
   addAll2ShowQuads();
+}
+
+function refreshCurrentAnnotations() {
+  resetQuadSelection();
+  annotationView.value = { ...getCurrentAnnotationView(), errorMessage: '' };
+  renderAnnotationQuads();
+}
+
+function clearCurrentAnnotations(errorMessage = '') {
+  resetQuadSelection();
+  annotationView.value = { formattedItems: [], quads: [], errorMessage };
+  renderAnnotationQuads();
 }
 // Image request lifecycle
 function chooseImgFile() {
@@ -728,10 +740,9 @@ function resetImageForDatasetChange(picTotalNum = 0) {
   picInfo.picNum = 0;
   picInfo.picTotalNum = picTotalNum;
   jumpImageIndex.value = '';
-  resetQuadSelection();
   resetDots();
   imgContainerRef.value.clearImage();
-  jsonView.value.initJsonInfo('');
+  clearCurrentAnnotations();
 }
 
 function chooseJsonFile() {
@@ -854,7 +865,7 @@ function toggleHighlight2ShowQuads() {
   imgContainerRef.value.toggleShowQuadIndex(activeQuadIndex.value);
 }
 function addAll2ShowQuads() {
-  for (let i = 0; i < quadInfo.quadTotal; ++i) {
+  for (let i = 0; i < quadTotal.value; ++i) {
     imgContainerRef.value.addShowQuadIndex(i);
   }
 }

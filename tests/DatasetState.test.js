@@ -5,10 +5,10 @@ import {
   commitPreparedJsonProcess,
   createDatasetMutationSnapshot,
   getAdjacentJsonImageTarget,
+  getCurrentAnnotationView,
   getCurrentJsonImageIndex,
   getJsonFileInfo,
   getJsonImageTarget,
-  getJsonPerPicPointsArray,
   getJsonPicNum,
   prepareJsonProcess,
   resetPicJson,
@@ -94,6 +94,17 @@ describe('Dataset state operations', () => {
     expect(getJsonPicNum()).toEqual({ picNum: 1, picTotalNum: 2 });
   });
 
+  it('returns a detached annotation view for the current image', () => {
+    loadDbrDataset();
+
+    const annotationView = getCurrentAnnotationView();
+    expect(annotationView.formattedItems).toHaveLength(1);
+    expect(annotationView.quads).toHaveLength(1);
+
+    annotationView.quads[0][0].x = 999;
+    expect(getCurrentAnnotationView().quads[0][0].x).toBe(0);
+  });
+
   it('navigates images with wrapping and rejects invalid targets', () => {
     loadDbrDataset();
 
@@ -154,7 +165,7 @@ describe('Dataset state operations', () => {
     loadDbrDataset();
 
     expect(updateJson(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }])).toBe(KEYS.OPERATE_SUCCESS);
-    const points = getJsonPerPicPointsArray()[0];
+    const points = getCurrentAnnotationView().quads[0];
     expect(points).toContainEqual({ x: 9, y: 1 });
     expect(points).not.toContainEqual({ x: 10, y: 0 });
     expect(points).toEqual(
@@ -172,7 +183,7 @@ describe('Dataset state operations', () => {
 
     expect(resetPicJson('C:/images/two.png', 1)).toBe(true);
     expect(updateJson(KEYS.JSON_MODIFY, 1, 0, [{ x: 1, y: 9 }])).toBe(KEYS.OPERATE_SUCCESS);
-    expect(getJsonPerPicPointsArray()[0]).toContainEqual({ x: 1, y: 9 });
+    expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 1, y: 9 });
   });
 
   it('adds and deletes annotations while keeping the item count synchronized', () => {

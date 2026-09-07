@@ -392,7 +392,9 @@ function isValidQuadPoints(quadPoints) {
 }
 
 function resetQuadsArray(newQuadArray, initImageScale) {
-  quadsArray = Array.isArray(newQuadArray) ? newQuadArray : [];
+  quadsArray = Array.isArray(newQuadArray)
+    ? newQuadArray.map(quad => (Array.isArray(quad) ? quad.map(dot => ({ ...dot })) : quad))
+    : [];
   quadsArray.forEach(quad => {
     if (!isValidQuadPoints(quad)) return;
     quad.forEach(dot => {
