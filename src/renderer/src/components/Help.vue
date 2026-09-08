@@ -77,6 +77,11 @@
     </div>
 
     <div class="keyCombination">
+      <div class="key">f</div>
+      <div class="keyText">居中并聚焦当前四边形</div>
+    </div>
+
+    <div class="keyCombination">
       <div class="key">Ctrl</div>
       <div class="key">r</div>
       <div class="keyText">重置数据No.值</div>

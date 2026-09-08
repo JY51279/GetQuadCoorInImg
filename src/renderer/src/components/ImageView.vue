@@ -92,6 +92,7 @@ import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from
 import { useMouse, useMousePressed } from '@vueuse/core';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 import {
+  calculateQuadFocusTransform,
   canvasToImagePoint,
   imageToCanvasPoint,
   imageToScaledPoint,
@@ -188,6 +189,7 @@ defineExpose({
   refreshHoveredQuad,
   toggleMode,
   clearImage,
+  focusQuad,
 });
 
 function outputMessage(message) {
@@ -733,6 +735,26 @@ function resetPosition() {
   offsetX.value = 0;
   offsetY.value = 0;
   updateViewPortDraw();
+}
+
+function focusQuad(quadIndex) {
+  if (imageSrc === '') return { success: false, error: 'No image is available.' };
+  if (!Number.isInteger(quadIndex) || quadIndex < 0 || quadIndex >= quadsArray.length) {
+    return { success: false, error: 'No active Quad is available.' };
+  }
+
+  const transform = calculateQuadFocusTransform(quadsArray[quadIndex], {
+    viewportWidth: viewportWidth.value,
+    viewportHeight: viewportHeight.value,
+  });
+  if (transform === null) return { success: false, error: 'The active Quad has invalid coordinates.' };
+
+  cancelScheduledViewPortDraw();
+  scale.value = transform.scale;
+  offsetX.value = transform.offsetX;
+  offsetY.value = transform.offsetY;
+  drawViewPortNow();
+  return { success: true };
 }
 
 function clearDots() {

@@ -1,6 +1,7 @@
 /* global globalThis */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  calculateQuadFocusTransform,
   canvasToImagePoint,
   imageToCanvasPoint,
   imageToScaledPoint,
@@ -57,6 +58,60 @@ describe('Image view geometry', () => {
     expect(canvasPoint).toEqual({ x: 149, y: 102 });
     expect(canvasToImagePoint(canvasPoint, transform)).toEqual(imagePoint);
     expect(scaledToCanvasPoint({ x: 120, y: 80 }, transform)).toEqual(canvasPoint);
+  });
+
+  it('fits a Quad and its context into 75 percent of the limiting viewport dimension', () => {
+    const result = calculateQuadFocusTransform(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 50 },
+        { x: 0, y: 50 },
+      ],
+      { viewportWidth: 1000, viewportHeight: 800 },
+    );
+
+    expect(result).toEqual({
+      scale: 5,
+      offsetX: 250,
+      offsetY: 275,
+      focusBounds: { left: -25, right: 125, top: -25, bottom: 75 },
+    });
+  });
+
+  it('centers a distant small Quad while accounting for pixel-grid spacing', () => {
+    const quad = [
+      { x: 1000, y: 600 },
+      { x: 1010, y: 600 },
+      { x: 1010, y: 610 },
+      { x: 1000, y: 610 },
+    ];
+    const result = calculateQuadFocusTransform(quad, { viewportWidth: 1000, viewportHeight: 800 });
+    const visualPixelSize = result.scale + 1;
+    const sourceLeft = Math.floor(Math.max(0, -result.offsetX) / result.scale);
+    const sourceTop = Math.floor(Math.max(0, -result.offsetY) / result.scale);
+    const centeredX = 1005 * result.scale + (1005 - sourceLeft) + result.offsetX;
+    const centeredY = 605 * result.scale + (605 - sourceTop) + result.offsetY;
+
+    expect(result.scale).toBeGreaterThanOrEqual(10);
+    expect((result.focusBounds.bottom - result.focusBounds.top) * visualPixelSize).toBeCloseTo(800 * 0.75);
+    expect(centeredX).toBeCloseTo(500);
+    expect(centeredY).toBeCloseTo(400);
+  });
+
+  it('rejects invalid Quad focus input', () => {
+    expect(calculateQuadFocusTransform([], { viewportWidth: 1000, viewportHeight: 800 })).toBeNull();
+    expect(
+      calculateQuadFocusTransform(
+        [
+          { x: 0, y: 0 },
+          { x: 1, y: 0 },
+          { x: 1, y: Number.NaN },
+          { x: 0, y: 1 },
+        ],
+        { viewportWidth: 1000, viewportHeight: 800 },
+      ),
+    ).toBeNull();
   });
 });
 

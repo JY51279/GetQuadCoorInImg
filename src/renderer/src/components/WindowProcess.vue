@@ -77,6 +77,7 @@
         >
           手动选择图片
         </button>
+        <button class="button-style" :disabled="!canFocusQuad" @click="focusActiveQuad">Focus Quad (F)</button>
         <button class="button-style" :disabled="!canOperate" @click="modifyJsonItem">Mod JsonItem</button>
         <button class="button-style" :disabled="!canOperate" @click="deleteJsonItem">Del JsonItem</button>
         <button class="button-style" :disabled="!canOperate" @click="addJsonItem">Add JsonItem</button>
@@ -166,6 +167,9 @@ const canLoadDataset = computed(() => canStartOperation(workflowState.value, WOR
 const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(imageObj.value?.src));
+const canFocusQuad = computed(
+  () => canInteractWithImage.value && activeQuadIndex.value >= 0 && activeQuadIndex.value < quadTotal.value,
+);
 const imageLoadError = ref(null);
 let activeImageRequest = null;
 let imageAttemptCounter = 0;
@@ -243,6 +247,12 @@ const keyActions = {
     default: () => resetPosition(),
     ctrl: () => resetJsonValue(),
   },
+  f: {
+    default: () => focusActiveQuad(),
+  },
+  F: {
+    default: () => focusActiveQuad(),
+  },
   q: {
     default: () => toggleHighlight2ShowQuads(),
     ctrl: () => clearShowQuads(),
@@ -270,6 +280,7 @@ const keyActions = {
 function handleKeyDown(e) {
   const tagName = e.target?.tagName;
   if (e.target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(tagName)) return;
+  if (typeof e.key === 'string' && e.key.toLowerCase() === 'f' && (e.ctrlKey || e.altKey || e.metaKey)) return;
 
   const keyCode = e.keyCode || e.code;
 
@@ -330,6 +341,15 @@ function changeJsonItemSelection(direction) {
 
 function resetPosition() {
   imgContainerRef.value.resetPosition();
+}
+
+function focusActiveQuad() {
+  if (!canFocusQuad.value) {
+    outputMessage('Please activate a Quad before focusing it.');
+    return;
+  }
+  const result = imgContainerRef.value?.focusQuad(activeQuadIndex.value);
+  if (!result?.success) outputMessage(result?.error || 'Failed to focus the active Quad.');
 }
 
 function resetDots() {
