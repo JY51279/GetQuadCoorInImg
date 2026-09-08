@@ -1,17 +1,24 @@
 <template>
   <div ref="jsonContainer" class="json-container">
-    <pre class="json-all-container">
-      <div
-      v-for="(jsonItem, index) in formattedItems"
-      :key="index"
-      :data-json-index="index"
-      :class="{ 'highlighted-line': index === activeQuadIndex }"
-      class="json-item-container"
-      @mouseenter="selectQuadIndex(index)"
-    >
-      <span>{{ jsonItem }}</span>
-    </div></pre>
-    <div v-if="errorMessage" class="loading-overlay">
+    <div v-if="formattedItems.length" class="json-list" role="listbox" aria-label="Quad 标注列表">
+      <button
+        v-for="(jsonItem, index) in formattedItems"
+        :key="index"
+        type="button"
+        role="option"
+        :data-json-index="index"
+        :aria-selected="index === activeQuadIndex"
+        :class="{ active: index === activeQuadIndex }"
+        class="json-item-container"
+        @mouseenter="selectQuadIndex(index)"
+        @click="selectQuadIndex(index)"
+      >
+        <span class="json-index">{{ index + 1 }}</span>
+        <code>{{ jsonItem }}</code>
+      </button>
+    </div>
+    <div v-else-if="!errorMessage" class="json-empty">当前图片没有 Quad 标注</div>
+    <div v-if="errorMessage" class="json-error-overlay">
       <div class="json-error-content">{{ errorMessage }}</div>
     </div>
   </div>
@@ -87,45 +94,88 @@ async function scrollToBottom() {
 <style scoped>
 .json-container {
   position: relative;
-  width: calc(25%);
-  /*20*2 + 120 + 2((1)*2) + 4(blankSpace)*/
-  height: calc(100%);
-  margin-left: auto;
+  min-height: 0;
   overflow: auto;
-  border: 2px solid gray;
-}
-.json-all-container {
-  display: inline-flex; /* 或者 display: inline-flex; */
-  flex-direction: column;
-}
-.highlighted-line {
-  background-color: #ffff006b; /* Yellow color with some transparency */
-}
-.json-item-container {
-  display: inline-flex; /* 或者 display: inline-flex; */
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-muted);
 }
 
-.loading-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+.json-list {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+}
+
+.json-item-container {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.json-item-container:hover {
+  background: var(--surface-hover);
+}
+
+.json-item-container.active {
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+.json-index {
+  display: grid;
+  place-items: center;
+  min-height: 20px;
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font: 600 10px/1 var(--font-ui);
+}
+
+.json-item-container.active .json-index {
+  background: var(--accent);
   color: white;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+}
+
+.json-item-container code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: 11px/1.45 var(--font-mono);
+}
+
+.json-empty,
+.json-error-overlay {
+  display: grid;
+  min-height: 140px;
+  place-items: center;
   box-sizing: border-box;
   padding: 24px;
+  color: var(--text-muted);
+  font-size: 12px;
   text-align: center;
 }
 
+.json-error-overlay {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  color: var(--danger);
+}
+
 .json-error-content {
-  max-width: 100%;
   line-height: 1.5;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
-  word-break: break-word;
+  white-space: pre-wrap;
 }
 </style>

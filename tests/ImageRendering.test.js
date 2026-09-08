@@ -4,6 +4,7 @@ import {
   calculatePixelFocusTransform,
   calculateQuadFocusTransform,
   canvasToImagePoint,
+  clientToLocalPoint,
   imageToCanvasPoint,
   imageToScaledPoint,
   normalizeScale,
@@ -42,6 +43,14 @@ function getFocusedOuterQuadBounds(quad, focusTransform, gridLimit = 10) {
 }
 
 describe('Image view geometry', () => {
+  it('converts window client coordinates into viewport-local coordinates', () => {
+    expect(clientToLocalPoint({ x: 425, y: 218 }, { left: 100, top: 40 }, { left: 1, top: 2 })).toEqual({
+      x: 324,
+      y: 176,
+    });
+    expect(clientToLocalPoint({ x: Number.NaN, y: 0 }, { left: 0, top: 0 })).toBeNull();
+  });
+
   it('keeps scale values finite and inside the supported range', () => {
     expect(normalizeScale('2.5')).toBe(2.5);
     expect(normalizeScale(-2)).toBe(0.1);

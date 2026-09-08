@@ -1,252 +1,132 @@
 <template>
-  <img class="helpIcon" src="../assets/help_outline_black_24dp.svg" @click="isShow = !isShow" />
+  <section class="help-panel">
+    <header class="help-header">
+      <span class="eyebrow">键盘操作</span>
+      <h2>快捷键帮助</h2>
+      <p>标注快捷键在输入框聚焦时不会触发；长按只执行一次。</p>
+    </header>
 
-  <div
-    v-if="isShow"
-    class="helpContainer"
-    :style="`transform: translate(${offsetX}px, ${offsetY}px);
-                  transform-origin: 0% 0%;
-                  `"
-    @mousedown="dragStart"
-    @mousemove="drag"
-    @mouseup="dragEnd"
-    @mouseleave="dragEnd"
-  >
-    <img class="closeIcon" src="../assets/close_black_24dp.svg" @click="isShow = false" />
-
-    <div class="keyCombination">
-      <div class="key">w</div>
-      <div style="margin-left: 1px">/</div>
-      <div class="key">↑</div>
-      <div class="keyText">上一个Json项</div>
+    <div class="shortcut-groups">
+      <section v-for="group in groups" :key="group.title" class="shortcut-group">
+        <h3>{{ group.title }}</h3>
+        <dl>
+          <div v-for="item in group.items" :key="`${group.title}-${item.label}`" class="shortcut-row">
+            <dt>
+              <template v-for="(key, index) in item.keys" :key="`${item.label}-${key}-${index}`">
+                <span v-if="index > 0" class="key-separator">{{ item.separator || '+' }}</span>
+                <kbd>{{ key }}</kbd>
+              </template>
+            </dt>
+            <dd>{{ item.label }}</dd>
+          </div>
+        </dl>
+      </section>
     </div>
 
-    <div class="keyCombination">
-      <div class="key">s</div>
-      <div style="margin-left: 1px">/</div>
-      <div class="key">↓</div>
-      <div class="keyText">下一个Json项</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">a</div>
-      <div style="margin-left: 1px">/</div>
-      <div class="key">←</div>
-      <div class="keyText">上一张图片</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">d</div>
-      <div style="margin-left: 1px">/</div>
-      <div class="key">→</div>
-      <div class="keyText">下一张图片</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">Ctrl</div>
-      <div class="key">s</div>
-      <div class="keyText">修改高亮Json项</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">Ctrl</div>
-      <div class="key">d</div>
-      <div class="keyText">删除高亮Json项</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">Ctrl</div>
-      <div class="key">a</div>
-      <div class="keyText">在尾部添加Json项</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">c</div>
-      <div class="keyText">清空信息</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">Ctrl</div>
-      <div class="key">c</div>
-      <div class="keyText">清空标点</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">r</div>
-      <div class="keyText">重置图片位置</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">f</div>
-      <div class="keyText">居中并聚焦当前四边形</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">z</div>
-      <div class="keyText">居中并放大鼠标所在像素</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">Ctrl</div>
-      <div class="key">r</div>
-      <div class="keyText">重置数据No.值</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">q</div>
-      <div class="keyText">高亮四边形是/否显示</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">Ctrl</div>
-      <div class="key">q</div>
-      <div class="keyText">清空显示的四边形</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">Ctrl</div>
-      <div class="key">Shift</div>
-      <div class="key">q</div>
-      <div class="keyText">显示所有四边形</div>
-    </div>
-
-    <div class="keyCombination">
-      <div class="key">Tab</div>
-      <div class="keyText">切换模式</div>
-    </div>
-  </div>
+    <p class="help-footer"><kbd>F1</kbd> 或 <kbd>Esc</kbd> 返回上一页</p>
+  </section>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
-
-const isShow = ref(false);
-// eslint-disable-next-line no-unused-vars
-watch(isShow, newIsShow => {
-  if (newIsShow === false) {
-    offsetX.value = -250;
-    offsetY.value = -250;
-  }
+defineProps({
+  groups: {
+    type: Array,
+    default: () => [],
+  },
 });
-
-let isDragging = ref(false);
-const offsetX = ref(-250);
-const offsetY = ref(-250);
-let oldMouseX = 0;
-let oldMouseY = 0;
-function dragStart(e) {
-  isDragging.value = true;
-  document.querySelector('.helpContainer').style.cursor = 'move';
-  oldMouseX = e.clientX;
-  oldMouseY = e.clientY;
-}
-
-function drag(e) {
-  if (isDragging.value) {
-    offsetX.value += e.clientX - oldMouseX;
-    offsetY.value += e.clientY - oldMouseY;
-    oldMouseX = e.clientX;
-    oldMouseY = e.clientY;
-  }
-}
-
-function dragEnd() {
-  isDragging.value = false;
-  document.querySelector('.helpContainer').style.cursor = 'auto';
-}
 </script>
 
 <style scoped>
-.helpIcon {
-  margin-bottom: 10px;
-
-  width: 30px;
-
-  height: 30px;
-
-  cursor: pointer;
+.help-panel {
+  min-height: 0;
+  overflow-y: auto;
 }
 
-.helpContainer {
-  position: fixed;
-
-  background-color: #f0f0f0; /* 淡灰色 */
-
-  border: 2px solid #333333; /* 深灰色 */
-
-  top: 50%;
-
-  left: 50%;
-
-  transform: translate(-50%, -50%);
-
-  width: 500px;
-
-  height: 500px;
-
-  border-radius: 8px;
-
-  z-index: 9999;
-
-  display: flex;
-
-  flex-direction: column;
-
-  padding: 20px;
+.help-header {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.closeIcon {
-  position: absolute;
-
-  top: 10px;
-
-  cursor: pointer;
-
-  right: 10px;
-
-  background-size: cover;
-
-  pointer-events: all;
-
-  z-index: 9999;
+.help-header h2 {
+  margin: 4px 0 8px;
+  color: var(--text-primary);
+  font-size: 20px;
 }
 
-.keyCombination {
-  position: relative;
+.eyebrow {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 
-  display: flex;
+.help-header p,
+.help-footer {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
 
-  column-gap: 4px;
+.shortcut-groups {
+  display: grid;
+  gap: 22px;
+  padding: 20px 0;
+}
 
+.shortcut-group h3 {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shortcut-group dl {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(104px, 0.9fr) minmax(130px, 1.1fr);
+  gap: 14px;
   align-items: center;
+  min-height: 32px;
+  padding: 5px 8px;
+  border-radius: 6px;
 }
-.keyCombination > * {
-  margin-bottom: 4px;
+
+.shortcut-row:hover {
+  background: var(--surface-hover);
 }
-.keyText {
-  position: absolute;
 
-  margin-left: 30%;
-}
-.key {
-  border-radius: 4px;
-
-  padding: 4px;
-
-  font-size: 14px;
-
-  font-weight: 600;
-
-  background-color: rgb(220, 220, 220);
-
+.shortcut-row dt {
   display: flex;
-
-  color: rgb(0, 0, 0);
-
-  border: 1px solid rgb(180, 180, 180);
-
-  justify-content: center;
-
   align-items: center;
+  min-width: 0;
+}
+
+.shortcut-row dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.key-separator {
+  margin: 0 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.help-footer {
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: var(--surface-muted);
+  text-align: center;
 }
 </style>

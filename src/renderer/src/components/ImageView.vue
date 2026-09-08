@@ -1,101 +1,116 @@
 <template>
-  <div
-    ref="imgContainerRef"
-    class="image-container"
-    @mouseenter="mouseEntered"
-    @mouseleave="mouseLeft"
-    @wheel.prevent="onWheel"
-  >
-    <canvas
-      ref="canvas"
-      :width="viewportWidth + offsetCanvasLeft"
-      :height="viewportHeight + offsetCanvasTop"
-      :style="`transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px);
-                  transform-origin: 0% 0%;
-                  position: absolute;`"
-      @click="toggleDot"
-      @mousemove="updateZoomView"
-    ></canvas>
-    <canvas
-      ref="canvasForShowQuads"
-      :width="viewportWidth + offsetCanvasLeft"
-      :height="viewportHeight + offsetCanvasTop"
-      :style="`transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px);
-                  transform-origin: 0% 0%;
-                  position: absolute;
-                  pointer-events: none;`"
-    ></canvas>
-    <div v-if="isLoading" class="loading-overlay">Loading...</div>
-    <div v-else-if="imageLoadError" class="loading-overlay">
-      <div class="image-error-content">
-        <div class="image-error-title">Failed to load image</div>
-        <div class="image-error-label">Path:</div>
-        <div class="image-error-path">{{ imageLoadError.path || 'Unknown path' }}</div>
-      </div>
-    </div>
+  <section class="canvas-workspace">
     <div
-      v-if="indices2Show"
-      class="str-right-mouse"
-      :style="{ position: 'absolute', top: `${mouseCoord.y - 20}px`, left: `${mouseCoord.x - 5}px` }"
+      ref="imgContainerRef"
+      class="image-container"
+      @mouseenter="mouseEntered"
+      @mouseleave="mouseLeft"
+      @wheel.prevent="onWheel"
     >
-      {{ indices2Show }}
+      <canvas
+        ref="canvas"
+        class="canvas-layer"
+        :width="viewportWidth"
+        :height="viewportHeight"
+        @click="toggleDot"
+        @mousemove="updateZoomView"
+      ></canvas>
+      <canvas
+        ref="canvasForShowQuads"
+        class="canvas-layer quad-layer"
+        :width="viewportWidth"
+        :height="viewportHeight"
+      ></canvas>
+
+      <div v-if="isLoading" class="loading-overlay">正在加载图片…</div>
+      <div v-else-if="imageLoadError" class="loading-overlay">
+        <div class="image-error-content">
+          <div class="image-error-title">图片加载失败</div>
+          <div class="image-error-label">路径</div>
+          <div class="image-error-path">{{ imageLoadError.path || '未知路径' }}</div>
+        </div>
+      </div>
+      <div v-else-if="!canInteract" class="empty-image-state">请先在“图集与图片”页打开图集</div>
+
+      <div
+        v-if="indices2Show"
+        class="str-right-mouse"
+        :style="{ top: `${mouseCoord.y - 24}px`, left: `${mouseCoord.x + 8}px` }"
+      >
+        {{ indices2Show }}
+      </div>
+      <div
+        v-if="hoveredPixelCanvasCoord"
+        class="hovered-pixel"
+        :style="{
+          top: `${hoveredPixelCanvasCoord.y}px`,
+          left: `${hoveredPixelCanvasCoord.x}px`,
+          width: `${scale}px`,
+          height: `${scale}px`,
+        }"
+      ></div>
+      <div
+        v-for="(dot, index) in dotsCanvasCoord"
+        :key="`${index}-${dot.x}-${dot.y}`"
+        class="dot-marker"
+        :style="{
+          top: `${dot.y}px`,
+          left: `${dot.x}px`,
+          width: markerHitSize,
+          height: markerHitSize,
+        }"
+        :aria-label="`删除点 P${index + 1}`"
+        @click.stop="deleteDot(index)"
+      >
+        <span class="dot-pixel" :style="{ transform: `scale(${scale})` }"></span>
+        <span class="dot-label">P{{ index + 1 }}</span>
+      </div>
+      <div
+        v-show="scale < gridLimit"
+        ref="zoomRectangle"
+        class="rectangle"
+        :style="{ transform: `scale(${scale})` }"
+      ></div>
     </div>
-    <div
-      v-for="dot in dotsCanvasCoord"
-      :key="dot.id"
-      class="dot"
-      :style="`
-                transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px) scale(${scale});
-                transform-origin: 0% 0%;
-                top: ${dot.y}px;
-                left: ${dot.x}px;
-                z-index: 9998;
-              `"
-      @click="deleteDot"
-    ></div>
-    <div
-      v-show="scale < gridLimit"
-      ref="zoomRectangle"
-      class="rectangle"
-      :style="`
-                transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px) scale(${scale});
-                transform-origin: 0% 0%;
-                z-index: 9998;
-              `"
-    ></div>
-  </div>
-  <div class="scale" style="display: flex; position: fixed; left: 40px; bottom: 25px; width: calc(50%); z-index: 9999">
-    <input
-      v-if="imageObj"
-      :value="scale"
-      type="number"
-      min="0.1"
-      :max="scaleRange"
-      step="0.1"
-      style="width: 60px"
-      @input="applyScaleInput"
-    />
-    <input
-      v-if="imageObj"
-      :value="scale"
-      type="range"
-      min="1"
-      :max="scaleRange"
-      step="1"
-      style="width: calc(100%)"
-      @input="applyScaleInput"
-    />
-  </div>
+
+    <div class="canvas-scale-bar">
+      <span class="scale-label">缩放</span>
+      <input
+        :value="scale"
+        class="scale-number"
+        type="number"
+        min="0.1"
+        :max="scaleRange"
+        step="0.1"
+        :disabled="!canInteract"
+        aria-label="图片缩放比例"
+        @input="applyScaleInput"
+      />
+      <input
+        :value="scale"
+        class="scale-range"
+        type="range"
+        min="0.1"
+        :max="scaleRange"
+        step="0.1"
+        :disabled="!canInteract"
+        aria-label="调整图片缩放比例"
+        @input="applyScaleInput"
+      />
+      <span class="scale-value">{{ Number(scale).toFixed(1) }}×</span>
+    </div>
+  </section>
 </template>
 
 <script setup>
 import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { useMouse, useMousePressed } from '@vueuse/core';
+import { useMouse, useMousePressed, useResizeObserver } from '@vueuse/core';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 import {
   calculatePixelFocusTransform,
   calculateQuadFocusTransform,
   canvasToImagePoint,
+  clientToLocalPoint,
   imageToCanvasPoint,
   imageToScaledPoint,
   normalizeScale,
@@ -136,11 +151,13 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  hoverSelectMode: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 // Canvas and viewport state
-const offsetCanvasLeft = 22;
-const offsetCanvasTop = 22;
 const gridLimit = 10;
 const scaleRange = 60;
 const autoAdaptBorderDis = 10;
@@ -166,6 +183,8 @@ let viewportDrawFrameId = null;
 
 // Annotation state
 const dotsCanvasCoord = ref([]);
+const hoveredPixelCanvasCoord = ref(null);
+const markerHitSize = computed(() => `${Math.max(scale.value, 8)}px`);
 const realDot2GetZoom = ref({ x: -1, y: -1 });
 let quadsArray = [];
 const highlightQuadIndex = computed(() => props.activeQuadIndex);
@@ -176,7 +195,6 @@ const outerQuadArray = [];
 const mouseIsOverContainer = ref(false);
 const mouseCoord = reactive({ x: 0, y: 0 });
 const indices2Show = ref('');
-let isOverviewMode = false;
 let mouseMoved = false;
 let timer = null;
 let isNotLongPress = true;
@@ -189,7 +207,6 @@ defineExpose({
   clearShowQuadIndex,
   resetQuadsArray,
   redrawQuadOverlay: drawCanvasForShowQuads,
-  toggleMode,
   clearImage,
   focusQuad,
   focusPixelAtMouse,
@@ -197,6 +214,23 @@ defineExpose({
 
 function outputMessage(message) {
   emits('output-message', message);
+}
+
+function getLocalPoint(clientX, clientY) {
+  const container = imgContainerRef.value;
+  if (container === null) return null;
+  return clientToLocalPoint({ x: clientX, y: clientY }, container.getBoundingClientRect(), {
+    left: container.clientLeft,
+    top: container.clientTop,
+  });
+}
+
+function syncMouseCoord(clientX, clientY) {
+  const localPoint = getLocalPoint(clientX, clientY);
+  if (localPoint === null) return null;
+  mouseCoord.x = localPoint.x;
+  mouseCoord.y = localPoint.y;
+  return localPoint;
 }
 
 // Point editing
@@ -210,19 +244,16 @@ function deletePt(ptIndex) {
   return false;
 }
 
-function deleteDot(e) {
+function deleteDot(index) {
   if (!props.canEdit) return;
-  const { existingDotIndex } = getDotInfo(e);
-  if (!deletePt(existingDotIndex)) {
+  if (!deletePt(index)) {
     outputMessage('Error delete the pt in canvas!');
   }
 }
 
 function getDotInfo(e) {
-  let canvasCoord = {
-    x: e.clientX,
-    y: e.clientY,
-  };
+  let canvasCoord = getLocalPoint(e.clientX, e.clientY);
+  if (canvasCoord === null) return null;
   let realCoord = { x: 0, y: 0 };
 
   transCanvas2RealInfo(realCoord, canvasCoord); // 得到原始图片对应坐标
@@ -542,6 +573,8 @@ function updateViewPortDraw() {
 const { x, y } = useMouse();
 const { pressed } = useMousePressed({ target: imgContainerRef });
 watch([x, y], ([newX, newY], [oldX, oldY]) => {
+  syncMouseCoord(newX, newY);
+  if (newX !== oldX || newY !== oldY) mouseMoved = true;
   if (!props.canInteract) return;
   if (pressed.value) {
     updateOffsetMoved(oldX, oldY, newX, newY);
@@ -550,12 +583,14 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
   }
 });
 
-const mouseEntered = () => {
+const mouseEntered = event => {
   mouseIsOverContainer.value = true;
+  syncMouseCoord(event.clientX, event.clientY);
 };
 
 const mouseLeft = () => {
   mouseIsOverContainer.value = false;
+  hoveredPixelCanvasCoord.value = null;
 };
 
 function updateOffsetMoved(oldX, oldY, newX, newY) {
@@ -609,7 +644,7 @@ function updateHoveredQuadInfo(commitSelection = false) {
 }
 
 function emitHoveredQuadSelection(indicesArray, separator) {
-  if (!isOverviewMode) return;
+  if (!props.hoverSelectMode) return;
   const indicesNumberArray = indicesArray.split(separator).map(Number);
   if (indicesNumberArray.length !== 1) {
     emits('select-quad-index', -1);
@@ -617,15 +652,6 @@ function emitHoveredQuadSelection(indicesArray, separator) {
   }
   const targetIndex = indicesNumberArray[0] - 1;
   emits('select-quad-index', targetIndex);
-}
-function toggleMode() {
-  isOverviewMode = !isOverviewMode;
-  if (isOverviewMode) {
-    outputMessage('Enter Overview Mode');
-  } else {
-    outputMessage('Quit Overview Mode');
-  }
-  drawCanvasForShowQuads();
 }
 
 function updateOffsetScaled(oldScale, newScale) {
@@ -690,22 +716,16 @@ watch(pressed, newVal => {
   }
 });
 
-function handleWindowMouseMove(e) {
-  mouseCoord.x = e.clientX;
-  mouseCoord.y = e.clientY;
-  mouseMoved = true;
-}
-
 // Component lifecycle
+useResizeObserver(imgContainerRef, () => {
+  void updateViewSize();
+});
+
 onMounted(() => {
-  updateViewSize();
-  window.addEventListener('resize', updateViewSize);
-  window.addEventListener('mousemove', handleWindowMouseMove);
+  void updateViewSize();
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateViewSize);
-  window.removeEventListener('mousemove', handleWindowMouseMove);
   cancelScheduledViewPortDraw();
   if (timer !== null) {
     clearTimeout(timer);
@@ -734,12 +754,15 @@ function toggleDot(e) {
     return;
   }
 
-  if (!isPointInVisibleImage({ x: e.clientX, y: e.clientY })) {
+  const localPoint = getLocalPoint(e.clientX, e.clientY);
+  if (localPoint === null || !isPointInVisibleImage(localPoint)) {
     outputMessage('The pt is not in the pic.');
     return;
   }
 
-  const { realCoord, existingDotIndex } = getDotInfo(e);
+  const dotInfo = getDotInfo(e);
+  if (dotInfo === null) return;
+  const { realCoord, existingDotIndex } = dotInfo;
   if (existingDotIndex !== -1) {
     deletePt(existingDotIndex);
     outputMessage('Delete the pt.');
@@ -783,6 +806,7 @@ function focusQuad(quadIndex) {
 function focusPixelAtMouse() {
   if (!props.canInteract || imageSrc === '') return { success: false, error: 'No image is available.' };
 
+  syncMouseCoord(x.value, y.value);
   const mousePoint = { x: mouseCoord.x, y: mouseCoord.y };
   if (!mouseIsOverContainer.value || !isPointInVisibleImage(mousePoint)) {
     return { success: false, error: 'Please move the mouse over a visible image pixel before focusing it.' };
@@ -840,6 +864,7 @@ function clearImage() {
   resetViewportGeometry();
   resetAnnotationOverlay();
   realDot2GetZoom.value = { x: -1, y: -1 };
+  hoveredPixelCanvasCoord.value = null;
 
   if (ctx.value !== null) {
     ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
@@ -903,26 +928,50 @@ const onWheel = event => {
 // Zoom preview and point positions
 function refreshZoomViewAtCurrentMouse() {
   if (!mouseIsOverContainer.value) return;
-  updateZoomView({ clientX: mouseCoord.x, clientY: mouseCoord.y });
+  updateZoomView({ clientX: x.value, clientY: y.value });
 }
 
 function updateZoomView(e) {
   if (!props.canInteract || !props.imageObj || imageSrc === '') {
     return;
   }
-  let rectCoord = updateRealDots2GetZoom(e);
+  const localPoint = syncMouseCoord(e.clientX, e.clientY);
+  if (localPoint === null) return;
+  updateHoveredPixel(localPoint);
+  let rectCoord = updateRealDots2GetZoom(localPoint);
   if (rectCoord) {
     updateRectanglePosition(rectCoord);
     emits('update-zoom-view', { ...realDot2GetZoom.value });
   }
 }
-function updateRealDots2GetZoom(e) {
+
+function updateHoveredPixel(localPoint) {
+  if (scale.value < gridLimit || !isPointInVisibleImage(localPoint)) {
+    hoveredPixelCanvasCoord.value = null;
+    return;
+  }
+
+  const imagePoint = { x: 0, y: 0 };
+  transCanvas2RealInfo(imagePoint, localPoint);
+  if (
+    imagePoint.x < sourceLTCoord.x ||
+    imagePoint.x > sourceRBCoord.x ||
+    imagePoint.y < sourceLTCoord.y ||
+    imagePoint.y > sourceRBCoord.y
+  ) {
+    hoveredPixelCanvasCoord.value = null;
+    return;
+  }
+
+  const canvasPoint = { x: 0, y: 0 };
+  transReal2CanvasInfo(canvasPoint, imagePoint);
+  hoveredPixelCanvasCoord.value = { x: canvasPoint.x + 1, y: canvasPoint.y + 1 };
+}
+
+function updateRealDots2GetZoom(localPoint) {
   if (imageSrc === '') return;
 
-  let canvasCoord = {
-    x: e.clientX,
-    y: e.clientY,
-  };
+  let canvasCoord = { ...localPoint };
   transCanvas2RealInfo(realDot2GetZoom.value, canvasCoord);
 
   realDot2GetZoom.value.x = Math.min(Math.max(realDot2GetZoom.value.x - 3, sourceLTCoord.x), sourceRBCoord.x - 5);
@@ -983,8 +1032,8 @@ function getCoordinateTransform(targetScale = scale.value) {
     canvasLeftTop: canvasLTCoord,
     offsetX: offsetX.value,
     offsetY: offsetY.value,
-    canvasOffsetLeft: offsetCanvasLeft,
-    canvasOffsetTop: offsetCanvasTop,
+    canvasOffsetLeft: 0,
+    canvasOffsetTop: 0,
   };
 }
 
@@ -1002,8 +1051,8 @@ function updateRectanglePosition(rectCoord) {
 // Canvas sizing and loading feedback
 async function updateViewSize() {
   if (imgContainerRef.value) {
-    viewportWidth.value = imgContainerRef.value.offsetWidth - 4;
-    viewportHeight.value = imgContainerRef.value.offsetHeight - 4;
+    viewportWidth.value = imgContainerRef.value.clientWidth;
+    viewportHeight.value = imgContainerRef.value.clientHeight;
     await nextTick();
 
     initCanvasSettings();
@@ -1025,66 +1074,140 @@ function initCanvasSettings() {
 </script>
 
 <style scoped>
-.image-container {
-  background: url('../assets/bg.png') repeat;
-  width: calc(75% - 170px);
-  /* 20*2 + 122 + 4(blankSpace)*2 */
-  height: calc(100% - 40px);
-  top: 20px;
-  left: 20px;
-  position: fixed;
+.canvas-workspace {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
   overflow: hidden;
-  border: 2px solid gray;
+  border: 1px solid var(--border-subtle, #dce1e8);
+  border-radius: 10px;
+  background: var(--surface-raised, #ffffff);
+  box-shadow: 0 5px 18px rgba(37, 48, 65, 0.06);
 }
 
-.dot {
+.image-container {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: url('../assets/bg.png') repeat;
+  cursor: default;
+}
+
+.canvas-layer {
   position: absolute;
+  inset: 0;
+}
+
+.quad-layer {
+  pointer-events: none;
+}
+
+.hovered-pixel {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  border: 2px solid #ffffff;
+  outline: 2px solid #101828;
+  background: rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
+.dot-marker {
+  position: absolute;
+  z-index: 7;
+  cursor: pointer;
+}
+
+.dot-pixel {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 1px;
   height: 1px;
-  background-color: red;
+  transform-origin: 0 0;
+  background: #ff2d55;
+  box-shadow: inset 0 0 0 0.1px rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
+
+.dot-label {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  min-width: 24px;
+  padding: 3px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 5px;
+  background: #ff2d55;
+  color: white;
+  font: 700 10px/1 var(--font-ui, sans-serif);
+  text-align: center;
+  box-shadow: 0 2px 7px rgba(28, 36, 48, 0.28);
+  cursor: pointer;
+}
+
+.dot-label::after {
+  position: absolute;
+  bottom: -4px;
+  left: 5px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid #ff2d55;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  content: '';
 }
 
 .rectangle {
   position: absolute;
+  z-index: 4;
   width: 8px;
-  /* 矩形的宽度 */
   height: 8px;
-  /* 矩形的高度 */
   border: 1px solid rgba(255, 0, 0, 0.5);
-  /* 红色的边界 */
   background-color: transparent;
-  /* 透明的背景色 */
   pointer-events: none;
-  /* 忽略鼠标事件 */
+  transform-origin: 0 0;
 }
 
 .str-right-mouse {
-  font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
-  color: #000000;
-  font-size: 16px;
-  line-height: 1.5; /* 行高为 1.5 */
-  text-shadow:
-    -1px -1px 0 #fff,
-    1px -1px 0 #fff,
-    -1px 1px 0 #fff,
-    1px 1px 0 #fff;
-  font-weight: bold; /* 加粗文字 */
+  position: absolute;
+  z-index: 7;
+  padding: 2px 6px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  pointer-events: none;
 }
 
 .loading-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  color: white;
+  inset: 0;
+  z-index: 8;
   display: flex;
-  justify-content: center;
   align-items: center;
-  box-sizing: border-box;
+  justify-content: center;
   padding: 24px;
+  background-color: rgba(15, 23, 42, 0.68);
+  color: white;
   text-align: center;
+}
+
+.empty-image-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 14px;
+  pointer-events: none;
 }
 
 .image-error-content {
@@ -1106,5 +1229,43 @@ function initCanvasSettings() {
   margin-top: 4px;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.canvas-scale-bar {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border-subtle, #dce1e8);
+  background: var(--surface-raised, #ffffff);
+}
+
+.scale-label,
+.scale-value {
+  flex: none;
+  color: var(--text-secondary, #5b6675);
+  font-size: 12px;
+}
+
+.scale-number {
+  width: 68px;
+  padding: 5px 7px;
+  border: 1px solid var(--border-strong, #c7ced8);
+  border-radius: 6px;
+  background: var(--surface-muted, #f7f8fa);
+  color: var(--text-primary, #1c2430);
+  font: 12px var(--font-mono, monospace);
+}
+
+.scale-range {
+  min-width: 80px;
+  flex: 1;
+  accent-color: var(--accent, #2f6fed);
+}
+
+.scale-number:disabled,
+.scale-range:disabled {
+  opacity: 0.5;
 }
 </style>

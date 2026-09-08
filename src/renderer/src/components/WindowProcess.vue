@@ -1,92 +1,286 @@
 <template>
-  <div class="container">
+  <div class="workspace-shell">
     <TransitionGroup name="toast" tag="div" class="toast-container">
       <div v-for="notification in notifications" :key="notification.id" class="toast-message">
         {{ notification.message }}
       </div>
     </TransitionGroup>
 
-    <ImageView
-      ref="imgContainerRef"
-      :image-obj="imageObj"
-      :can-edit="canOperate"
-      :can-interact="canInteractWithImage"
-      :is-loading="isImageLoading"
-      :active-quad-index="activeQuadIndex"
-      :selected-dots="selectedDots"
-      :image-load-error="imageLoadError"
-      @update-zoom-view="updateZoomView"
-      @output-message="outputMessage"
-      @update-selected-dots="updateSelectedDots"
-      @select-quad-index="selectQuadIndex"
-    ></ImageView>
-    <div class="tool-container">
-      <div>
-        <div class="zoomViewBox">
-          <canvas id="zoom" ref="zoomView" class="zoom-style" width="120" height="120"></canvas>
+    <header class="workspace-toolbar">
+      <div class="app-identity" aria-label="QuadTool">
+        <span class="app-mark">Q</span>
+        <div>
+          <strong>QuadTool</strong>
+          <span>像素级四边形标注</span>
         </div>
-        <div class="fileArea-style">
-          <div class="fileInfo-style">产品类型: {{ loadedProductType || '未加载' }}</div>
-          <div class="fileInfo-style">数据集: {{ jsonFileName }}</div>
-          <div class="fileInfo-style">图片: {{ imgFileName }}</div>
-          <div class="fileInfo-style">
-            图片次序: <br />{{ imagePositionView.currentIndex + 1 }} / {{ imagePositionView.total }}
+      </div>
+
+      <div class="toolbar-group toolbar-files">
+        <button class="toolbar-button primary" :disabled="!canLoadDataset" @click="chooseJsonFile">
+          打开图集 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>O</kbd></span>
+        </button>
+        <button
+          class="toolbar-button"
+          :disabled="imagePositionView.total === 0 || !canLoadImage"
+          @click="chooseImgFile"
+        >
+          匹配图片 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>I</kbd></span>
+        </button>
+      </div>
+
+      <div class="toolbar-group image-navigation" aria-label="图片导航">
+        <button
+          class="icon-button"
+          title="上一张图片（A / ←）"
+          :disabled="imagePositionView.total === 0 || !canLoadImage"
+          @click="changeImageByArrowKeys(KEYS.PREVIOUS)"
+        >
+          <span aria-hidden="true">‹</span><kbd>A</kbd>
+        </button>
+        <label class="image-position-control">
+          <span class="sr-only">图片序号</span>
+          <input
+            v-model="jumpImageIndex"
+            type="number"
+            min="1"
+            step="1"
+            :max="imagePositionView.total || undefined"
+            :placeholder="imagePositionView.total ? '1' : '—'"
+            :disabled="imagePositionView.total === 0 || !canLoadImage"
+            @keydown.enter.prevent="handleJumpToImageIndexKeyDown"
+          />
+          <span>/ {{ imagePositionView.total }}</span>
+        </label>
+        <button
+          class="icon-button"
+          title="下一张图片（D / →）"
+          :disabled="imagePositionView.total === 0 || !canLoadImage"
+          @click="changeImageByArrowKeys(KEYS.NEXT)"
+        >
+          <span aria-hidden="true">›</span><kbd>D</kbd>
+        </button>
+        <button
+          class="toolbar-button compact"
+          :disabled="imagePositionView.total === 0 || !canLoadImage"
+          @click="jumpToImageIndex"
+        >
+          跳转 <kbd>Enter</kbd>
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace-main">
+      <ImageView
+        ref="imgContainerRef"
+        :image-obj="imageObj"
+        :can-edit="canOperate"
+        :can-interact="canInteractWithImage"
+        :is-loading="isImageLoading"
+        :active-quad-index="activeQuadIndex"
+        :selected-dots="selectedDots"
+        :image-load-error="imageLoadError"
+        :hover-select-mode="isHoverSelectMode"
+        @update-zoom-view="updateZoomView"
+        @output-message="outputMessage"
+        @update-selected-dots="updateSelectedDots"
+        @select-quad-index="selectQuadIndex"
+      ></ImageView>
+
+      <aside class="inspector-shell">
+        <nav class="inspector-navigation" aria-label="功能分区">
+          <div class="inspector-navigation-main">
+            <button
+              v-for="page in inspectorPages"
+              :key="page.id"
+              class="inspector-tab"
+              :class="{ active: activeInspectorPage === page.id }"
+              :title="page.label"
+              :aria-label="page.label"
+              :aria-pressed="activeInspectorPage === page.id"
+              @click="selectInspectorPage(page.id)"
+            >
+              <span class="inspector-tab-icon" aria-hidden="true">{{ page.icon }}</span>
+              <span>{{ page.label }}</span>
+              <small>{{ page.shortcut }}</small>
+            </button>
           </div>
-          <div class="fileInfo-style">
-            跳转到图片:
-            <div class="image-index-jump">
-              <input
-                v-model="jumpImageIndex"
-                class="image-index-input"
-                type="number"
-                min="1"
-                step="1"
-                :max="imagePositionView.total || undefined"
-                :placeholder="imagePositionView.total ? `1-${imagePositionView.total}` : '无数据'"
-                :disabled="imagePositionView.total === 0 || !canLoadImage"
-                aria-label="图片 index"
-                @keydown.enter.prevent="handleJumpToImageIndexKeyDown"
-              />
-              <button
-                class="image-index-button"
-                :disabled="imagePositionView.total === 0 || !canLoadImage"
-                @click="jumpToImageIndex"
-              >
-                跳转
+          <button
+            class="inspector-tab help-tab"
+            :class="{ active: activeInspectorPage === INSPECTOR_PAGE.HELP }"
+            title="快捷键帮助（F1）"
+            aria-label="帮助"
+            :aria-pressed="activeInspectorPage === INSPECTOR_PAGE.HELP"
+            @click="selectInspectorPage(INSPECTOR_PAGE.HELP)"
+          >
+            <span class="inspector-tab-icon" aria-hidden="true">?</span>
+            <span>快捷键</span>
+            <small>F1</small>
+          </button>
+        </nav>
+
+        <div class="inspector-content">
+          <section v-show="activeInspectorPage === INSPECTOR_PAGE.ANNOTATION" class="inspector-page annotation-page">
+            <header class="panel-header">
+              <div>
+                <span class="eyebrow">当前标注</span>
+                <h2>Quad {{ activeQuadLabel }}</h2>
+              </div>
+              <div class="panel-header-actions">
+                <span class="panel-counter">{{ quadTotal }} 个</span>
+                <button class="action-button primary" :disabled="!canFocusQuad" @click="focusActiveQuad">
+                  聚焦 Quad <kbd>F</kbd>
+                </button>
+              </div>
+            </header>
+
+            <div class="precision-panel">
+              <div class="section-heading">
+                <span>像素预览</span>
+                <small>鼠标所在位置</small>
+              </div>
+              <div class="precision-content">
+                <div class="zoom-view-box">
+                  <canvas ref="zoomView" class="zoom-style" width="120" height="120"></canvas>
+                </div>
+                <ol class="point-list">
+                  <li v-for="index in 4" :key="index" :class="{ empty: !selectedDots[index - 1] }">
+                    <span>P{{ index }}</span>
+                    <code v-if="selectedDots[index - 1]">
+                      {{ selectedDots[index - 1].x }}, {{ selectedDots[index - 1].y }}
+                    </code>
+                    <code v-else>—</code>
+                  </li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="annotation-list-heading section-heading">
+              <span>标注数据</span>
+              <small>悬停选择</small>
+            </div>
+            <JsonView
+              ref="jsonView"
+              class="annotation-list"
+              :active-quad-index="activeQuadIndex"
+              :formatted-items="annotationView.formattedItems"
+              :error-message="annotationView.errorMessage"
+              @select-quad-index="selectQuadIndex"
+            ></JsonView>
+
+            <div class="annotation-actions">
+              <button class="action-button primary" :disabled="!canOperate" @click="modifyJsonItem">
+                更新 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>S</kbd></span>
+              </button>
+              <button class="action-button" :disabled="!canOperate" @click="addJsonItem">
+                新增 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>A</kbd></span>
+              </button>
+              <button class="action-button danger" :disabled="!canOperate" @click="deleteJsonItem">
+                删除 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>D</kbd></span>
               </button>
             </div>
-          </div>
-          <div class="fileInfo-style">矩形次序: <br />{{ activeQuadIndex + 1 }} / {{ quadTotal }}</div>
-        </div>
-        <div class="dotsArea-style">
-          <div v-for="(item, index) in selectedDots" :key="index" class="dots">
-            <span>({{ item.x }}, {{ item.y }})</span>
-          </div>
-        </div>
-      </div>
+          </section>
 
-      <div style="display: flex; justify-content: flex-end">
-        <Help />
-      </div>
-      <div class="button-group">
-        <button class="button-style" :disabled="!canLoadDataset" @click="chooseJsonFile">Get JsonFile</button>
-        <button class="button-style" :disabled="imagePositionView.total === 0 || !canLoadImage" @click="chooseImgFile">
-          手动选择图片
-        </button>
-        <button class="button-style" :disabled="!canFocusQuad" @click="focusActiveQuad">Focus Quad (F)</button>
-        <button class="button-style" :disabled="!canOperate" @click="modifyJsonItem">Mod JsonItem</button>
-        <button class="button-style" :disabled="!canOperate" @click="deleteJsonItem">Del JsonItem</button>
-        <button class="button-style" :disabled="!canOperate" @click="addJsonItem">Add JsonItem</button>
-      </div>
-    </div>
+          <section v-show="activeInspectorPage === INSPECTOR_PAGE.DATASET" class="inspector-page">
+            <header class="panel-header">
+              <div>
+                <span class="eyebrow">开始与文件信息</span>
+                <h2>图集与图片</h2>
+              </div>
+            </header>
+            <dl class="metadata-list">
+              <div>
+                <dt>产品类型</dt>
+                <dd>{{ loadedProductType || '未加载' }}</dd>
+              </div>
+              <div>
+                <dt>图集 JSON</dt>
+                <dd :title="jsonFileName">{{ jsonFileName || '未加载' }}</dd>
+              </div>
+              <div>
+                <dt>图片</dt>
+                <dd :title="imgFileName">{{ imgFileName || '未加载' }}</dd>
+              </div>
+            </dl>
+            <div class="dataset-actions-heading section-heading">
+              <span>文件操作</span>
+            </div>
+            <div class="stacked-actions">
+              <button class="action-button primary" :disabled="!canLoadDataset" @click="chooseJsonFile">
+                打开或更换图集 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>O</kbd></span>
+              </button>
+              <button
+                class="action-button"
+                :disabled="imagePositionView.total === 0 || !canLoadImage"
+                @click="chooseImgFile"
+              >
+                手动匹配图片 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>I</kbd></span>
+              </button>
+            </div>
+          </section>
 
-    <JsonView
-      ref="jsonView"
-      :active-quad-index="activeQuadIndex"
-      :formatted-items="annotationView.formattedItems"
-      :error-message="annotationView.errorMessage"
-      @select-quad-index="selectQuadIndex"
-    ></JsonView>
+          <section v-show="activeInspectorPage === INSPECTOR_PAGE.DISPLAY" class="inspector-page">
+            <header class="panel-header">
+              <div>
+                <span class="eyebrow">定位与覆盖层</span>
+                <h2>视图与鼠标操作</h2>
+              </div>
+            </header>
+            <div class="display-card">
+              <div>
+                <strong>鼠标当前行为</strong>
+                <p>{{ isHoverSelectMode ? '悬停到单个 Quad 时自动选择' : '单击图像像素以添加或删除点位' }}</p>
+              </div>
+              <button class="action-button" :disabled="!canInteractWithImage" @click="toggleInteractionMode">
+                {{ isHoverSelectMode ? '切换为单击标点' : '切换为悬停选 Quad' }} <kbd>Tab</kbd>
+              </button>
+            </div>
+            <div class="stacked-actions">
+              <button class="action-button" :disabled="!canInteractWithImage" @click="resetPosition">
+                重置图片位置 <kbd>R</kbd>
+              </button>
+              <button class="action-button" :disabled="!canFocusQuad" @click="toggleHighlight2ShowQuads">
+                切换当前 Quad 显示 <kbd>Q</kbd>
+              </button>
+              <button
+                class="action-button"
+                :disabled="!canInteractWithImage || quadTotal === 0"
+                @click="addAll2ShowQuads"
+              >
+                显示全部 Quad <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Q</kbd></span>
+              </button>
+              <button class="action-button" :disabled="!canInteractWithImage" @click="clearShowQuads">
+                隐藏全部 Quad <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Q</kbd></span>
+              </button>
+            </div>
+            <p class="panel-note">放大到像素网格后，深色描边框表示鼠标当前对应的单个像素。</p>
+          </section>
+
+          <Help
+            v-show="activeInspectorPage === INSPECTOR_PAGE.HELP"
+            class="inspector-page"
+            :groups="shortcutHelpGroups"
+          />
+        </div>
+      </aside>
+    </main>
+
+    <footer class="workspace-statusbar">
+      <div class="status-context">
+        <span class="status-item"><i :class="['status-dot', workflowState.phase]"></i>{{ workflowStatusText }}</span>
+        <span class="status-divider"></span>
+        <span>鼠标：{{ isHoverSelectMode ? '悬停选 Quad' : '单击标点' }}</span>
+        <span class="status-divider"></span>
+        <span>Quad {{ activeQuadLabel }}</span>
+      </div>
+      <div class="shortcut-only-hints">
+        <span class="status-hint shortcut-only-label">仅快捷键</span>
+        <span class="status-hint"><kbd>W</kbd>/<kbd>S</kbd> 选 Quad</span>
+        <span class="status-hint"><kbd>Z</kbd> 聚焦像素</span>
+        <span class="status-hint"><kbd>1–4</kbd> 删除点</span>
+        <span class="status-hint"><kbd>Ctrl</kbd><kbd>C</kbd> 清空点</span>
+        <span class="status-hint"><kbd>C</kbd> 清消息</span>
+      </div>
+    </footer>
   </div>
 </template>
 
@@ -107,7 +301,6 @@ import {
   getJsonImagePosition,
   getJsonFileInfo,
   resetPicJson,
-  resetJsonNoValue,
   createDatasetMutationSnapshot,
   restoreDatasetMutationSnapshot,
 } from '../state/DatasetState.js';
@@ -142,6 +335,21 @@ const imgContainerRef = ref(null);
 const jsonView = ref(null);
 const zoomView = ref(null);
 
+const INSPECTOR_PAGE = Object.freeze({
+  ANNOTATION: 'annotation',
+  DATASET: 'dataset',
+  DISPLAY: 'display',
+  HELP: 'help',
+});
+const inspectorPages = Object.freeze([
+  { id: INSPECTOR_PAGE.DATASET, label: '图集与图片', icon: '▤', shortcut: 'Ctrl+1' },
+  { id: INSPECTOR_PAGE.ANNOTATION, label: 'Quad 标注', icon: '◇', shortcut: 'Ctrl+2' },
+  { id: INSPECTOR_PAGE.DISPLAY, label: '视图与交互', icon: '◐', shortcut: 'Ctrl+3' },
+]);
+const validInspectorPages = new Set([...inspectorPages.map(page => page.id), INSPECTOR_PAGE.HELP]);
+const activeInspectorPage = ref(INSPECTOR_PAGE.DATASET);
+let previousInspectorPage = INSPECTOR_PAGE.DATASET;
+
 // Dataset and current image state
 const activeQuadIndex = ref(-1);
 const annotationView = ref({ formattedItems: [], quads: [], errorMessage: '' });
@@ -154,8 +362,9 @@ const imgFileName = ref(null);
 const jsonFileName = ref(null);
 const loadedProductType = ref('');
 let imgFilePath = '';
-let imageCoordinateScale = { x: 1, y: 1 };
+const imageCoordinateScale = ref({ x: 1, y: 1 });
 let zoomSourceOrigin = null;
+const isHoverSelectMode = ref(false);
 
 // Operation and image request state
 const workflowState = ref(createWorkflowState());
@@ -168,6 +377,20 @@ const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(ima
 const canFocusQuad = computed(
   () => canInteractWithImage.value && activeQuadIndex.value >= 0 && activeQuadIndex.value < quadTotal.value,
 );
+const activeQuadLabel = computed(() =>
+  activeQuadIndex.value >= 0 ? `${activeQuadIndex.value + 1} / ${quadTotal.value}` : `— / ${quadTotal.value}`,
+);
+const workflowStatusText = computed(() => {
+  const labels = {
+    [WORKFLOW_PHASE.EMPTY]: '等待打开图集',
+    [WORKFLOW_PHASE.DATASET_READY]: '图集已加载',
+    [WORKFLOW_PHASE.READY]: '可以编辑',
+    [WORKFLOW_PHASE.LOADING_DATASET]: '正在打开图集…',
+    [WORKFLOW_PHASE.LOADING_IMAGE]: '正在加载图片…',
+    [WORKFLOW_PHASE.SAVING]: '正在保存…',
+  };
+  return labels[workflowState.value.phase] ?? '未知状态';
+});
 const imageLoadError = ref(null);
 let activeImageRequest = null;
 let imageAttemptCounter = 0;
@@ -179,8 +402,6 @@ const notifications = ref([]);
 const notificationTimers = new Map();
 let notificationId = 0;
 
-// Window input and listener state
-const mouseCoord = { x: 0, y: 0 };
 let removeChooseJsonFileResponseListener = null;
 
 function applyWorkflowTransition(result) {
@@ -200,20 +421,23 @@ function resetQuadSelection() {
   activeQuadIndex.value = -1;
 }
 
-function handleWindowMouseMove(e) {
-  mouseCoord.x = e.clientX;
-  mouseCoord.y = e.clientY;
+function selectInspectorPage(pageId) {
+  if (!validInspectorPages.has(pageId)) return;
+  if (pageId === INSPECTOR_PAGE.HELP && activeInspectorPage.value === INSPECTOR_PAGE.HELP) {
+    activeInspectorPage.value = previousInspectorPage;
+    return;
+  }
+  if (pageId !== INSPECTOR_PAGE.HELP) previousInspectorPage = pageId;
+  activeInspectorPage.value = pageId;
 }
 
 onMounted(() => {
   configureZoomCanvas(zoomView.value);
-  window.addEventListener('mousemove', handleWindowMouseMove);
   window.addEventListener('keydown', handleKeyDown);
   removeChooseJsonFileResponseListener = ipcRenderer.on('choose-json-file-response', handleChooseJsonFileResponse);
 });
 
 onUnmounted(() => {
-  window.removeEventListener('mousemove', handleWindowMouseMove);
   window.removeEventListener('keydown', handleKeyDown);
   removeChooseJsonFileResponseListener?.();
   removeChooseJsonFileResponseListener = null;
@@ -224,12 +448,15 @@ onUnmounted(() => {
 const keyActions = {
   1: {
     default: () => clearOneDot(0),
+    ctrl: () => selectInspectorPage(INSPECTOR_PAGE.DATASET),
   },
   2: {
     default: () => clearOneDot(1),
+    ctrl: () => selectInspectorPage(INSPECTOR_PAGE.ANNOTATION),
   },
   3: {
     default: () => clearOneDot(2),
+    ctrl: () => selectInspectorPage(INSPECTOR_PAGE.DISPLAY),
   },
   4: {
     default: () => clearOneDot(3),
@@ -255,7 +482,6 @@ const keyActions = {
   },
   r: {
     default: () => resetPosition(),
-    ctrl: () => resetJsonValue(),
   },
   f: {
     default: () => focusActiveQuad(),
@@ -267,6 +493,12 @@ const keyActions = {
     default: () => toggleHighlight2ShowQuads(),
     ctrl: () => clearShowQuads(),
     ctrlShift: () => addAll2ShowQuads(),
+  },
+  o: {
+    ctrl: () => chooseJsonFile(),
+  },
+  i: {
+    ctrl: () => chooseImgFile(),
   },
   ArrowLeft: {
     default: () => changeImageByArrowKeys(KEYS.PREVIOUS),
@@ -281,11 +513,64 @@ const keyActions = {
     default: () => changeJsonItemSelection(KEYS.NEXT),
   },
   Tab: {
-    default: () => toggleMode(),
+    default: () => toggleInteractionMode(),
   },
 };
 
+const shortcutHelpGroups = Object.freeze([
+  {
+    title: '导航与定位',
+    items: [
+      { keys: ['Ctrl', '1'], label: '打开图集与图片页' },
+      { keys: ['Ctrl', '2'], label: '打开 Quad 标注页' },
+      { keys: ['Ctrl', '3'], label: '打开视图与交互页' },
+      { keys: ['W', '↑'], separator: '/', label: '上一个 Quad' },
+      { keys: ['S', '↓'], separator: '/', label: '下一个 Quad' },
+      { keys: ['A', '←'], separator: '/', label: '上一张图片' },
+      { keys: ['D', '→'], separator: '/', label: '下一张图片' },
+      { keys: ['F'], label: '聚焦当前 Quad' },
+      { keys: ['Z'], label: '聚焦鼠标所在像素' },
+      { keys: ['R'], label: '重置图片位置' },
+      { keys: ['Ctrl', 'O'], label: '打开图集 JSON' },
+      { keys: ['Ctrl', 'I'], label: '手动匹配图片' },
+    ],
+  },
+  {
+    title: '标注编辑',
+    items: [
+      { keys: ['1', '2', '3', '4'], separator: '/', label: '移除对应点位' },
+      { keys: ['Ctrl', 'S'], label: '更新当前 Quad' },
+      { keys: ['Ctrl', 'A'], label: '新增 Quad' },
+      { keys: ['Ctrl', 'D'], label: '删除当前 Quad' },
+      { keys: ['Ctrl', 'C'], label: '清空待提交点位' },
+    ],
+  },
+  {
+    title: '显示',
+    items: [
+      { keys: ['Q'], label: '切换当前 Quad 显示' },
+      { keys: ['Ctrl', 'Q'], label: '隐藏全部 Quad' },
+      { keys: ['Ctrl', 'Shift', 'Q'], label: '显示全部 Quad' },
+      { keys: ['Tab'], label: '切换悬停选择 / 单击标点' },
+      { keys: ['C'], label: '清空消息' },
+      { keys: ['F1'], label: '打开或关闭帮助' },
+    ],
+  },
+]);
+
 function handleKeyDown(e) {
+  if (e.key === 'F1') {
+    e.preventDefault();
+    if (!e.repeat) selectInspectorPage(INSPECTOR_PAGE.HELP);
+    return;
+  }
+  if (activeInspectorPage.value === INSPECTOR_PAGE.HELP) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (!e.repeat) selectInspectorPage(previousInspectorPage);
+    }
+    return;
+  }
   handleShortcutKeyDown(e, keyActions);
 }
 
@@ -325,7 +610,7 @@ function changeJsonItemSelection(direction) {
 }
 
 function resetPosition() {
-  imgContainerRef.value.resetPosition();
+  if (canInteractWithImage.value) imgContainerRef.value?.resetPosition();
 }
 
 function focusActiveQuad() {
@@ -411,7 +696,7 @@ async function performJsonAction(action) {
   await runSaveTransaction(
     () => {
       outputMessage('Start operate: ' + action);
-      const updateJsonRes = updateJson(action, imageCoordinateScale, activeQuadIndex.value, selectedDots);
+      const updateJsonRes = updateJson(action, imageCoordinateScale.value, activeQuadIndex.value, selectedDots);
       return updateJsonRes === KEYS.OPERATE_SUCCESS ? null : updateJsonRes;
     },
     () => {
@@ -438,16 +723,6 @@ function deleteJsonItem() {
 
 function modifyJsonItem() {
   performJsonAction(KEYS.JSON_MODIFY);
-}
-
-async function resetJsonValue() {
-  await runSaveTransaction(
-    () => (resetJsonNoValue() ? null : 'Reset No. failed!'),
-    () => {
-      refreshCurrentAnnotations();
-      outputMessage('Reset No. successfully.');
-    },
-  );
 }
 
 async function saveJsonFile() {
@@ -529,7 +804,7 @@ function renderAnnotationQuads({
   showNewQuad = false,
   redrawOverlay = false,
 } = {}) {
-  imgContainerRef.value.resetQuadsArray(annotationView.value.quads, imageCoordinateScale, {
+  imgContainerRef.value.resetQuadsArray(annotationView.value.quads, imageCoordinateScale.value, {
     deletedIndex: deletedQuadIndex,
   });
   if (resetVisibility) {
@@ -765,7 +1040,7 @@ async function handlePreparedImageResponse(response) {
       }
       resetZoomPreview();
       imageObj.value = loadedImage;
-      imageCoordinateScale = {
+      imageCoordinateScale.value = {
         x: imageInfo.coordinateScaleX,
         y: imageInfo.coordinateScaleY,
       };
@@ -798,6 +1073,7 @@ function resetImageForDatasetChange() {
   imageObj.value = null;
   imgFileName.value = '';
   imgFilePath = '';
+  imageCoordinateScale.value = { x: 1, y: 1 };
   imageLoadError.value = null;
   resetImageRequestState();
   refreshImagePositionView();
@@ -900,6 +1176,7 @@ async function handleChooseJsonFileResponse(_event, response) {
       loadedProductType.value = preparedJson.productType;
       jsonFileName.value = jsonData.fileName;
       resetImageForDatasetChange();
+      selectInspectorPage(INSPECTOR_PAGE.ANNOTATION);
       if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
 
       if (preparedJson.data.Picture.length === 0) {
@@ -957,20 +1234,22 @@ function resetZoomPreview() {
 
 // Show quad
 function toggleHighlight2ShowQuads() {
-  imgContainerRef.value.toggleShowQuadIndex(activeQuadIndex.value);
+  if (canFocusQuad.value) imgContainerRef.value?.toggleShowQuadIndex(activeQuadIndex.value);
 }
 function addAll2ShowQuads() {
   for (let i = 0; i < quadTotal.value; ++i) {
-    imgContainerRef.value.addShowQuadIndex(i);
+    imgContainerRef.value?.addShowQuadIndex(i);
   }
 }
 
 function clearShowQuads() {
-  imgContainerRef.value.clearShowQuadIndex();
+  imgContainerRef.value?.clearShowQuadIndex();
 }
 
-function toggleMode() {
-  imgContainerRef.value.toggleMode();
+function toggleInteractionMode() {
+  if (!canInteractWithImage.value) return;
+  isHoverSelectMode.value = !isHoverSelectMode.value;
+  outputMessage(isHoverSelectMode.value ? '鼠标已切换为悬停选择 Quad。' : '鼠标已切换为单击标点。');
 }
 </script>
 
@@ -978,138 +1257,661 @@ function toggleMode() {
 * {
   user-select: none;
 }
-/* 添加样式来高亮当前行 */
-.container {
-  display: flex;
+.workspace-shell {
+  --accent: #2f6fed;
+  --accent-strong: #245bc4;
+  --accent-soft: #eaf1ff;
+  --danger: #c63e45;
+  --danger-soft: #fff0f0;
+  --text-primary: #1c2430;
+  --text-secondary: #5b6675;
+  --text-muted: #8a94a3;
+  --surface-app: #eef1f5;
+  --surface-raised: #ffffff;
+  --surface-muted: #f7f8fa;
+  --surface-hover: #edf1f7;
+  --border-subtle: #dce1e8;
+  --border-strong: #c7ced8;
+  --font-ui: 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', monospace;
+  display: grid;
+  grid-template-rows: 60px minmax(0, 1fr) 42px;
   width: 100%;
   height: 100%;
-  padding: 20px;
-  background-color: white;
+  overflow: hidden;
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
 }
 
-.tool-container {
-  position: relative;
-  width: 122px;
-  height: 100%;
+.workspace-toolbar {
   display: flex;
-  flex-direction: column;
-  margin-left: calc(75% - 130px);
-  justify-content: space-between;
-  overflow-y: auto;
-  padding-right: 2px;
-}
-.zoomViewBox {
-  border: 1px dotted #333;
-  margin-bottom: 10px;
-  display: flex;
-}
-.zoom-style {
-  width: 120px;
-  height: 120px;
-  border: none;
-}
-
-.fileArea-style {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  row-gap: 10px;
-}
-.fileInfo-style {
-  font-family: 'Microsoft YaHei', sans-serif; /* 使用微软雅黑字体 */
-  color: #000000;
-  font-size: 15px;
-  line-height: 1.5; /* 行高为 1.5 */
-  word-wrap: break-word;
-}
-.image-index-jump {
-  display: flex;
-  gap: 4px;
-  margin-top: 4px;
-}
-.image-index-input {
+  gap: 10px;
+  align-items: center;
   min-width: 0;
-  width: 68px;
-  box-sizing: border-box;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
 }
-.image-index-button {
-  flex: 1;
-  padding: 2px 4px;
-  border: 1px solid #888;
-  border-radius: 4px;
+
+.app-identity {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-width: 172px;
+  margin-right: 4px;
+}
+
+.app-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--accent);
+  color: white;
+  font-size: 16px;
+  font-weight: 800;
+  box-shadow: 0 5px 12px rgba(47, 111, 237, 0.25);
+}
+
+.app-identity div {
+  display: grid;
+  gap: 1px;
+}
+
+.app-identity strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.app-identity div span {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-right: 10px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.toolbar-button,
+.icon-button,
+.action-button {
+  box-sizing: border-box;
+  min-height: 32px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: 600 12px/1 var(--font-ui);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.toolbar-button {
+  padding: 0 12px;
+}
+
+.toolbar-button,
+.action-button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+}
+
+.button-shortcut {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.toolbar-button:hover:not(:disabled),
+.icon-button:hover:not(:disabled),
+.action-button:hover:not(:disabled) {
+  border-color: #9eabc0;
+  background: var(--surface-hover);
+}
+
+.toolbar-button.primary,
+.action-button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.toolbar-button.primary:hover:not(:disabled),
+.action-button.primary:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.toolbar-button:disabled,
+.icon-button:disabled,
+.action-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toolbar-button.compact {
+  min-height: 28px;
+  padding: 0 9px;
+}
+
+.icon-button {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  min-height: 30px;
+  padding: 0;
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.image-position-control {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.image-position-control input {
+  width: 48px;
+  height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font: 12px var(--font-mono);
+  text-align: center;
+}
+
+.workspace-main {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) clamp(360px, 34vw, 470px);
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+}
+
+.inspector-shell {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  box-shadow: 0 5px 18px rgba(37, 48, 65, 0.06);
+}
+
+.inspector-navigation {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px 6px;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-muted);
+}
+
+.inspector-navigation-main {
+  display: grid;
+  gap: 5px;
+}
+
+.inspector-tab {
+  display: grid;
+  gap: 3px;
+  place-items: center;
+  min-height: 62px;
+  padding: 5px 2px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font: 600 10px/1.2 var(--font-ui);
   cursor: pointer;
 }
-.image-index-button:disabled {
-  cursor: default;
-}
-.dotsArea-style {
-  height: 100px;
-  margin-top: 10px;
+
+.inspector-tab > span:not(.inspector-tab-icon) {
+  max-width: 64px;
+  line-height: 1.25;
 }
 
-.dots {
-  margin-top: 5px;
+.inspector-tab small {
+  color: currentColor;
+  font: 500 8px/1 var(--font-mono);
+  opacity: 0.72;
 }
+
+.inspector-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+
+.inspector-tab.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.inspector-tab-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.help-tab {
+  margin-top: auto;
+}
+
+.inspector-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.inspector-page {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.annotation-page {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(120px, 1fr) auto;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.panel-header,
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-header {
+  min-height: 42px;
+}
+
+.panel-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panel-header h2 {
+  margin: 3px 0 0;
+  font-size: 19px;
+  line-height: 1.2;
+}
+
+.panel-counter {
+  padding: 5px 8px;
+  border-radius: 99px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.section-heading {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.section-heading small {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.precision-panel {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.precision-content {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.zoom-view-box {
+  width: 122px;
+  height: 122px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background-color: #f2f4f7;
+  background-image: linear-gradient(45deg, #dfe3e9 25%, transparent 25%),
+    linear-gradient(-45deg, #dfe3e9 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #dfe3e9 75%),
+    linear-gradient(-45deg, transparent 75%, #dfe3e9 75%);
+  background-position:
+    0 0,
+    0 6px,
+    6px -6px,
+    -6px 0;
+  background-size: 12px 12px;
+}
+
+.zoom-style {
+  display: block;
+  width: 120px;
+  height: 120px;
+}
+
+.point-list {
+  display: grid;
+  grid-template-rows: repeat(4, 1fr);
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.point-list li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+}
+
+.point-list li > span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.point-list li.empty > span,
+.point-list li.empty code {
+  color: var(--text-muted);
+}
+
+.point-list code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font: 10px/1.2 var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.annotation-list-heading {
+  align-self: end;
+}
+
+.annotation-list {
+  min-height: 0;
+}
+
+.annotation-actions,
+.stacked-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.annotation-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+.annotation-actions .primary {
+  grid-column: 1 / -1;
+}
+
+.action-button {
+  padding: 0 10px;
+}
+
+.action-button.danger {
+  border-color: #edc5c7;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.action-button.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: #ffe3e3;
+}
+
+.metadata-list {
+  display: grid;
+  gap: 0;
+  margin: 20px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.metadata-list > div {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.metadata-list dt {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.metadata-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font: 12px/1.3 var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataset-actions-heading {
+  margin-bottom: 9px;
+}
+
+.stacked-actions {
+  grid-template-columns: 1fr;
+}
+
+.display-card {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.display-card strong {
+  font-size: 12px;
+}
+
+.display-card p,
+.panel-note {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.panel-note {
+  margin-top: 16px;
+  padding: 11px;
+  border-radius: 7px;
+  background: var(--surface-muted);
+}
+
+.workspace-statusbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+  padding: 0 14px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.status-context,
+.shortcut-only-hints {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+.shortcut-only-hints {
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  line-height: 17px;
+}
+
+.status-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9aa3af;
+}
+
+.status-dot.ready {
+  background: #28a06b;
+  box-shadow: 0 0 0 3px rgba(40, 160, 107, 0.12);
+}
+
+.status-dot.loading-dataset,
+.status-dot.loading-image,
+.status-dot.saving {
+  background: #e4a72c;
+}
+
+.status-divider {
+  width: 1px;
+  height: 11px;
+  background: var(--border-subtle);
+}
+
+.status-hint {
+  color: var(--text-muted);
+}
+
+.shortcut-only-label {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.toolbar-button.primary :deep(kbd),
+.action-button.primary :deep(kbd) {
+  border-color: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
+:deep(kbd) {
+  display: inline-grid;
+  min-width: 19px;
+  min-height: 18px;
+  place-items: center;
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font: 600 9px/1 var(--font-ui);
+  vertical-align: middle;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .toast-container {
   position: fixed;
-  top: 16px;
+  top: 70px;
   left: 50%;
   z-index: 10000;
   display: flex;
-  width: min(720px, calc(100vw - 32px));
+  width: min(620px, calc(100vw - 32px));
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   transform: translateX(-50%);
   pointer-events: none;
 }
+
 .toast-message {
-  box-sizing: border-box;
-  padding: 10px 14px;
-  border-radius: 6px;
-  background-color: rgba(35, 35, 35, 0.92);
+  padding: 9px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: rgba(28, 36, 48, 0.94);
   color: white;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 6px 20px rgba(28, 36, 48, 0.24);
 }
-.toast-enter-active,
-.toast-leave-active {
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-.button-style {
-  border-radius: 12px;
-  background-color: #4caf50;
-  color: white;
-  border: none;
-  padding: 8px 8px;
-  text-align: center;
-  text-decoration: none;
-  font-size: 15px;
-  width: calc(100%);
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-.button-style:hover {
-  background-color: #ff3333; /* 设置按钮的背景颜色悬停时的颜色 */
-}
-.button-style:disabled,
-.button-style:disabled:hover {
-  background-color: #b8b8b8;
-  color: #f3f3f3;
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-.button-group {
-  display: flex;
-  flex-direction: column;
-  row-gap: 10px;
+
+@media (max-width: 980px) {
+  .app-identity {
+    min-width: 42px;
+  }
+
+  .app-identity div {
+    display: none;
+  }
+
+  .workspace-main {
+    grid-template-columns: minmax(330px, 1fr) 360px;
+  }
 }
 </style>

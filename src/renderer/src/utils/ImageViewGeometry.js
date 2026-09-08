@@ -4,6 +4,24 @@ export function normalizeScale(value, minimum = 0.1, maximum = 60, fallback = 1)
   return Math.min(maximum, Math.max(minimum, numericValue));
 }
 
+export function clientToLocalPoint(clientPoint, bounds, border = { left: 0, top: 0 }) {
+  if (
+    !clientPoint ||
+    !Number.isFinite(clientPoint.x) ||
+    !Number.isFinite(clientPoint.y) ||
+    !bounds ||
+    !Number.isFinite(bounds.left) ||
+    !Number.isFinite(bounds.top)
+  ) {
+    return null;
+  }
+
+  return {
+    x: clientPoint.x - bounds.left - (Number.isFinite(border?.left) ? border.left : 0),
+    y: clientPoint.y - bounds.top - (Number.isFinite(border?.top) ? border.top : 0),
+  };
+}
+
 function getFocusScale(visualPixelSize, gridLimit, minimumScale, maximumScale) {
   let scale = visualPixelSize;
   if (visualPixelSize >= gridLimit + 1) {
