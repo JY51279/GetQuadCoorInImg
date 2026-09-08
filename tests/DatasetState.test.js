@@ -49,7 +49,7 @@ function loadDbrDataset() {
   });
   expect(prepared.success).toBe(true);
   expect(commitPreparedJsonProcess(prepared)).toBe(true);
-  expect(resetPicJson('C:/images/one.png', 0)).toBe(true);
+  expect(resetPicJson('C:/images/one.png', 0).success).toBe(true);
 }
 
 describe('Dataset schema', () => {
@@ -140,8 +140,18 @@ describe('Dataset state operations', () => {
 
     expect(areImagePathsEquivalent('C:\\Images\\ONE.PNG', 'c:/images/one.png')).toBe(true);
     expect(areImagePathsEquivalent('/Images/one.png', '/images/one.png')).toBe(false);
-    expect(resetPicJson('c:/IMAGES/ONE.PNG')).toBe(true);
+    expect(resetPicJson('c:/IMAGES/ONE.PNG').success).toBe(true);
     expect(getJsonImagePosition()).toEqual({ currentIndex: 0, total: 2 });
+  });
+
+  it('returns a structured failure when an image has no matching dataset item', () => {
+    loadDbrDataset();
+
+    expect(resetPicJson('C:/images/missing.png')).toEqual({
+      success: false,
+      error: 'No JSON data found for image path:\nC:/images/missing.png',
+    });
+    expect(getCurrentJsonImageIndex()).toBe(-1);
   });
 
   it('returns a detached annotation view for the current image', () => {
@@ -190,7 +200,7 @@ describe('Dataset state operations', () => {
       path: 'C:/datasets/old.json',
     });
     expect(commitPreparedJsonProcess(oldPrepared)).toBe(true);
-    expect(resetPicJson('C:/old-images/198.png', 197)).toBe(true);
+    expect(resetPicJson('C:/old-images/198.png', 197).success).toBe(true);
     expect(getJsonImagePosition().currentIndex).toBe(197);
 
     const newData = {
@@ -207,7 +217,7 @@ describe('Dataset state operations', () => {
     const firstTarget = getAdjacentJsonImageTarget(KEYS.NEXT);
     expect(firstTarget).toEqual({ success: true, index: 0, path: 'C:/new-images/one.png' });
     expect(getCurrentJsonImageIndex()).toBe(-1);
-    expect(resetPicJson(firstTarget.path, firstTarget.index)).toBe(true);
+    expect(resetPicJson(firstTarget.path, firstTarget.index).success).toBe(true);
     expect(getJsonImagePosition()).toEqual({ currentIndex: 0, total: 2 });
   });
 
@@ -241,7 +251,7 @@ describe('Dataset state operations', () => {
     loadDbrDataset();
     expect(updateJson(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }])).toBe(KEYS.OPERATE_SUCCESS);
 
-    expect(resetPicJson('C:/images/two.png', 1)).toBe(true);
+    expect(resetPicJson('C:/images/two.png', 1).success).toBe(true);
     expect(updateJson(KEYS.JSON_MODIFY, 1, 0, [{ x: 1, y: 9 }])).toBe(KEYS.OPERATE_SUCCESS);
     expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 1, y: 9 });
   });

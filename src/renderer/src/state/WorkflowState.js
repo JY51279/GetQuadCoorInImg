@@ -54,7 +54,7 @@ export function canEdit(state) {
 }
 
 export function canChangeQuadSelection(state) {
-  return [WORKFLOW_PHASE.READY, WORKFLOW_PHASE.LOADING_IMAGE].includes(state?.phase);
+  return state?.phase === WORKFLOW_PHASE.READY;
 }
 
 function startOperation(state, type, context = {}) {

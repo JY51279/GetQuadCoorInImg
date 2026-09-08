@@ -67,7 +67,7 @@ describe('Workflow state', () => {
 
     expect(canEdit(ready)).toBe(true);
     expect(canEdit(loadingImage)).toBe(false);
-    expect(canChangeQuadSelection(loadingImage)).toBe(true);
+    expect(canChangeQuadSelection(loadingImage)).toBe(false);
     expect(canChangeQuadSelection(saving)).toBe(false);
     expect(isOperationActive(loadingImage, WORKFLOW_OPERATION.LOAD_IMAGE)).toBe(true);
     expect(isOperationActive(saving, WORKFLOW_OPERATION.LOAD_IMAGE)).toBe(false);

@@ -121,7 +121,12 @@ export function resetPicJson(imgFilePath, requestedImgIndex = null) {
   if (resolvedImageIndex === -1) {
     datasetState.currentImageIndex = -1;
     clearCurrentAnnotationState();
-    return false;
+    return {
+      success: false,
+      error: imgFilePath
+        ? `No JSON data found for image path:\n${imgFilePath}`
+        : 'No JSON data found for the current image.',
+    };
   }
 
   try {
@@ -129,17 +134,16 @@ export function resetPicJson(imgFilePath, requestedImgIndex = null) {
     if (!Object.prototype.hasOwnProperty.call(currentPicture, datasetState.productSchema.targetKey)) {
       datasetState.currentImageIndex = -1;
       clearCurrentAnnotationState();
-      window.alert('The selected product type does not match the dataset type.');
-      return false;
+      return { success: false, error: 'The selected product type does not match the dataset type.' };
     }
     datasetState.currentImageIndex = resolvedImageIndex;
     datasetState.currentItems = currentPicture[datasetState.productSchema.targetKey];
-    return true;
+    return { success: true, index: resolvedImageIndex };
   } catch (err) {
     datasetState.currentImageIndex = -1;
     clearCurrentAnnotationState();
     console.error('An error occurred while accessing the JSON array:', err);
-    return false;
+    return { success: false, error: 'Failed to access the matching JSON image item.' };
   }
 }
 

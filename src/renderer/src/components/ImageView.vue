@@ -54,7 +54,8 @@
       @click="deleteDot"
     ></div>
     <div
-      v-if="scale < gridLimit"
+      v-show="scale < gridLimit"
+      ref="zoomRectangle"
       class="rectangle"
       :style="`
                 transform: translate(${-offsetCanvasLeft}px, ${-offsetCanvasTop}px) scale(${scale});
@@ -146,6 +147,7 @@ const autoAdaptBorderDis = 10;
 const imgContainerRef = ref(null);
 const canvas = ref(null);
 const canvasForShowQuads = ref(null);
+const zoomRectangle = ref(null);
 const ctx = ref(null);
 const ctxQuad = ref(null);
 const scale = ref(1);
@@ -180,14 +182,13 @@ let timer = null;
 let isNotLongPress = true;
 
 defineExpose({
-  realDot2GetZoom,
   resetPosition,
   initImgInfo,
   toggleShowQuadIndex,
   addShowQuadIndex,
   clearShowQuadIndex,
   resetQuadsArray,
-  refreshHoveredQuad,
+  redrawQuadOverlay: drawCanvasForShowQuads,
   toggleMode,
   clearImage,
   focusQuad,
@@ -234,20 +235,28 @@ function getDotInfo(e) {
 }
 
 // Base image rendering
-function drawCanvas() {
-  if (canvas.value === null || ctx.value === null || props.imageObj === null) {
-    outputMessage('drawCanvas canvas Error.');
-    return;
-  }
-  if (
+function isImageOutsideViewport() {
+  if (imageSrc === '' || scale.value <= 0 || initImgWidth.value <= 0 || initImgHeight.value <= 0) return false;
+  return (
     offsetX.value >= viewportWidth.value ||
     offsetY.value >= viewportHeight.value ||
     offsetX.value <= -initImgWidth.value * scale.value ||
     offsetY.value <= -initImgHeight.value * scale.value
-  ) {
+  );
+}
+
+function notifyIfImageBecameInvisible(wasOutsideViewport) {
+  if (!wasOutsideViewport && isImageOutsideViewport()) outputMessage('The image is out of the visible area.');
+}
+
+function drawCanvas() {
+  if (canvas.value === null || ctx.value === null || props.imageObj === null) {
+    console.warn('Failed to draw the image canvas.');
+    return false;
+  }
+  if (isImageOutsideViewport()) {
     ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
-    outputMessage('The image is out of the visible area.');
-    return;
+    return false;
   }
 
   const x1 = Math.max(0, offsetX.value);
@@ -292,6 +301,7 @@ function drawCanvas() {
     drawImgInGrid(sw, sh);
     drawGrid();
   }
+  return true;
 }
 
 function drawGrid() {
@@ -342,7 +352,7 @@ function isValidQuadPoints(quadPoints) {
   );
 }
 
-function resetQuadsArray(newQuadArray, coordinateScale) {
+function resetQuadsArray(newQuadArray, coordinateScale, { deletedIndex = null } = {}) {
   const scaleX = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.x;
   const scaleY = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.y;
   quadsArray = Array.isArray(newQuadArray)
@@ -355,6 +365,14 @@ function resetQuadsArray(newQuadArray, coordinateScale) {
       dot.y = scaleY === 0 ? 0 : Math.round(dot.y * scaleY);
     });
   });
+
+  if (Number.isInteger(deletedIndex) && deletedIndex >= 0) {
+    const remappedIndices = showQuadIndex
+      .filter(index => index !== deletedIndex)
+      .map(index => (index > deletedIndex ? index - 1 : index))
+      .filter(index => index >= 0 && index < quadsArray.length);
+    showQuadIndex.splice(0, showQuadIndex.length, ...remappedIndices);
+  }
 }
 
 watch(highlightQuadIndex, (newHighlightQuadIndex, oldHighlightQuadIndex) => {
@@ -415,16 +433,9 @@ function drawCanvasForShowQuads() {
   drawShowQuads();
   if (!(highlightQuadIndex.value === -1 || highlightQuadIndex.value >= quadsArray.length))
     drawQuadLine(quadsArray[highlightQuadIndex.value], true);
-  getMouseInRectIndices();
+  updateHoveredQuadInfo();
 }
 
-function refreshHoveredQuad(event = null) {
-  if (Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)) {
-    mouseCoord.x = event.clientX;
-    mouseCoord.y = event.clientY;
-  }
-  drawCanvasForShowQuads();
-}
 function drawShowQuads() {
   for (let i = 0; i < showQuadIndex.length; ++i) {
     if (showQuadIndex[i] === highlightQuadIndex.value) continue;
@@ -535,7 +546,7 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
   if (pressed.value) {
     updateOffsetMoved(oldX, oldY, newX, newY);
   } else {
-    getMouseInRectIndices();
+    updateHoveredQuadInfo(true);
   }
 });
 
@@ -551,6 +562,7 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
   const deltaX = newX - oldX;
   const deltaY = newY - oldY;
   if (deltaX === 0 && deltaY === 0) return;
+  const wasOutsideViewport = isImageOutsideViewport();
 
   offsetX.value += deltaX;
   offsetY.value += deltaY;
@@ -570,10 +582,11 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
         offsetY.value = viewportHeight.value - initImgHeight.value * scale.value;
     }
   }
+  notifyIfImageBecameInvisible(wasOutsideViewport);
   updateViewPortDraw();
 }
 
-function getMouseInRectIndices() {
+function updateHoveredQuadInfo(commitSelection = false) {
   if (mouseIsOverContainer.value !== true || outerQuadArray.length === 0) return;
   indices2Show.value = '';
   const separator = ' ';
@@ -592,7 +605,7 @@ function getMouseInRectIndices() {
   }
   indices2Show.value = indices2Show.value.trimEnd();
 
-  emitHoveredQuadSelection(indices2Show.value, separator);
+  if (commitSelection) emitHoveredQuadSelection(indices2Show.value, separator);
 }
 
 function emitHoveredQuadSelection(indicesArray, separator) {
@@ -649,8 +662,10 @@ function applyUserScale(newScale) {
   const previousScale = normalizeScale(scale.value, 0.1, scaleRange, 1);
   const validScale = normalizeScale(newScale, 0.1, scaleRange, previousScale);
   if (Object.is(previousScale, validScale)) return;
+  const wasOutsideViewport = isImageOutsideViewport();
   updateOffsetScaled(previousScale, validScale);
   scale.value = validScale;
+  notifyIfImageBecameInvisible(wasOutsideViewport);
   updateViewPortDraw();
 }
 
@@ -719,9 +734,6 @@ function toggleDot(e) {
     return;
   }
 
-  // A newly loaded image can appear underneath a stationary pointer without
-  // producing a mousemove event. Re-evaluate the hovered quad before editing.
-  refreshHoveredQuad(e);
   if (!isPointInVisibleImage({ x: e.clientX, y: e.clientY })) {
     outputMessage('The pt is not in the pic.');
     return;
@@ -901,7 +913,7 @@ function updateZoomView(e) {
   let rectCoord = updateRealDots2GetZoom(e);
   if (rectCoord) {
     updateRectanglePosition(rectCoord);
-    emits('update-zoom-view');
+    emits('update-zoom-view', { ...realDot2GetZoom.value });
   }
 }
 function updateRealDots2GetZoom(e) {
@@ -980,7 +992,8 @@ function updateRectanglePosition(rectCoord) {
   if (scale.value >= gridLimit) {
     return;
   }
-  let rectangle = document.querySelector('.rectangle');
+  const rectangle = zoomRectangle.value;
+  if (rectangle === null) return;
 
   rectangle.style.left = rectCoord.x + 'px';
   rectangle.style.top = rectCoord.y + 'px';

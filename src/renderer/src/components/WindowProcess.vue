@@ -155,6 +155,7 @@ const jsonFileName = ref(null);
 const loadedProductType = ref('');
 let imgFilePath = '';
 let imageCoordinateScale = { x: 1, y: 1 };
+let zoomSourceOrigin = null;
 
 // Operation and image request state
 const workflowState = ref(createWorkflowState());
@@ -406,6 +407,7 @@ async function performJsonAction(action) {
     return;
   }
 
+  const affectedQuadIndex = activeQuadIndex.value;
   await runSaveTransaction(
     () => {
       outputMessage('Start operate: ' + action);
@@ -413,7 +415,13 @@ async function performJsonAction(action) {
       return updateJsonRes === KEYS.OPERATE_SUCCESS ? null : updateJsonRes;
     },
     () => {
-      refreshCurrentAnnotations();
+      if (action === KEYS.JSON_DELETE) {
+        refreshCurrentAnnotations({ resetSelection: true, deletedQuadIndex: affectedQuadIndex });
+      } else if (action === KEYS.JSON_ADD) {
+        refreshCurrentAnnotations({ showNewQuad: true });
+      } else {
+        refreshCurrentAnnotations({ redrawOverlay: true });
+      }
       if (action === KEYS.JSON_ADD) nextTick(() => jsonView.value?.scrollToBottom());
       resetDots();
     },
@@ -491,24 +499,19 @@ async function initProcessInfo(jsonImageIndex = null) {
       if (!(await imgContainerRef.value.initImgInfo())) return false;
     }
 
-    if (!resetPicJson(imgFilePath, jsonImageIndex)) {
+    const resetPictureResult = resetPicJson(imgFilePath, jsonImageIndex);
+    if (!resetPictureResult.success) {
       clearCurrentAnnotations(
-        imgFilePath
-          ? `No JSON data found for image path:\n${imgFilePath}`
-          : 'No JSON data found for the current image.',
+        resetPictureResult.error ||
+          (imgFilePath
+            ? `No JSON data found for image path:\n${imgFilePath}`
+            : 'No JSON data found for the current image.'),
       );
       refreshImagePositionView();
       jumpImageIndex.value = '';
       return false;
     }
-    refreshCurrentAnnotations();
-
-    // Switching images does not fire mousemove when the pointer stays still.
-    // Wait for the new quad overlay, then synchronize its hover selection before
-    // JSON operations are enabled.
-    await nextTick();
-    imgContainerRef.value.refreshHoveredQuad();
-    await nextTick();
+    refreshCurrentAnnotations({ resetSelection: true, resetVisibility: true });
 
     const position = refreshImagePositionView();
     jumpImageIndex.value = position.currentIndex + 1;
@@ -520,22 +523,35 @@ async function initProcessInfo(jsonImageIndex = null) {
   }
 }
 
-function renderAnnotationQuads() {
-  imgContainerRef.value.resetQuadsArray(annotationView.value.quads, imageCoordinateScale);
-  clearShowQuads();
-  addAll2ShowQuads();
+function renderAnnotationQuads({
+  resetVisibility = false,
+  deletedQuadIndex = null,
+  showNewQuad = false,
+  redrawOverlay = false,
+} = {}) {
+  imgContainerRef.value.resetQuadsArray(annotationView.value.quads, imageCoordinateScale, {
+    deletedIndex: deletedQuadIndex,
+  });
+  if (resetVisibility) {
+    clearShowQuads();
+    addAll2ShowQuads();
+  } else if (showNewQuad && quadTotal.value > 0) {
+    imgContainerRef.value.addShowQuadIndex(quadTotal.value - 1);
+  } else if (redrawOverlay) {
+    imgContainerRef.value.redrawQuadOverlay();
+  }
 }
 
-function refreshCurrentAnnotations() {
-  resetQuadSelection();
+function refreshCurrentAnnotations(options = {}) {
+  if (options.resetSelection) resetQuadSelection();
   annotationView.value = { ...getCurrentAnnotationView(), errorMessage: '' };
-  renderAnnotationQuads();
+  renderAnnotationQuads(options);
 }
 
 function clearCurrentAnnotations(errorMessage = '') {
   resetQuadSelection();
   annotationView.value = { formattedItems: [], quads: [], errorMessage };
-  renderAnnotationQuads();
+  renderAnnotationQuads({ resetVisibility: true });
 }
 // Image request lifecycle
 function chooseImgFile() {
@@ -710,6 +726,7 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
       message: errorMessage || 'Unknown image loading error.',
     };
     resetDots();
+    resetZoomPreview();
   }
   if (failedRequest?.operationId) {
     applyWorkflowTransition(failOperation(workflowState.value, failedRequest.operationId));
@@ -746,6 +763,7 @@ async function handlePreparedImageResponse(response) {
       ) {
         throw new Error('The prepared image dimensions do not match the loaded image.');
       }
+      resetZoomPreview();
       imageObj.value = loadedImage;
       imageCoordinateScale = {
         x: imageInfo.coordinateScaleX,
@@ -785,6 +803,7 @@ function resetImageForDatasetChange() {
   refreshImagePositionView();
   jumpImageIndex.value = '';
   resetDots();
+  resetZoomPreview();
   imgContainerRef.value.clearImage();
   clearCurrentAnnotations();
 }
@@ -914,14 +933,25 @@ watch(selectedDots, () => {
 });
 
 // Zoom preview
-function updateZoomView() {
-  const origin = imgContainerRef.value?.realDot2GetZoom;
-  if (!imageObj.value?.complete || !origin || origin.x === -1) return;
+function updateZoomView(origin = null) {
+  if (origin !== null) {
+    if (!Number.isFinite(origin?.x) || !Number.isFinite(origin?.y)) return;
+    zoomSourceOrigin = { x: origin.x, y: origin.y };
+  }
+  if (!imageObj.value?.complete || zoomSourceOrigin === null) return;
 
   try {
-    drawZoomPreview(zoomView.value, imageObj.value, origin, selectedDots);
+    drawZoomPreview(zoomView.value, imageObj.value, zoomSourceOrigin, selectedDots);
   } catch (error) {
     console.error('Failed to draw the zoom preview:', error);
+  }
+}
+
+function resetZoomPreview() {
+  zoomSourceOrigin = null;
+  const context = zoomView.value?.getContext('2d');
+  if (context !== null && context !== undefined) {
+    context.clearRect(0, 0, zoomView.value.width, zoomView.value.height);
   }
 }
 
