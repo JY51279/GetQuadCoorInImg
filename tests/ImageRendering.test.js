@@ -9,8 +9,36 @@ import {
   scaledToCanvasPoint,
   scaledToImagePoint,
 } from '../src/renderer/src/utils/ImageViewGeometry.js';
+import { getOuterInnerQuads } from '../src/renderer/src/utils/ImageProcess.js';
 import { configureZoomCanvas, drawZoomPreview } from '../src/renderer/src/utils/ZoomViewRenderer.js';
 import { loadRendererImage } from '../src/renderer/src/utils/RendererImageLoader.js';
+
+function getFocusedOuterQuadBounds(quad, focusTransform, gridLimit = 10) {
+  const sourceLeftTop = {
+    x: Math.floor(Math.max(0, -focusTransform.offsetX) / focusTransform.scale),
+    y: Math.floor(Math.max(0, -focusTransform.offsetY) / focusTransform.scale),
+  };
+  const coordinateTransform = {
+    scale: focusTransform.scale,
+    gridLimit,
+    sourceLeftTop,
+    offsetX: focusTransform.offsetX,
+    offsetY: focusTransform.offsetY,
+    canvasOffsetLeft: 0,
+    canvasOffsetTop: 0,
+  };
+  const quadPointsInCanvas = quad.map(point => imageToCanvasPoint(point, coordinateTransform));
+  const { outerQuadPoints } = getOuterInnerQuads(quadPointsInCanvas, focusTransform.scale);
+  const xValues = outerQuadPoints.map(point => point.x);
+  const yValues = outerQuadPoints.map(point => point.y);
+
+  return {
+    left: Math.min(...xValues),
+    right: Math.max(...xValues),
+    top: Math.min(...yValues),
+    bottom: Math.max(...yValues),
+  };
+}
 
 describe('Image view geometry', () => {
   it('keeps scale values finite and inside the supported range', () => {
@@ -60,23 +88,20 @@ describe('Image view geometry', () => {
     expect(scaledToCanvasPoint({ x: 120, y: 80 }, transform)).toEqual(canvasPoint);
   });
 
-  it('fits a Quad and its context into 75 percent of the limiting viewport dimension', () => {
-    const result = calculateQuadFocusTransform(
-      [
-        { x: 0, y: 0 },
-        { x: 100, y: 0 },
-        { x: 100, y: 50 },
-        { x: 0, y: 50 },
-      ],
-      { viewportWidth: 1000, viewportHeight: 800 },
-    );
+  it('centers the rendered Quad pixels and fits their context into 75 percent of the viewport', () => {
+    const quad = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 50 },
+      { x: 0, y: 50 },
+    ];
+    const result = calculateQuadFocusTransform(quad, { viewportWidth: 1000, viewportHeight: 800 });
+    const outerBounds = getFocusedOuterQuadBounds(quad, result);
 
-    expect(result).toEqual({
-      scale: 5,
-      offsetX: 250,
-      offsetY: 275,
-      focusBounds: { left: -25, right: 125, top: -25, bottom: 75 },
-    });
+    expect(result.focusBounds).toEqual({ left: -26, right: 127, top: -26, bottom: 77 });
+    expect((result.focusBounds.right - result.focusBounds.left) * result.scale).toBeCloseTo(1000 * 0.75);
+    expect((outerBounds.left + outerBounds.right) / 2).toBeCloseTo(500);
+    expect((outerBounds.top + outerBounds.bottom) / 2).toBeCloseTo(400);
   });
 
   it('centers a distant small Quad while accounting for pixel-grid spacing', () => {
@@ -87,16 +112,14 @@ describe('Image view geometry', () => {
       { x: 1000, y: 610 },
     ];
     const result = calculateQuadFocusTransform(quad, { viewportWidth: 1000, viewportHeight: 800 });
-    const visualPixelSize = result.scale + 1;
-    const sourceLeft = Math.floor(Math.max(0, -result.offsetX) / result.scale);
-    const sourceTop = Math.floor(Math.max(0, -result.offsetY) / result.scale);
-    const centeredX = 1005 * result.scale + (1005 - sourceLeft) + result.offsetX;
-    const centeredY = 605 * result.scale + (605 - sourceTop) + result.offsetY;
+    const outerBounds = getFocusedOuterQuadBounds(quad, result);
+    const focusPixelCount = result.focusBounds.bottom - result.focusBounds.top;
+    const visualFocusHeight = focusPixelCount * (result.scale + 1) - 1;
 
     expect(result.scale).toBeGreaterThanOrEqual(10);
-    expect((result.focusBounds.bottom - result.focusBounds.top) * visualPixelSize).toBeCloseTo(800 * 0.75);
-    expect(centeredX).toBeCloseTo(500);
-    expect(centeredY).toBeCloseTo(400);
+    expect(Math.abs(visualFocusHeight - 800 * 0.75)).toBeLessThanOrEqual(1);
+    expect(Math.abs((outerBounds.left + outerBounds.right) / 2 - 500)).toBeLessThanOrEqual(1);
+    expect(Math.abs((outerBounds.top + outerBounds.bottom) / 2 - 400)).toBeLessThanOrEqual(1);
   });
 
   it('rejects invalid Quad focus input', () => {

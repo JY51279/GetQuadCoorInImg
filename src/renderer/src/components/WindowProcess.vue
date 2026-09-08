@@ -45,7 +45,7 @@
                 :placeholder="imagePositionView.total ? `1-${imagePositionView.total}` : '无数据'"
                 :disabled="imagePositionView.total === 0 || !canLoadImage"
                 aria-label="图片 index"
-                @keydown.enter.prevent="jumpToImageIndex"
+                @keydown.enter.prevent="handleJumpToImageIndexKeyDown"
               />
               <button
                 class="image-index-button"
@@ -70,11 +70,7 @@
       </div>
       <div class="button-group">
         <button class="button-style" :disabled="!canLoadDataset" @click="chooseJsonFile">Get JsonFile</button>
-        <button
-          class="button-style"
-          :disabled="imagePositionView.total === 0 || !canLoadImage"
-          @click="chooseImgFile"
-        >
+        <button class="button-style" :disabled="imagePositionView.total === 0 || !canLoadImage" @click="chooseImgFile">
           手动选择图片
         </button>
         <button class="button-style" :disabled="!canFocusQuad" @click="focusActiveQuad">Focus Quad (F)</button>
@@ -116,6 +112,7 @@ import {
   restoreDatasetMutationSnapshot,
 } from '../state/DatasetState.js';
 import { KEYS } from '../utils/BasicFuncs.js';
+import { handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { loadRendererImage } from '../utils/RendererImageLoader.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import {
@@ -224,6 +221,18 @@ onUnmounted(() => {
 
 // Keyboard shortcuts
 const keyActions = {
+  1: {
+    default: () => clearOneDot(0),
+  },
+  2: {
+    default: () => clearOneDot(1),
+  },
+  3: {
+    default: () => clearOneDot(2),
+  },
+  4: {
+    default: () => clearOneDot(3),
+  },
   w: {
     default: () => changeJsonItemSelection(KEYS.PREVIOUS),
   },
@@ -250,15 +259,10 @@ const keyActions = {
   f: {
     default: () => focusActiveQuad(),
   },
-  F: {
-    default: () => focusActiveQuad(),
-  },
   q: {
     default: () => toggleHighlight2ShowQuads(),
     ctrl: () => clearShowQuads(),
-  },
-  Q: {
-    ctrl_shift: () => addAll2ShowQuads(), // shift + q ==> Q
+    ctrlShift: () => addAll2ShowQuads(),
   },
   ArrowLeft: {
     default: () => changeImageByArrowKeys(KEYS.PREVIOUS),
@@ -278,30 +282,7 @@ const keyActions = {
 };
 
 function handleKeyDown(e) {
-  const tagName = e.target?.tagName;
-  if (e.target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(tagName)) return;
-  if (typeof e.key === 'string' && e.key.toLowerCase() === 'f' && (e.ctrlKey || e.altKey || e.metaKey)) return;
-
-  const keyCode = e.keyCode || e.code;
-
-  if (keyCode >= 48 && keyCode <= 57) {
-    const digit = keyCode - 48;
-    clearOneDot(digit - 1);
-    return;
-  }
-  const action = keyActions[e.key];
-  if (!action) return;
-
-  if (e.ctrlKey && e.shiftKey && action.ctrl_shift) {
-    e.preventDefault();
-    action.ctrl_shift();
-  } else if (e.ctrlKey && action.ctrl) {
-    e.preventDefault();
-    action.ctrl();
-  } else if (action.default) {
-    e.preventDefault();
-    action.default();
-  }
+  handleShortcutKeyDown(e, keyActions);
 }
 
 // Notifications
@@ -377,9 +358,7 @@ async function runSaveTransaction(mutate, onSaved = () => {}) {
 
   function finishOperation() {
     if (operationCompleted) return true;
-    operationCompleted = applyWorkflowTransition(
-      completeOperation(workflowState.value, operationId, completionPhase),
-    );
+    operationCompleted = applyWorkflowTransition(completeOperation(workflowState.value, operationId, completionPhase));
     return operationCompleted;
   }
 
@@ -469,7 +448,9 @@ async function saveJsonFileInfo(jsonFileInfo, { backupOriginal = false } = {}) {
       return false;
     }
     if (response.backupPath) {
-      outputMessage(`Temporary JSON backup created and scheduled for automatic deletion in 7 days: ${response.backupPath}`);
+      outputMessage(
+        `Temporary JSON backup created and scheduled for automatic deletion in 7 days: ${response.backupPath}`,
+      );
     }
     return true;
   } catch (error) {
@@ -624,6 +605,10 @@ function jumpToImageIndex() {
   startDatasetImageRequest(target, '');
 }
 
+function handleJumpToImageIndexKeyDown(event) {
+  if (!event.repeat) jumpToImageIndex();
+}
+
 function sendImageFileRequest(path, requestId) {
   const { jsonFilePath } = getJsonImageDialogContext();
   void requestPreparedImage('prepare-image', { imagePath: path, jsonFilePath, requestId });
@@ -747,7 +732,10 @@ async function handlePreparedImageResponse(response) {
       ) {
         return;
       }
-      if (loadedImage.naturalWidth !== imageInfo.displayWidth || loadedImage.naturalHeight !== imageInfo.displayHeight) {
+      if (
+        loadedImage.naturalWidth !== imageInfo.displayWidth ||
+        loadedImage.naturalHeight !== imageInfo.displayHeight
+      ) {
         throw new Error('The prepared image dimensions do not match the loaded image.');
       }
       imageObj.value = loadedImage;

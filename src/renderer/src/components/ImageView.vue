@@ -754,6 +754,9 @@ function focusQuad(quadIndex) {
   offsetX.value = transform.offsetX;
   offsetY.value = transform.offsetY;
   drawViewPortNow();
+  if (mouseIsOverContainer.value) {
+    updateZoomView({ clientX: mouseCoord.x, clientY: mouseCoord.y });
+  }
   return { success: true };
 }
 
@@ -964,7 +967,6 @@ function initCanvasSettings() {
   ctx.value.webkitImageSmoothingEnabled = false;
   ctx.value.msImageSmoothingEnabled = false;
 }
-
 </script>
 
 <style scoped>

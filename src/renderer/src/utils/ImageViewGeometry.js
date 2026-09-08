@@ -60,8 +60,12 @@ export function calculateQuadFocusTransform(
   const right = Math.max(...xValues);
   const top = Math.min(...yValues);
   const bottom = Math.max(...yValues);
-  const quadWidth = Math.max(1, right - left);
-  const quadHeight = Math.max(1, bottom - top);
+  // Quad coordinates identify pixel cells. The rendered outer edge therefore
+  // extends one source pixel beyond the largest x/y coordinate.
+  const rightEdge = right + 1;
+  const bottomEdge = bottom + 1;
+  const quadWidth = Math.max(1, rightEdge - left);
+  const quadHeight = Math.max(1, bottomEdge - top);
   const padding = Math.min(
     maximumPadding,
     Math.max(minimumPadding, Math.ceil(Math.max(quadWidth, quadHeight) * paddingRatio)),
@@ -73,8 +77,8 @@ export function calculateQuadFocusTransform(
     (viewportHeight * viewportRatio) / focusHeight,
   );
   const scale = getFocusScale(visualPixelSize, gridLimit, minimumScale, maximumScale);
-  const centerX = (left + right) / 2;
-  const centerY = (top + bottom) / 2;
+  const centerX = (left + rightEdge) / 2;
+  const centerY = (top + bottomEdge) / 2;
 
   return {
     scale,
@@ -82,9 +86,9 @@ export function calculateQuadFocusTransform(
     offsetY: getCenteredOffset(centerY, viewportHeight, scale, gridLimit),
     focusBounds: {
       left: left - padding,
-      right: right + padding,
+      right: rightEdge + padding,
       top: top - padding,
-      bottom: bottom + padding,
+      bottom: bottomEdge + padding,
     },
   };
 }
