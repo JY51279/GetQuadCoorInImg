@@ -1,6 +1,7 @@
 /* global globalThis */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  calculatePixelFocusTransform,
   calculateQuadFocusTransform,
   canvasToImagePoint,
   imageToCanvasPoint,
@@ -122,6 +123,28 @@ describe('Image view geometry', () => {
     expect(Math.abs((outerBounds.top + outerBounds.bottom) / 2 - 400)).toBeLessThanOrEqual(1);
   });
 
+  it('centers one rendered pixel at the standard local editing scale', () => {
+    const imagePoint = { x: 123, y: 45 };
+    const result = calculatePixelFocusTransform(imagePoint, { viewportWidth: 1000, viewportHeight: 800 });
+    const coordinateTransform = {
+      scale: result.scale,
+      gridLimit: 10,
+      sourceLeftTop: {
+        x: Math.floor(Math.max(0, -result.offsetX) / result.scale),
+        y: Math.floor(Math.max(0, -result.offsetY) / result.scale),
+      },
+      offsetX: result.offsetX,
+      offsetY: result.offsetY,
+      canvasOffsetLeft: 0,
+      canvasOffsetTop: 0,
+    };
+    const pixelTopLeft = imageToCanvasPoint(imagePoint, coordinateTransform);
+
+    expect(result.scale).toBe(9.9);
+    expect(Math.abs(pixelTopLeft.x + result.scale / 2 - 500)).toBeLessThanOrEqual(1);
+    expect(Math.abs(pixelTopLeft.y + result.scale / 2 - 400)).toBeLessThanOrEqual(1);
+  });
+
   it('rejects invalid Quad focus input', () => {
     expect(calculateQuadFocusTransform([], { viewportWidth: 1000, viewportHeight: 800 })).toBeNull();
     expect(
@@ -134,6 +157,9 @@ describe('Image view geometry', () => {
         ],
         { viewportWidth: 1000, viewportHeight: 800 },
       ),
+    ).toBeNull();
+    expect(
+      calculatePixelFocusTransform({ x: Number.NaN, y: 0 }, { viewportWidth: 1000, viewportHeight: 800 }),
     ).toBeNull();
   });
 });

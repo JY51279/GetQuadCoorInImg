@@ -92,6 +92,7 @@ import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from
 import { useMouse, useMousePressed } from '@vueuse/core';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 import {
+  calculatePixelFocusTransform,
   calculateQuadFocusTransform,
   canvasToImagePoint,
   imageToCanvasPoint,
@@ -190,6 +191,7 @@ defineExpose({
   toggleMode,
   clearImage,
   focusQuad,
+  focusPixelAtMouse,
 });
 
 function outputMessage(message) {
@@ -513,6 +515,7 @@ function drawViewPortNow() {
   drawCanvas();
   updateDotsCanvasCoord();
   drawCanvasForShowQuads();
+  refreshZoomViewAtCurrentMouse();
 }
 
 function updateViewPortDraw() {
@@ -696,6 +699,15 @@ onUnmounted(() => {
 });
 
 // Point selection
+function isPointInVisibleImage(canvasPoint) {
+  return (
+    canvasPoint.x >= canvasLTCoord.x &&
+    canvasPoint.x < canvasRBCoord.x &&
+    canvasPoint.y >= canvasLTCoord.y &&
+    canvasPoint.y < canvasRBCoord.y
+  );
+}
+
 watch(
   () => props.selectedDots,
   () => updateDotsCanvasCoord(),
@@ -710,12 +722,7 @@ function toggleDot(e) {
   // A newly loaded image can appear underneath a stationary pointer without
   // producing a mousemove event. Re-evaluate the hovered quad before editing.
   refreshHoveredQuad(e);
-  if (
-    e.clientX < canvasLTCoord.x ||
-    e.clientX >= canvasRBCoord.x ||
-    e.clientY < canvasLTCoord.y ||
-    e.clientY >= canvasRBCoord.y
-  ) {
+  if (!isPointInVisibleImage({ x: e.clientX, y: e.clientY })) {
     outputMessage('The pt is not in the pic.');
     return;
   }
@@ -737,6 +744,14 @@ function resetPosition() {
   updateViewPortDraw();
 }
 
+function applyViewTransform(transform) {
+  cancelScheduledViewPortDraw();
+  scale.value = transform.scale;
+  offsetX.value = transform.offsetX;
+  offsetY.value = transform.offsetY;
+  drawViewPortNow();
+}
+
 function focusQuad(quadIndex) {
   if (imageSrc === '') return { success: false, error: 'No image is available.' };
   if (!Number.isInteger(quadIndex) || quadIndex < 0 || quadIndex >= quadsArray.length) {
@@ -749,14 +764,36 @@ function focusQuad(quadIndex) {
   });
   if (transform === null) return { success: false, error: 'The active Quad has invalid coordinates.' };
 
-  cancelScheduledViewPortDraw();
-  scale.value = transform.scale;
-  offsetX.value = transform.offsetX;
-  offsetY.value = transform.offsetY;
-  drawViewPortNow();
-  if (mouseIsOverContainer.value) {
-    updateZoomView({ clientX: mouseCoord.x, clientY: mouseCoord.y });
+  applyViewTransform(transform);
+  return { success: true };
+}
+
+function focusPixelAtMouse() {
+  if (!props.canInteract || imageSrc === '') return { success: false, error: 'No image is available.' };
+
+  const mousePoint = { x: mouseCoord.x, y: mouseCoord.y };
+  if (!mouseIsOverContainer.value || !isPointInVisibleImage(mousePoint)) {
+    return { success: false, error: 'Please move the mouse over a visible image pixel before focusing it.' };
   }
+
+  const imagePoint = { x: 0, y: 0 };
+  transCanvas2RealInfo(imagePoint, mousePoint);
+  if (
+    imagePoint.x < 0 ||
+    imagePoint.x >= initImgWidth.value ||
+    imagePoint.y < 0 ||
+    imagePoint.y >= initImgHeight.value
+  ) {
+    return { success: false, error: 'The pixel under the mouse is outside the image.' };
+  }
+
+  const transform = calculatePixelFocusTransform(imagePoint, {
+    viewportWidth: viewportWidth.value,
+    viewportHeight: viewportHeight.value,
+  });
+  if (transform === null) return { success: false, error: 'Failed to calculate the pixel focus position.' };
+
+  applyViewTransform(transform);
   return { success: true };
 }
 
@@ -852,6 +889,11 @@ const onWheel = event => {
 };
 
 // Zoom preview and point positions
+function refreshZoomViewAtCurrentMouse() {
+  if (!mouseIsOverContainer.value) return;
+  updateZoomView({ clientX: mouseCoord.x, clientY: mouseCoord.y });
+}
+
 function updateZoomView(e) {
   if (!props.canInteract || !props.imageObj || imageSrc === '') {
     return;

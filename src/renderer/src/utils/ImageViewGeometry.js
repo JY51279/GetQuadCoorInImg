@@ -93,6 +93,36 @@ export function calculateQuadFocusTransform(
   };
 }
 
+export function calculatePixelFocusTransform(
+  imagePoint,
+  { viewportWidth, viewportHeight },
+  { visualPixelSize = 10, minimumScale = 0.1, maximumScale = 60, gridLimit = 10 } = {},
+) {
+  if (
+    !imagePoint ||
+    !Number.isFinite(imagePoint.x) ||
+    !Number.isFinite(imagePoint.y) ||
+    !Number.isFinite(viewportWidth) ||
+    viewportWidth <= 0 ||
+    !Number.isFinite(viewportHeight) ||
+    viewportHeight <= 0 ||
+    !Number.isFinite(visualPixelSize) ||
+    visualPixelSize <= 0
+  ) {
+    return null;
+  }
+
+  const scale = getFocusScale(visualPixelSize, gridLimit, minimumScale, maximumScale);
+  const centerX = imagePoint.x + 0.5;
+  const centerY = imagePoint.y + 0.5;
+
+  return {
+    scale,
+    offsetX: getCenteredOffset(centerX, viewportWidth, scale, gridLimit),
+    offsetY: getCenteredOffset(centerY, viewportHeight, scale, gridLimit),
+  };
+}
+
 export function scaledToImagePoint(scaledPoint, scale) {
   return {
     x: Math.floor(scaledPoint.x / scale),

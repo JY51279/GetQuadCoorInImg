@@ -82,6 +82,11 @@
     </div>
 
     <div class="keyCombination">
+      <div class="key">z</div>
+      <div class="keyText">居中并放大鼠标所在像素</div>
+    </div>
+
+    <div class="keyCombination">
       <div class="key">Ctrl</div>
       <div class="key">r</div>
       <div class="keyText">重置数据No.值</div>

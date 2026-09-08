@@ -259,6 +259,9 @@ const keyActions = {
   f: {
     default: () => focusActiveQuad(),
   },
+  z: {
+    default: () => focusPixelAtMouse(),
+  },
   q: {
     default: () => toggleHighlight2ShowQuads(),
     ctrl: () => clearShowQuads(),
@@ -331,6 +334,11 @@ function focusActiveQuad() {
   }
   const result = imgContainerRef.value?.focusQuad(activeQuadIndex.value);
   if (!result?.success) outputMessage(result?.error || 'Failed to focus the active Quad.');
+}
+
+function focusPixelAtMouse() {
+  const result = imgContainerRef.value?.focusPixelAtMouse();
+  if (!result?.success) outputMessage(result?.error || 'Failed to focus the pixel under the mouse.');
 }
 
 function resetDots() {
