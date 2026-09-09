@@ -4,6 +4,69 @@ export function normalizeScale(value, minimum = 0.1, maximum = 60, fallback = 1)
   return Math.min(maximum, Math.max(minimum, numericValue));
 }
 
+export function scaleToSliderPosition(
+  scale,
+  { minimumScale = 0.1, maximumScale = 60, minimumPosition = 0, maximumPosition = 100 } = {},
+) {
+  if (
+    !Number.isFinite(minimumScale) ||
+    !Number.isFinite(maximumScale) ||
+    minimumScale <= 0 ||
+    maximumScale <= minimumScale ||
+    !Number.isFinite(minimumPosition) ||
+    !Number.isFinite(maximumPosition) ||
+    maximumPosition <= minimumPosition
+  ) {
+    return minimumPosition;
+  }
+
+  const normalizedScale = normalizeScale(scale, minimumScale, maximumScale, minimumScale);
+  const ratio = Math.log(normalizedScale / minimumScale) / Math.log(maximumScale / minimumScale);
+  return minimumPosition + ratio * (maximumPosition - minimumPosition);
+}
+
+export function sliderPositionToScale(
+  position,
+  { minimumScale = 0.1, maximumScale = 60, minimumPosition = 0, maximumPosition = 100 } = {},
+) {
+  if (
+    !Number.isFinite(minimumScale) ||
+    !Number.isFinite(maximumScale) ||
+    minimumScale <= 0 ||
+    maximumScale <= minimumScale ||
+    !Number.isFinite(minimumPosition) ||
+    !Number.isFinite(maximumPosition) ||
+    maximumPosition <= minimumPosition
+  ) {
+    return minimumScale;
+  }
+
+  const normalizedPosition = Math.min(maximumPosition, Math.max(minimumPosition, Number(position)));
+  const ratio = Number.isFinite(normalizedPosition)
+    ? (normalizedPosition - minimumPosition) / (maximumPosition - minimumPosition)
+    : 0;
+  return minimumScale * Math.pow(maximumScale / minimumScale, ratio);
+}
+
+export function calculateWheelScale(
+  currentScale,
+  deltaY,
+  { minimumScale = 0.1, maximumScale = 60, gridLimit = 10, scaleFactor = Math.pow(2, 1 / 6) } = {},
+) {
+  const normalizedScale = normalizeScale(currentScale, minimumScale, maximumScale, 1);
+  if (!Number.isFinite(deltaY) || deltaY === 0 || !Number.isFinite(scaleFactor) || scaleFactor <= 1) {
+    return normalizedScale;
+  }
+
+  let nextScale = normalizedScale * (deltaY < 0 ? scaleFactor : 1 / scaleFactor);
+  const crossesGridLimit =
+    Number.isFinite(gridLimit) &&
+    ((normalizedScale < gridLimit && nextScale > gridLimit) || (normalizedScale > gridLimit && nextScale < gridLimit));
+  if (crossesGridLimit) nextScale = gridLimit;
+
+  return normalizeScale(Number(nextScale.toPrecision(8)), minimumScale, maximumScale, normalizedScale);
+}
+
 export function clientToLocalPoint(clientPoint, bounds, border = { left: 0, top: 0 }) {
   if (
     !clientPoint ||

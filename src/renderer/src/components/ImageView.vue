@@ -76,7 +76,7 @@
     <div class="canvas-scale-bar">
       <span class="scale-label">缩放</span>
       <input
-        :value="scale"
+        :value="scaleDisplayValue"
         class="scale-number"
         type="number"
         min="0.1"
@@ -84,20 +84,27 @@
         step="0.1"
         :disabled="!canInteract"
         aria-label="图片缩放比例"
-        @input="applyScaleInput"
+        @change="applyScaleInput"
       />
-      <input
-        :value="scale"
-        class="scale-range"
-        type="range"
-        min="0.1"
-        :max="scaleRange"
-        step="0.1"
-        :disabled="!canInteract"
-        aria-label="调整图片缩放比例"
-        @input="applyScaleInput"
-      />
-      <span class="scale-value">{{ Number(scale).toFixed(1) }}×</span>
+      <div class="scale-slider-control">
+        <input
+          :value="scaleSliderPosition"
+          class="scale-range"
+          type="range"
+          min="0"
+          :max="scaleSliderRange"
+          step="0.1"
+          :disabled="!canInteract"
+          aria-label="按对数刻度调整图片缩放比例"
+          @input="applyScaleSliderInput"
+        />
+        <div class="scale-ticks" aria-hidden="true">
+          <span v-for="tick in scaleTicks" :key="tick.value" :style="{ left: `${tick.position}%` }">
+            {{ tick.label }}
+          </span>
+        </div>
+      </div>
+      <span class="scale-value">{{ scaleDisplayValue }}×</span>
     </div>
   </section>
 </template>
@@ -109,13 +116,16 @@ import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 import {
   calculatePixelFocusTransform,
   calculateQuadFocusTransform,
+  calculateWheelScale,
   canvasToImagePoint,
   clientToLocalPoint,
   imageToCanvasPoint,
   imageToScaledPoint,
   normalizeScale,
+  scaleToSliderPosition,
   scaledToCanvasPoint,
   scaledToImagePoint,
+  sliderPositionToScale,
 } from '../utils/ImageViewGeometry.js';
 
 import { isPointInPolygon } from '../utils/BasicFuncs.js';
@@ -160,6 +170,7 @@ const props = defineProps({
 // Canvas and viewport state
 const gridLimit = 10;
 const scaleRange = 60;
+const scaleSliderRange = 100;
 const autoAdaptBorderDis = 10;
 const imgContainerRef = ref(null);
 const canvas = ref(null);
@@ -168,6 +179,15 @@ const zoomRectangle = ref(null);
 const ctx = ref(null);
 const ctxQuad = ref(null);
 const scale = ref(1);
+const scaleSliderPosition = computed(() => scaleToSliderPosition(scale.value));
+const scaleDisplayValue = computed(() => Number(scale.value.toFixed(scale.value < 10 ? 2 : 1)));
+const scaleTicks = Object.freeze(
+  [0.1, 1, 10, 60].map(value => ({
+    value,
+    label: `${value}×`,
+    position: scaleToSliderPosition(value),
+  })),
+);
 const offsetX = ref(0);
 const offsetY = ref(0);
 const viewportWidth = ref(0);
@@ -654,7 +674,7 @@ function emitHoveredQuadSelection(indicesArray, separator) {
   emits('select-quad-index', targetIndex);
 }
 
-function updateOffsetScaled(oldScale, newScale) {
+function updateOffsetForPointerScale(oldScale, newScale) {
   if (oldScale === 0) return;
 
   const canvasCoord = { x: mouseCoord.x, y: mouseCoord.y };
@@ -684,12 +704,12 @@ function updateOffsetScaled(oldScale, newScale) {
   offsetY.value -= canvasCoord.y + fineTuning.y - mouseCoord.y;
 }
 
-function applyUserScale(newScale) {
+function applyUserScale(newScale, { anchorAtPointer = false } = {}) {
   const previousScale = normalizeScale(scale.value, 0.1, scaleRange, 1);
   const validScale = normalizeScale(newScale, 0.1, scaleRange, previousScale);
   if (Object.is(previousScale, validScale)) return;
   const wasOutsideViewport = isImageOutsideViewport();
-  updateOffsetScaled(previousScale, validScale);
+  if (anchorAtPointer) updateOffsetForPointerScale(previousScale, validScale);
   scale.value = validScale;
   notifyIfImageBecameInvisible(wasOutsideViewport);
   updateViewPortDraw();
@@ -697,6 +717,16 @@ function applyUserScale(newScale) {
 
 function applyScaleInput(event) {
   applyUserScale(event.target.value);
+  event.target.value = scaleDisplayValue.value;
+}
+
+function applyScaleSliderInput(event) {
+  const sliderPosition = Number(event.target.value);
+  let nextScale = sliderPositionToScale(sliderPosition);
+  const gridPosition = scaleToSliderPosition(gridLimit);
+  if (Math.abs(sliderPosition - gridPosition) <= 0.75) nextScale = gridLimit;
+  applyUserScale(nextScale);
+  event.target.value = scaleToSliderPosition(nextScale);
 }
 
 watch(pressed, newVal => {
@@ -912,17 +942,8 @@ const onWheel = event => {
   if (!props.canInteract) {
     return;
   }
-  let nextScale = scale.value;
-  if (event.deltaY < 0) {
-    if (scale.value < 0.9) nextScale += 0.1;
-    else if (scale.value < scaleRange) nextScale = Math.floor(scale.value + 1);
-  } else {
-    if (scale.value > 0.2) {
-      if (scale.value <= 1) nextScale -= 0.1;
-      else nextScale = Math.ceil(scale.value - 1);
-    } else nextScale = 0.1;
-  }
-  applyUserScale(nextScale);
+  if (syncMouseCoord(event.clientX, event.clientY) === null) return;
+  applyUserScale(calculateWheelScale(scale.value, event.deltaY, { gridLimit }), { anchorAtPointer: true });
 };
 
 // Zoom preview and point positions
@@ -1232,8 +1253,9 @@ function initCanvasSettings() {
 }
 
 .canvas-scale-bar {
-  display: flex;
-  min-height: 42px;
+  display: grid;
+  grid-template-columns: 36px 68px minmax(120px, 1fr) 52px;
+  min-height: 56px;
   align-items: center;
   gap: 10px;
   padding: 7px 12px;
@@ -1243,9 +1265,14 @@ function initCanvasSettings() {
 
 .scale-label,
 .scale-value {
-  flex: none;
   color: var(--text-secondary, #5b6675);
   font-size: 12px;
+}
+
+.scale-value {
+  width: 52px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .scale-number {
@@ -1259,9 +1286,43 @@ function initCanvasSettings() {
 }
 
 .scale-range {
+  display: block;
+  width: 100%;
   min-width: 80px;
-  flex: 1;
+  margin: 0;
   accent-color: var(--accent, #2f6fed);
+}
+
+.scale-slider-control {
+  position: relative;
+  width: 100%;
+  min-width: 120px;
+  padding-bottom: 15px;
+}
+
+.scale-ticks {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 12px;
+  color: var(--text-muted, #8a94a3);
+  font: 9px/1 var(--font-mono, monospace);
+  pointer-events: none;
+}
+
+.scale-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.scale-ticks span:first-child {
+  transform: none;
+}
+
+.scale-ticks span:last-child {
+  transform: translateX(-100%);
 }
 
 .scale-number:disabled,

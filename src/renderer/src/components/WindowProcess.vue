@@ -277,8 +277,7 @@
         <span class="status-hint"><kbd>W</kbd>/<kbd>S</kbd> 选 Quad</span>
         <span class="status-hint"><kbd>Z</kbd> 聚焦像素</span>
         <span class="status-hint"><kbd>1–4</kbd> 删除点</span>
-        <span class="status-hint"><kbd>Ctrl</kbd><kbd>C</kbd> 清空点</span>
-        <span class="status-hint"><kbd>C</kbd> 清消息</span>
+        <span class="status-hint"><kbd>C</kbd> 清空 P1–P4</span>
       </div>
     </footer>
   </div>
@@ -441,7 +440,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
   removeChooseJsonFileResponseListener?.();
   removeChooseJsonFileResponseListener = null;
-  clearMessage();
+  clearNotifications();
 });
 
 // Keyboard shortcuts
@@ -477,8 +476,7 @@ const keyActions = {
     ctrl: () => addJsonItem(),
   },
   c: {
-    default: () => clearMessage(),
-    ctrl: () => clearDots(),
+    default: () => clearDots(),
   },
   r: {
     default: () => resetPosition(),
@@ -542,7 +540,7 @@ const shortcutHelpGroups = Object.freeze([
       { keys: ['Ctrl', 'S'], label: '更新当前 Quad' },
       { keys: ['Ctrl', 'A'], label: '新增 Quad' },
       { keys: ['Ctrl', 'D'], label: '删除当前 Quad' },
-      { keys: ['Ctrl', 'C'], label: '清空待提交点位' },
+      { keys: ['C'], label: '清空待提交的 P1–P4' },
     ],
   },
   {
@@ -552,7 +550,6 @@ const shortcutHelpGroups = Object.freeze([
       { keys: ['Ctrl', 'Q'], label: '隐藏全部 Quad' },
       { keys: ['Ctrl', 'Shift', 'Q'], label: '显示全部 Quad' },
       { keys: ['Tab'], label: '切换悬停选择 / 单击标点' },
-      { keys: ['C'], label: '清空消息' },
       { keys: ['F1'], label: '打开或关闭帮助' },
     ],
   },
@@ -751,7 +748,7 @@ async function saveJsonFileInfo(jsonFileInfo, { backupOriginal = false } = {}) {
   }
 }
 
-function clearMessage() {
+function clearNotifications() {
   for (const timer of notificationTimers.values()) clearTimeout(timer);
   notificationTimers.clear();
   notifications.value = [];

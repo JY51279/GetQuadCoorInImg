@@ -1,6 +1,7 @@
 /* global globalThis */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  calculateWheelScale,
   calculatePixelFocusTransform,
   calculateQuadFocusTransform,
   canvasToImagePoint,
@@ -8,8 +9,10 @@ import {
   imageToCanvasPoint,
   imageToScaledPoint,
   normalizeScale,
+  scaleToSliderPosition,
   scaledToCanvasPoint,
   scaledToImagePoint,
+  sliderPositionToScale,
 } from '../src/renderer/src/utils/ImageViewGeometry.js';
 import { getOuterInnerQuads } from '../src/renderer/src/utils/ImageProcess.js';
 import { configureZoomCanvas, drawZoomPreview } from '../src/renderer/src/utils/ZoomViewRenderer.js';
@@ -57,6 +60,28 @@ describe('Image view geometry', () => {
     expect(normalizeScale(100)).toBe(60);
     expect(normalizeScale('', 0.1, 60, 2)).toBe(0.1);
     expect(normalizeScale('invalid', 0.1, 60, 2)).toBe(2);
+  });
+
+  it('maps the scale slider logarithmically while preserving exact scale round trips', () => {
+    const positions = [0.1, 1, 10, 60].map(scaleToSliderPosition);
+    expect(positions[0]).toBeCloseTo(0);
+    expect(positions[1]).toBeGreaterThan(30);
+    expect(positions[2]).toBeGreaterThan(positions[1] + 30);
+    expect(positions[3]).toBeCloseTo(100);
+
+    for (const scale of [0.1, 0.5, 1, 4, 10, 25, 60]) {
+      expect(sliderPositionToScale(scaleToSliderPosition(scale))).toBeCloseTo(scale, 8);
+    }
+  });
+
+  it('zooms the mouse wheel proportionally and stops at the pixel-grid threshold', () => {
+    const zoomedIn = calculateWheelScale(1, -100);
+    expect(zoomedIn).toBeCloseTo(Math.pow(2, 1 / 6), 7);
+    expect(calculateWheelScale(zoomedIn, 100)).toBeCloseTo(1, 7);
+    expect(calculateWheelScale(9.5, -100)).toBe(10);
+    expect(calculateWheelScale(10.5, 100)).toBe(10);
+    expect(calculateWheelScale(60, -100)).toBe(60);
+    expect(calculateWheelScale(0.1, 100)).toBe(0.1);
   });
 
   it('converts normal image, scaled, and canvas coordinates', () => {
