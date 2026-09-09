@@ -403,7 +403,7 @@ function isValidQuadPoints(quadPoints) {
   );
 }
 
-function resetQuadsArray(newQuadArray, coordinateScale, { deletedIndex = null } = {}) {
+function resetQuadsArray(newQuadArray, coordinateScale, { deletedIndex = null, insertedIndex = null } = {}) {
   const scaleX = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.x;
   const scaleY = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.y;
   quadsArray = Array.isArray(newQuadArray)
@@ -421,6 +421,11 @@ function resetQuadsArray(newQuadArray, coordinateScale, { deletedIndex = null } 
     const remappedIndices = showQuadIndex
       .filter(index => index !== deletedIndex)
       .map(index => (index > deletedIndex ? index - 1 : index))
+      .filter(index => index >= 0 && index < quadsArray.length);
+    showQuadIndex.splice(0, showQuadIndex.length, ...remappedIndices);
+  } else if (Number.isInteger(insertedIndex) && insertedIndex >= 0) {
+    const remappedIndices = showQuadIndex
+      .map(index => (index >= insertedIndex ? index + 1 : index))
       .filter(index => index >= 0 && index < quadsArray.length);
     showQuadIndex.splice(0, showQuadIndex.length, ...remappedIndices);
   }

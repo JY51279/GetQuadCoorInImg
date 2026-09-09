@@ -1,3 +1,4 @@
+import cloneDeep from 'lodash/cloneDeep';
 import {
   KEYS,
   getNearestOrFarthestPointIndex,
@@ -312,16 +313,106 @@ export function updateJson(action = KEYS.JSON_MODIFY, coordinateScale, activeQua
   return result;
 }
 
+function jsonValuesEqual(leftValue, rightValue) {
+  return transJson2Str(leftValue) === transJson2Str(rightValue);
+}
+
+export function updateJsonWithHistory(action = KEYS.JSON_MODIFY, coordinateScale, activeQuadIndex = -1, realDots = []) {
+  if (datasetState.currentImageIndex < 0) {
+    return { success: false, error: 'No JSON image is currently active.' };
+  }
+
+  const itemIndex = action === KEYS.JSON_ADD ? datasetState.currentItems.length : activeQuadIndex;
+  const beforeItem =
+    action !== KEYS.JSON_ADD &&
+    Number.isInteger(itemIndex) &&
+    itemIndex >= 0 &&
+    itemIndex < datasetState.currentItems.length
+      ? cloneDeep(datasetState.currentItems[itemIndex])
+      : null;
+  const result = updateJson(action, coordinateScale, activeQuadIndex, realDots);
+  if (result !== KEYS.OPERATE_SUCCESS) return { success: false, error: result };
+
+  const afterItem =
+    action !== KEYS.JSON_DELETE &&
+    Number.isInteger(itemIndex) &&
+    itemIndex >= 0 &&
+    itemIndex < datasetState.currentItems.length
+      ? cloneDeep(datasetState.currentItems[itemIndex])
+      : null;
+  const changed = !jsonValuesEqual(beforeItem, afterItem);
+
+  return {
+    success: true,
+    historyEntry: changed
+      ? {
+          action,
+          imageIndex: datasetState.currentImageIndex,
+          itemIndex,
+          beforeItem,
+          afterItem,
+        }
+      : null,
+  };
+}
+
+export function applyJsonHistoryEntry(historyEntry, direction) {
+  const isUndo = direction === 'undo';
+  const isRedo = direction === 'redo';
+  if (!historyEntry || (!isUndo && !isRedo)) {
+    return { success: false, error: 'Invalid JSON history operation.' };
+  }
+
+  const { imageIndex, itemIndex, beforeItem, afterItem } = historyEntry;
+  const pictures = datasetState.dataset[ROOT_KEY];
+  const picture = Array.isArray(pictures) ? pictures[imageIndex] : null;
+  const items = picture?.[datasetState.productSchema.targetKey];
+  if (!Number.isInteger(itemIndex) || itemIndex < 0 || !Array.isArray(items)) {
+    return { success: false, error: 'The JSON history no longer matches the current dataset.' };
+  }
+
+  const expectedItem = isUndo ? afterItem : beforeItem;
+  const targetItem = isUndo ? beforeItem : afterItem;
+  let mutationType;
+
+  if (targetItem === null) {
+    if (itemIndex >= items.length || !jsonValuesEqual(items[itemIndex], expectedItem)) {
+      return { success: false, error: 'The JSON item to remove no longer matches its history.' };
+    }
+    items.splice(itemIndex, 1);
+    mutationType = 'delete';
+  } else if (expectedItem === null) {
+    if (itemIndex > items.length) {
+      return { success: false, error: 'The JSON insertion position no longer matches its history.' };
+    }
+    items.splice(itemIndex, 0, cloneDeep(targetItem));
+    mutationType = 'insert';
+  } else {
+    if (itemIndex >= items.length || !jsonValuesEqual(items[itemIndex], expectedItem)) {
+      return { success: false, error: 'The JSON item to replace no longer matches its history.' };
+    }
+    items.splice(itemIndex, 1, cloneDeep(targetItem));
+    mutationType = 'replace';
+  }
+
+  picture[datasetState.productSchema.ItemsCount] = items.length;
+  if (imageIndex === datasetState.currentImageIndex) datasetState.currentItems = items;
+
+  return {
+    success: true,
+    action: historyEntry.action,
+    itemIndex,
+    mutationType,
+    activeQuadIndex: mutationType === 'delete' ? Math.min(itemIndex, items.length - 1) : itemIndex,
+  };
+}
+
 function modifyJsonContent(coordinateScale, activeQuadIndex, selectedDots) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return 'Failed to find jsonItem.';
     }
-    const quadStr = transQuadDotsToString(
-      selectedDots,
-      coordinateScale,
-      datasetState.currentItems[activeQuadIndex],
-    );
+    const quadStr = transQuadDotsToString(selectedDots, coordinateScale, datasetState.currentItems[activeQuadIndex]);
     if (quadStr === '') {
       return 'Failed to trans dots to string.';
     }

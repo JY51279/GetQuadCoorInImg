@@ -152,6 +152,14 @@
                   </li>
                 </ol>
               </div>
+              <div class="point-history-actions">
+                <button class="action-button history-button" :disabled="!canUndoPoints" @click="undoPointEdit">
+                  撤回选点 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Z</kbd></span>
+                </button>
+                <button class="action-button history-button" :disabled="!canRedoPoints" @click="redoPointEdit">
+                  重做选点 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Y</kbd></span>
+                </button>
+              </div>
             </div>
 
             <div class="annotation-list-heading section-heading">
@@ -166,6 +174,17 @@
               :error-message="annotationView.errorMessage"
               @select-quad-index="selectQuadIndex"
             ></JsonView>
+
+            <div class="json-history-actions">
+              <button class="action-button history-button" :disabled="!canUndoJson" @click="undoJsonEdit">
+                撤销 JSON
+                <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></span>
+              </button>
+              <button class="action-button history-button" :disabled="!canRedoJson" @click="redoJsonEdit">
+                重做 JSON
+                <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Y</kbd></span>
+              </button>
+            </div>
 
             <div class="annotation-actions">
               <button class="action-button primary" :disabled="!canOperate" @click="modifyJsonItem">
@@ -296,13 +315,22 @@ import {
   getCurrentJsonImageIndex,
   getJsonImageDialogContext,
   getJsonImageTarget,
-  updateJson,
+  applyJsonHistoryEntry,
+  updateJsonWithHistory,
   getJsonImagePosition,
   getJsonFileInfo,
   resetPicJson,
   createDatasetMutationSnapshot,
   restoreDatasetMutationSnapshot,
 } from '../state/DatasetState.js';
+import {
+  HISTORY_DIRECTION,
+  clearUndoRedoHistory,
+  commitHistoryStep,
+  createUndoRedoHistory,
+  peekHistoryEntry,
+  recordHistoryEntry,
+} from '../state/UndoRedoHistory.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 import { handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { loadRendererImage } from '../utils/RendererImageLoader.js';
@@ -356,6 +384,8 @@ const quadTotal = computed(() => annotationView.value.formattedItems.length);
 const imagePositionView = ref({ currentIndex: -1, total: 0 });
 const jumpImageIndex = ref('');
 const selectedDots = reactive([]);
+const pointHistory = reactive(createUndoRedoHistory(50));
+const jsonHistoryByImage = reactive(new Map());
 const imageObj = ref(new Image());
 const imgFileName = ref(null);
 const jsonFileName = ref(null);
@@ -369,6 +399,10 @@ const isHoverSelectMode = ref(false);
 const workflowState = ref(createWorkflowState());
 const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
 const canOperate = computed(() => canEditWorkflow(workflowState.value));
+const canUndoPoints = computed(() => canOperate.value && pointHistory.undoStack.length > 0);
+const canRedoPoints = computed(() => canOperate.value && pointHistory.redoStack.length > 0);
+const canUndoJson = computed(() => canOperate.value && Boolean(getCurrentJsonHistory()?.undoStack.length));
+const canRedoJson = computed(() => canOperate.value && Boolean(getCurrentJsonHistory()?.redoStack.length));
 const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
 const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
@@ -486,6 +520,12 @@ const keyActions = {
   },
   z: {
     default: () => focusPixelAtMouse(),
+    ctrl: () => undoPointEdit(),
+    ctrlShift: () => undoJsonEdit(),
+  },
+  y: {
+    ctrl: () => redoPointEdit(),
+    ctrlShift: () => redoJsonEdit(),
   },
   q: {
     default: () => toggleHighlight2ShowQuads(),
@@ -541,6 +581,10 @@ const shortcutHelpGroups = Object.freeze([
       { keys: ['Ctrl', 'A'], label: '新增 Quad' },
       { keys: ['Ctrl', 'D'], label: '删除当前 Quad' },
       { keys: ['C'], label: '清空待提交的 P1–P4' },
+      { keys: ['Ctrl', 'Z'], label: '撤回选点' },
+      { keys: ['Ctrl', 'Y'], label: '重做选点' },
+      { keys: ['Ctrl', 'Shift', 'Z'], label: '撤销 JSON 操作' },
+      { keys: ['Ctrl', 'Shift', 'Y'], label: '重做 JSON 操作' },
     ],
   },
   {
@@ -594,7 +638,11 @@ function outputMessage(message) {
 // Child component commands
 function clearOneDot(index) {
   if (!canOperate.value) return;
-  if (Number.isInteger(index) && index >= 0 && index < selectedDots.length) selectedDots.splice(index, 1);
+  if (!Number.isInteger(index) || index < 0 || index >= selectedDots.length) return;
+
+  const nextDots = cloneSelectedDots(selectedDots);
+  nextDots.splice(index, 1);
+  applyPointEdit(nextDots);
 }
 
 function changeJsonItemSelection(direction) {
@@ -624,16 +672,83 @@ function focusPixelAtMouse() {
   if (!result?.success) outputMessage(result?.error || 'Failed to focus the pixel under the mouse.');
 }
 
+function cloneSelectedDots(dots) {
+  return dots.map(dot => ({ ...dot }));
+}
+
+function selectedDotsEqual(leftDots, rightDots) {
+  return (
+    leftDots.length === rightDots.length &&
+    leftDots.every((dot, index) => dot.x === rightDots[index]?.x && dot.y === rightDots[index]?.y)
+  );
+}
+
+function replaceSelectedDots(dots) {
+  selectedDots.splice(0, selectedDots.length, ...cloneSelectedDots(dots));
+}
+
+function applyPointEdit(nextDots) {
+  if (!Array.isArray(nextDots)) return false;
+
+  const beforeDots = cloneSelectedDots(selectedDots);
+  const afterDots = cloneSelectedDots(nextDots);
+  if (selectedDotsEqual(beforeDots, afterDots)) return false;
+
+  replaceSelectedDots(afterDots);
+  recordHistoryEntry(pointHistory, { beforeDots, afterDots });
+  return true;
+}
+
+function applyPointHistory(direction) {
+  if (!canOperate.value) return;
+
+  const historyEntry = peekHistoryEntry(pointHistory, direction);
+  if (!historyEntry) return;
+
+  replaceSelectedDots(direction === HISTORY_DIRECTION.UNDO ? historyEntry.beforeDots : historyEntry.afterDots);
+  commitHistoryStep(pointHistory, direction, historyEntry);
+}
+
+function undoPointEdit() {
+  applyPointHistory(HISTORY_DIRECTION.UNDO);
+}
+
+function redoPointEdit() {
+  applyPointHistory(HISTORY_DIRECTION.REDO);
+}
+
 function resetDots() {
-  selectedDots.splice(0, selectedDots.length);
+  replaceSelectedDots([]);
+  clearUndoRedoHistory(pointHistory);
 }
 
 function clearDots() {
   if (!canOperate.value) return;
-  resetDots();
+  applyPointEdit([]);
 }
 
 // JSON Operations
+function getCurrentJsonHistory(createIfMissing = false) {
+  const imageIndex = getCurrentJsonImageIndex();
+  if (imageIndex < 0) return null;
+
+  let history = jsonHistoryByImage.get(imageIndex);
+  if (!history && createIfMissing) {
+    history = createUndoRedoHistory(30);
+    jsonHistoryByImage.set(imageIndex, history);
+  }
+  return history ?? null;
+}
+
+function getJsonActionLabel(action) {
+  const labels = {
+    [KEYS.JSON_MODIFY]: '更新 Quad',
+    [KEYS.JSON_ADD]: '新增 Quad',
+    [KEYS.JSON_DELETE]: '删除 Quad',
+  };
+  return labels[action] ?? 'JSON 操作';
+}
+
 async function runSaveTransaction(mutate, onSaved = () => {}) {
   const sourceImageIndex = getCurrentJsonImageIndex();
   const started = startSave(workflowState.value, { sourceImageIndex });
@@ -690,13 +805,21 @@ async function performJsonAction(action) {
   }
 
   const affectedQuadIndex = activeQuadIndex.value;
+  let historyEntry = null;
   await runSaveTransaction(
     () => {
       outputMessage('Start operate: ' + action);
-      const updateJsonRes = updateJson(action, imageCoordinateScale.value, activeQuadIndex.value, selectedDots);
-      return updateJsonRes === KEYS.OPERATE_SUCCESS ? null : updateJsonRes;
+      const updateResult = updateJsonWithHistory(
+        action,
+        imageCoordinateScale.value,
+        activeQuadIndex.value,
+        selectedDots,
+      );
+      historyEntry = updateResult.historyEntry ?? null;
+      return updateResult.success ? null : updateResult.error;
     },
     () => {
+      if (historyEntry) recordHistoryEntry(getCurrentJsonHistory(true), historyEntry);
       if (action === KEYS.JSON_DELETE) {
         refreshCurrentAnnotations({ resetSelection: true, deletedQuadIndex: affectedQuadIndex });
       } else if (action === KEYS.JSON_ADD) {
@@ -708,6 +831,51 @@ async function performJsonAction(action) {
       resetDots();
     },
   );
+}
+
+async function applyJsonHistory(direction) {
+  if (!canOperate.value) return;
+
+  const history = getCurrentJsonHistory();
+  const historyEntry = peekHistoryEntry(history, direction);
+  if (!historyEntry) return;
+
+  let mutationResult = null;
+  await runSaveTransaction(
+    () => {
+      mutationResult = applyJsonHistoryEntry(historyEntry, direction);
+      return mutationResult.success ? null : mutationResult.error;
+    },
+    () => {
+      if (!commitHistoryStep(history, direction, historyEntry)) {
+        outputMessage('JSON 历史状态异常，请重新加载图集。');
+        return;
+      }
+
+      const refreshOptions = { resetSelection: true };
+      if (mutationResult.mutationType === 'delete') {
+        refreshOptions.deletedQuadIndex = mutationResult.itemIndex;
+      } else if (mutationResult.mutationType === 'insert') {
+        refreshOptions.insertedQuadIndex = mutationResult.itemIndex;
+        refreshOptions.showQuadIndex = mutationResult.itemIndex;
+      } else {
+        refreshOptions.redrawOverlay = true;
+      }
+      refreshCurrentAnnotations(refreshOptions);
+      selectQuadIndex(mutationResult.activeQuadIndex);
+      outputMessage(
+        `${direction === HISTORY_DIRECTION.UNDO ? '已撤销' : '已重做'}：${getJsonActionLabel(historyEntry.action)}。`,
+      );
+    },
+  );
+}
+
+function undoJsonEdit() {
+  void applyJsonHistory(HISTORY_DIRECTION.UNDO);
+}
+
+function redoJsonEdit() {
+  void applyJsonHistory(HISTORY_DIRECTION.REDO);
 }
 
 function addJsonItem() {
@@ -798,17 +966,22 @@ async function initProcessInfo(jsonImageIndex = null) {
 function renderAnnotationQuads({
   resetVisibility = false,
   deletedQuadIndex = null,
+  insertedQuadIndex = null,
   showNewQuad = false,
+  showQuadIndex = null,
   redrawOverlay = false,
 } = {}) {
   imgContainerRef.value.resetQuadsArray(annotationView.value.quads, imageCoordinateScale.value, {
     deletedIndex: deletedQuadIndex,
+    insertedIndex: insertedQuadIndex,
   });
   if (resetVisibility) {
     clearShowQuads();
     addAll2ShowQuads();
   } else if (showNewQuad && quadTotal.value > 0) {
     imgContainerRef.value.addShowQuadIndex(quadTotal.value - 1);
+  } else if (Number.isInteger(showQuadIndex)) {
+    imgContainerRef.value.addShowQuadIndex(showQuadIndex);
   } else if (redrawOverlay) {
     imgContainerRef.value.redrawQuadOverlay();
   }
@@ -1067,6 +1240,7 @@ async function handlePreparedImageResponse(response) {
 }
 
 function resetImageForDatasetChange() {
+  jsonHistoryByImage.clear();
   imageObj.value = null;
   imgFileName.value = '';
   imgFilePath = '';
@@ -1199,7 +1373,12 @@ async function handleChooseJsonFileResponse(_event, response) {
 
 function updateSelectedDots(newSelectedDots) {
   if (!Array.isArray(newSelectedDots)) return;
-  selectedDots.splice(0, selectedDots.length, ...newSelectedDots.map(dot => ({ ...dot })));
+  if (canOperate.value) {
+    applyPointEdit(newSelectedDots);
+  } else {
+    replaceSelectedDots(newSelectedDots);
+    clearUndoRedoHistory(pointHistory);
+  }
 }
 
 watch(selectedDots, () => {
@@ -1531,7 +1710,7 @@ function toggleInteractionMode() {
 
 .annotation-page {
   display: grid;
-  grid-template-rows: auto auto auto minmax(120px, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(120px, 1fr) auto auto;
   gap: 12px;
   overflow: hidden;
 }
@@ -1666,6 +1845,21 @@ function toggleInteractionMode() {
   font: 10px/1.2 var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.point-history-actions,
+.json-history-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.history-button {
+  min-height: 40px;
+  padding: 0 7px;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
 }
 
 .annotation-list-heading {

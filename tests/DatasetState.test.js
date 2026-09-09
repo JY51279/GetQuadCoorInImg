@@ -7,6 +7,7 @@ import {
 } from '../src/renderer/src/utils/DatasetSchema.js';
 import {
   areImagePathsEquivalent,
+  applyJsonHistoryEntry,
   commitPreparedJsonProcess,
   createDatasetMutationSnapshot,
   getAdjacentJsonImageTarget,
@@ -19,6 +20,7 @@ import {
   resetPicJson,
   restoreDatasetMutationSnapshot,
   updateJson,
+  updateJsonWithHistory,
 } from '../src/renderer/src/state/DatasetState.js';
 import { KEYS, parsePointString2Array } from '../src/renderer/src/utils/BasicFuncs.js';
 
@@ -191,9 +193,7 @@ describe('Dataset state operations', () => {
 
   it('starts a replacement dataset from its first image instead of the previous high index', () => {
     const oldData = {
-      Picture: Array.from({ length: 198 }, (_, index) =>
-        createPicture('DBR', `C:/old-images/${index + 1}.png`),
-      ),
+      Picture: Array.from({ length: 198 }, (_, index) => createPicture('DBR', `C:/old-images/${index + 1}.png`)),
     };
     const oldPrepared = prepareJsonProcess({
       str: JSON.stringify(oldData),
@@ -240,9 +240,7 @@ describe('Dataset state operations', () => {
   it('maps displayed points back with independent horizontal and vertical scales', () => {
     loadDbrDataset();
 
-    expect(updateJson(KEYS.JSON_MODIFY, { x: 0.5, y: 0.25 }, 0, [{ x: 5, y: 2 }])).toBe(
-      KEYS.OPERATE_SUCCESS,
-    );
+    expect(updateJson(KEYS.JSON_MODIFY, { x: 0.5, y: 0.25 }, 0, [{ x: 5, y: 2 }])).toBe(KEYS.OPERATE_SUCCESS);
 
     expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 10, y: 8 });
   });
@@ -273,6 +271,71 @@ describe('Dataset state operations', () => {
     savedDataset = JSON.parse(getJsonFileInfo().str);
     expect(savedDataset.Picture[0]['Barcode Count']).toBe(1);
     expect(savedDataset.Picture[0]['Barcode Info']).toHaveLength(1);
+  });
+
+  it('creates compact history entries for modifying annotations and applies undo and redo', () => {
+    loadDbrDataset();
+
+    const updateResult = updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }]);
+    expect(updateResult.success).toBe(true);
+    expect(updateResult.historyEntry).toMatchObject({
+      action: KEYS.JSON_MODIFY,
+      imageIndex: 0,
+      itemIndex: 0,
+    });
+    expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 9, y: 1 });
+
+    expect(applyJsonHistoryEntry(updateResult.historyEntry, 'undo')).toMatchObject({
+      success: true,
+      mutationType: 'replace',
+      activeQuadIndex: 0,
+    });
+    expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 10, y: 0 });
+
+    expect(applyJsonHistoryEntry(updateResult.historyEntry, 'redo')).toMatchObject({
+      success: true,
+      mutationType: 'replace',
+      activeQuadIndex: 0,
+    });
+    expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 9, y: 1 });
+  });
+
+  it('undoes and redoes annotation insertion and deletion while synchronizing counts', () => {
+    loadDbrDataset();
+
+    const addResult = updateJsonWithHistory(KEYS.JSON_ADD, 1, -1, [
+      { x: 20, y: 20 },
+      { x: 30, y: 30 },
+    ]);
+    expect(addResult.success).toBe(true);
+    expect(addResult.historyEntry.beforeItem).toBeNull();
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Count']).toBe(2);
+
+    expect(applyJsonHistoryEntry(addResult.historyEntry, 'undo')).toMatchObject({
+      success: true,
+      mutationType: 'delete',
+    });
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Count']).toBe(1);
+    expect(applyJsonHistoryEntry(addResult.historyEntry, 'redo')).toMatchObject({
+      success: true,
+      mutationType: 'insert',
+    });
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Count']).toBe(2);
+
+    const deleteResult = updateJsonWithHistory(KEYS.JSON_DELETE, 1, 0);
+    expect(deleteResult.success).toBe(true);
+    expect(deleteResult.historyEntry.afterItem).toBeNull();
+    expect(applyJsonHistoryEntry(deleteResult.historyEntry, 'undo')).toMatchObject({
+      success: true,
+      mutationType: 'insert',
+      activeQuadIndex: 0,
+    });
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Count']).toBe(2);
+    expect(applyJsonHistoryEntry(deleteResult.historyEntry, 'redo')).toMatchObject({
+      success: true,
+      mutationType: 'delete',
+    });
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Count']).toBe(1);
   });
 
   it('restores the data before a mutation when persistence fails', () => {

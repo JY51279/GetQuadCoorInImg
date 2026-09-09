@@ -46,6 +46,10 @@ QuadTool 是一个仅在本地使用的标准集四边形坐标标注工具，�
 | `Ctrl+D`       | 删除当前高亮项                 |
 | `Ctrl+A`       | 在当前图片的数据末尾添加标注项 |
 | `C`            | 清空待提交的 P1–P4 坐标点      |
+| `Ctrl+Z`       | 撤回选点                       |
+| `Ctrl+Y`       | 重做选点                       |
+| `Ctrl+Shift+Z` | 撤销 JSON 操作                 |
+| `Ctrl+Shift+Y` | 重做 JSON 操作                 |
 | `R`            | 重置图片位置                   |
 | `F`            | 居中并聚焦当前高亮四边形       |
 | `Z`            | 居中并放大鼠标所在像素         |
@@ -121,7 +125,8 @@ src/
    │  ├─ JsonView.vue          当前图片 JSON 内容显示
    │  └─ Help.vue              快捷键帮助面板
    ├─ state/
-   │  └─ DatasetState.js       数据集运行状态和标注增删改
+   │  ├─ DatasetState.js       数据集运行状态和标注增删改
+   │  └─ UndoRedoHistory.js    通用的有界撤销/重做双栈
    └─ utils/                   数据校验、坐标换算和绘制辅助模块
 tests/                         核心逻辑回归测试
 ```
