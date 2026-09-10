@@ -257,6 +257,20 @@ describe('Dataset state operations', () => {
     expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 10, y: 8 });
   });
 
+  it('rejects a non-invertible coordinate scale without changing data or history', () => {
+    loadDbrDataset();
+    const before = getJsonFileInfo().str;
+
+    const result = updateJsonWithHistory(KEYS.JSON_MODIFY, { x: 0, y: 0.5 }, 0, [{ x: 5, y: 2 }]);
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Failed to map the selected points to valid dataset coordinates.',
+    });
+    expect(result.historyEntry).toBeUndefined();
+    expect(getJsonFileInfo().str).toBe(before);
+  });
+
   it('updates an explicit dragged vertex and recalculates the canonical point indices', () => {
     loadDbrDataset('10 10 20 10 20 20 10 20');
 

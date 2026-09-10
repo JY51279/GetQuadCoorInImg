@@ -41,19 +41,51 @@ export function calculateDisplaySize(
   if (!Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0) {
     throw new Error('Invalid image dimensions.');
   }
+  if (!Number.isSafeInteger(maxPixels) || maxPixels <= 0 || !Number.isSafeInteger(maxDimension) || maxDimension <= 0) {
+    throw new Error('Invalid image display limits.');
+  }
 
   const dimensionScale = Math.min(maxDimension / width, maxDimension / height);
   const pixelScale = Math.sqrt(maxPixels / (width * height));
   const scale = Math.min(1, dimensionScale, pixelScale);
-  return {
-    width: Math.max(1, Math.floor(width * scale)),
-    height: Math.max(1, Math.floor(height * scale)),
+  const minimumWidth = width > 1 ? 2 : 1;
+  const minimumHeight = height > 1 ? 2 : 1;
+  const scaledWidth = Math.floor(width * scale);
+  const scaledHeight = Math.floor(height * scale);
+  const displaySize = {
+    width: Math.max(minimumWidth, scaledWidth),
+    height: Math.max(minimumHeight, scaledHeight),
   };
+
+  if (displaySize.width * displaySize.height > maxPixels && scaledWidth < minimumWidth) {
+    displaySize.height = Math.max(minimumHeight, Math.floor(maxPixels / displaySize.width));
+  }
+  if (displaySize.width * displaySize.height > maxPixels && scaledHeight < minimumHeight) {
+    displaySize.width = Math.max(minimumWidth, Math.floor(maxPixels / displaySize.height));
+  }
+  if (
+    displaySize.width > maxDimension ||
+    displaySize.height > maxDimension ||
+    displaySize.width * displaySize.height > maxPixels
+  ) {
+    throw new Error('Image display limits are too small to preserve editable coordinates.');
+  }
+  return displaySize;
 }
 
 export function calculateCoordinateScale(originalSize, displaySize) {
+  if (
+    !Number.isSafeInteger(originalSize) ||
+    originalSize <= 0 ||
+    !Number.isSafeInteger(displaySize) ||
+    displaySize <= 0
+  ) {
+    throw new Error('Invalid coordinate dimensions.');
+  }
   if (originalSize === displaySize) return 1;
-  if (originalSize <= 1 || displaySize <= 1) return 0;
+  if (originalSize <= 1 || displaySize <= 1) {
+    throw new Error('Cannot preserve editable coordinates when only one endpoint remains.');
+  }
   return (displaySize - 1) / (originalSize - 1);
 }
 

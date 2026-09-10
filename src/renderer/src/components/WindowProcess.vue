@@ -370,7 +370,7 @@ import {
   recordJsonHistory,
 } from '../state/JsonHistoryStore.js';
 import { KEYS } from '../utils/BasicFuncs.js';
-import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
+import { imagePointToDatasetPoint, normalizeCoordinateScale } from '../utils/AnnotationCoordinates.js';
 import { getAdjacentListSelectionIndex, handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { loadRendererImage } from '../utils/RendererImageLoader.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
@@ -1390,6 +1390,13 @@ async function handlePreparedImageResponse(response) {
     const completedRequest = activeImageRequest;
     const imageInfo = response.imageInfo;
     try {
+      const coordinateScale = normalizeCoordinateScale({
+        x: imageInfo.coordinateScaleX,
+        y: imageInfo.coordinateScaleY,
+      });
+      if (coordinateScale === null) {
+        throw new Error('The prepared image coordinate scale must contain two positive finite values.');
+      }
       const loadedImage = await loadRendererImage(imageInfo.url);
       if (
         !activeImageRequest ||
@@ -1406,10 +1413,7 @@ async function handlePreparedImageResponse(response) {
       }
       resetZoomPreview();
       imageObj.value = loadedImage;
-      imageCoordinateScale.value = {
-        x: imageInfo.coordinateScaleX,
-        y: imageInfo.coordinateScaleY,
-      };
+      imageCoordinateScale.value = coordinateScale;
     } catch (error) {
       handleImageRequestFailure(error.message, imageInfo?.path || completedRequest?.path || '');
       return;

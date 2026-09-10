@@ -61,7 +61,16 @@ describe('Main-process image file reader', () => {
     expect(Math.round(9999 * coordinateScale)).toBe(3999);
     expect(Math.round(3999 / coordinateScale)).toBe(9999);
     expect(calculateCoordinateScale(1, 1)).toBe(1);
-    expect(calculateCoordinateScale(2, 1)).toBe(0);
+    expect(() => calculateCoordinateScale(2, 1)).toThrow('Cannot preserve editable coordinates');
+  });
+
+  it('keeps every non-degenerate source axis at least two pixels wide', () => {
+    expect(calculateDisplaySize(10000, 2)).toEqual({ width: 4096, height: 2 });
+    expect(calculateDisplaySize(1, 10000)).toEqual({ width: 1, height: 4096 });
+    expect(calculateDisplaySize(100, 2, { maxPixels: 100, maxDimension: 100 })).toEqual({ width: 50, height: 2 });
+    expect(() => calculateDisplaySize(4, 2, { maxPixels: 2, maxDimension: 4 })).toThrow(
+      'Image display limits are too small to preserve editable coordinates.',
+    );
   });
 
   it('registers a small browser-readable image without copying its bytes through IPC', async () => {
@@ -91,7 +100,7 @@ describe('Main-process image file reader', () => {
     const imagePath = path.join(directory, 'large.jpg');
     await createSolidImage(imagePath, 4, 2, 'jpeg');
 
-    const result = await prepareImageFile(imagePath, { maxPixels: 2, maxDimension: 4 });
+    const result = await prepareImageFile(imagePath, { maxPixels: 4, maxDimension: 4 });
     const cacheFiles = await fs.readdir(cacheDirectory);
     const metadata = await sharp(path.join(cacheDirectory, cacheFiles[0])).metadata();
 
@@ -99,14 +108,14 @@ describe('Main-process image file reader', () => {
       originalWidth: 4,
       originalHeight: 2,
       displayWidth: 2,
-      displayHeight: 1,
+      displayHeight: 2,
       coordinateScaleX: 1 / 3,
-      coordinateScaleY: 0,
+      coordinateScaleY: 1,
       mimeType: 'image/png',
     });
     expect(cacheFiles).toHaveLength(1);
     expect(cacheFiles[0]).toMatch(/^[a-f0-9]{64}\.png$/);
-    expect(metadata).toMatchObject({ width: 2, height: 1, format: 'png' });
+    expect(metadata).toMatchObject({ width: 2, height: 2, format: 'png' });
   });
 
   it('rejects unsupported extensions before attempting to decode them', async () => {
