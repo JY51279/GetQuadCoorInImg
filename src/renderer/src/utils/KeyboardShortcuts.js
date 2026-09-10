@@ -30,3 +30,11 @@ export function handleShortcutKeyDown(event, shortcutActions) {
   if (!event.repeat) action();
   return true;
 }
+
+export function getAdjacentListSelectionIndex(currentIndex, itemCount, direction) {
+  if (!Number.isInteger(itemCount) || itemCount <= 0) return -1;
+  if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= itemCount) return 0;
+  if (direction === 'next') return Math.min(currentIndex + 1, itemCount - 1);
+  if (direction === 'previous') return Math.max(currentIndex - 1, 0);
+  return currentIndex;
+}

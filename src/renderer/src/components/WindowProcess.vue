@@ -335,7 +335,7 @@ import {
 } from '../state/UndoRedoHistory.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
-import { handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
+import { getAdjacentListSelectionIndex, handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { loadRendererImage } from '../utils/RendererImageLoader.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import {
@@ -650,11 +650,8 @@ function clearOneDot(index) {
 
 function changeJsonItemSelection(direction) {
   if (!canOperate.value) return;
-  if (direction === KEYS.NEXT) {
-    selectQuadIndex(Math.min(activeQuadIndex.value + 1, quadTotal.value));
-  } else if (direction === KEYS.PREVIOUS) {
-    selectQuadIndex(Math.max(activeQuadIndex.value - 1, -1));
-  }
+  const nextIndex = getAdjacentListSelectionIndex(activeQuadIndex.value, quadTotal.value, direction);
+  if (nextIndex !== -1) selectQuadIndex(nextIndex);
 }
 
 function resetPosition() {

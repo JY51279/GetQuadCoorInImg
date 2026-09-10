@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { handleShortcutKeyDown, resolveShortcutAction } from '../src/renderer/src/utils/KeyboardShortcuts.js';
+import {
+  getAdjacentListSelectionIndex,
+  handleShortcutKeyDown,
+  resolveShortcutAction,
+} from '../src/renderer/src/utils/KeyboardShortcuts.js';
 
 function createKeyEvent(overrides = {}) {
   return {
@@ -57,5 +61,15 @@ describe('keyboard shortcuts', () => {
     expect(action).not.toHaveBeenCalled();
     expect(inputEvent.preventDefault).not.toHaveBeenCalled();
     expect(unsupportedEvent.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('selects the first list item from an empty selection and clamps navigation at both ends', () => {
+    expect(getAdjacentListSelectionIndex(-1, 3, 'previous')).toBe(0);
+    expect(getAdjacentListSelectionIndex(-1, 3, 'next')).toBe(0);
+    expect(getAdjacentListSelectionIndex(0, 3, 'previous')).toBe(0);
+    expect(getAdjacentListSelectionIndex(1, 3, 'previous')).toBe(0);
+    expect(getAdjacentListSelectionIndex(1, 3, 'next')).toBe(2);
+    expect(getAdjacentListSelectionIndex(2, 3, 'next')).toBe(2);
+    expect(getAdjacentListSelectionIndex(-1, 0, 'next')).toBe(-1);
   });
 });
