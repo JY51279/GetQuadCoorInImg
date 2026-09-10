@@ -30,7 +30,8 @@ function getTopLeftPointIndex(points) {
 export function sortQuadPointsClockwise(points, barcodeType = '') {
   if (!Array.isArray(points) || points.length !== 4 || !points.every(isFinitePoint)) return false;
 
-  const topLeftIndex = barcodeType === 'datamatrix' ? 0 : getTopLeftPointIndex(points);
+  const preserveFirstPoint = typeof barcodeType === 'string' && barcodeType.toLowerCase() === 'datamatrix';
+  const topLeftIndex = preserveFirstPoint ? 0 : getTopLeftPointIndex(points);
   if (topLeftIndex === -1) return false;
   if (topLeftIndex !== 0) swap(points, 0, topLeftIndex);
 
@@ -99,6 +100,41 @@ function validateCanonicalQuad(points) {
   return { success: true };
 }
 
+export function prepareQuad(points, barcodeType = '') {
+  if (!Array.isArray(points) || points.length < 2 || points.length > 4) {
+    return { success: false, error: 'A Quad requires two, three, or four input points.' };
+  }
+  if (!points.every(isSafeIntegerPoint)) {
+    return { success: false, error: 'A Quad must contain valid integer points.' };
+  }
+
+  const normalizedPoints = points.map(point => ({ ...point }));
+  if (normalizedPoints.length === 2) {
+    const [firstPoint, secondPoint] = normalizedPoints;
+    normalizedPoints.push(
+      { x: firstPoint.x, y: secondPoint.y },
+      { x: secondPoint.x, y: firstPoint.y },
+    );
+  } else if (normalizedPoints.length === 3) {
+    const [firstPoint, secondPoint, thirdPoint] = normalizedPoints;
+    normalizedPoints.push({
+      x: firstPoint.x + (thirdPoint.x - secondPoint.x),
+      y: firstPoint.y + (thirdPoint.y - secondPoint.y),
+    });
+  }
+
+  if (!normalizedPoints.every(isSafeIntegerPoint)) {
+    return { success: false, error: 'The completed Quad coordinates exceed the safe integer range.' };
+  }
+  if (!sortQuadPointsClockwise(normalizedPoints, barcodeType)) {
+    return { success: false, error: 'Failed to normalize the Quad point order.' };
+  }
+
+  const validationResult = validateCanonicalQuad(normalizedPoints);
+  if (!validationResult.success) return validationResult;
+  return { success: true, points: normalizedPoints };
+}
+
 export function prepareQuadPointUpdate(points, pointIndex, nextPoint, barcodeType = '') {
   if (!Array.isArray(points) || points.length !== 4 || !points.every(isSafeIntegerPoint)) {
     return { success: false, error: 'The current Quad does not contain four valid integer points.' };
@@ -112,11 +148,5 @@ export function prepareQuadPointUpdate(points, pointIndex, nextPoint, barcodeTyp
 
   const normalizedPoints = points.map(point => ({ ...point }));
   normalizedPoints[pointIndex] = { ...nextPoint };
-  if (!sortQuadPointsClockwise(normalizedPoints, barcodeType)) {
-    return { success: false, error: 'Failed to normalize the Quad point order.' };
-  }
-
-  const validationResult = validateCanonicalQuad(normalizedPoints);
-  if (!validationResult.success) return validationResult;
-  return { success: true, points: normalizedPoints };
+  return prepareQuad(normalizedPoints, barcodeType);
 }

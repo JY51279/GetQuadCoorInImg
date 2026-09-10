@@ -14,7 +14,7 @@ import {
   normalizeDataset,
 } from '../utils/DatasetSchema.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
-import { prepareQuadPointUpdate, sortQuadPointsClockwise } from '../utils/QuadGeometry.js';
+import { prepareQuad, prepareQuadPointUpdate } from '../utils/QuadGeometry.js';
 
 const ROOT_KEY = 'Picture';
 const IMAGE_SOURCE_KEY = 'Image Source';
@@ -221,74 +221,42 @@ export function restoreDatasetMutationSnapshot(snapshot) {
   }
 }
 
-function prepareSelectedDots(realDots, activeQuadIndex) {
-  const selectedDots = Array.isArray(realDots) ? realDots.map(dot => ({ ...dot })) : [];
-  if (selectedDots.length === 4) {
-    sortQuadPointsClockwise(selectedDots, datasetState.currentItems[activeQuadIndex]?.['Barcode Type'] ?? '');
-  }
-  return selectedDots;
-}
-
-function serializeQuadPoints(points, separator, barcodeType = '') {
-  const normalizedPoints = points.map(point => ({ ...point }));
-  if (!sortQuadPointsClockwise(normalizedPoints, barcodeType)) return '';
-  return normalizedPoints.map(point => `${point.x} ${point.y}`).join(separator);
-}
-
-function transQuadDotsToString(realDots, coordinateScale, baseItem = null) {
+function prepareDatasetQuad(realDots, coordinateScale, baseItem = null) {
   // 根据显示图相对原图的横纵缩放比例换算坐标，但不要修改工作图片中的原始点
-  let jsonDots = realDots.map(dot => imagePointToDatasetPoint(dot, coordinateScale));
-  if (jsonDots.some(dot => dot === null)) return '';
+  const jsonDots = realDots.map(dot => imagePointToDatasetPoint(dot, coordinateScale));
+  if (jsonDots.some(dot => dot === null)) {
+    return { success: false, error: 'Failed to map the selected points to valid dataset coordinates.' };
+  }
 
   // 判断是否为一个元素，并仅修改与当前点最近的点
   if (jsonDots.length === 1) {
-    if (!baseItem) return '';
+    if (!baseItem) {
+      return { success: false, error: 'At least two selected points are required to create a Quad.' };
+    }
     const newPoint = jsonDots[0];
     const currentPoints = parsePointString2Array(baseItem[datasetState.productSchema.ItemKey], POINT_SEPARATOR);
     const closestIndex = getNearestOrFarthestPointIndex(currentPoints, newPoint);
-    if (closestIndex === -1) return '';
-
-    // 替换最近的点
-    currentPoints[closestIndex] = newPoint;
-    jsonDots = currentPoints;
+    if (closestIndex === -1) {
+      return { success: false, error: 'Failed to find the nearest Quad point.' };
+    }
+    return prepareQuadPointUpdate(
+      currentPoints,
+      closestIndex,
+      newPoint,
+      baseItem['Barcode Type'] ?? '',
+    );
   }
 
-  // 判断是否为两个元素，并补全另外两个点
-  if (jsonDots.length === 2) {
-    let p1 = jsonDots[0];
-    let p2 = jsonDots[1];
-
-    // 计算另外两个点
-    let p3 = { x: p1.x, y: p2.y };
-    let p4 = { x: p2.x, y: p1.y };
-
-    // 将新点添加到 JSON 坐标点数组中
-    jsonDots.push(p3, p4);
-  }
-
-  // 判断是否为三个元素，并补全剩余的一点
-  if (jsonDots.length === 3) {
-    let p1 = jsonDots[0];
-    let p2 = jsonDots[1];
-    let p3 = jsonDots[2];
-
-    // 计算第四个点
-    let p4 = { x: p1.x + (p3.x - p2.x), y: p1.y + (p3.y - p2.y) };
-
-    // 将新点添加到 JSON 坐标点数组中
-    jsonDots.push(p4);
-  }
-
-  let targetStr = '';
-  if (jsonDots.length !== 4) return targetStr;
   const barcodeType = baseItem?.['Barcode Type'] ?? '';
-  targetStr = serializeQuadPoints(jsonDots, POINT_SEPARATOR, barcodeType);
-  if (targetStr === '') return targetStr;
-  return targetStr;
+  return prepareQuad(jsonDots, barcodeType);
+}
+
+function serializePreparedQuad(points) {
+  return points.map(point => `${point.x} ${point.y}`).join(POINT_SEPARATOR);
 }
 
 export function updateJson(action = KEYS.JSON_MODIFY, coordinateScale, activeQuadIndex = -1, realDots = []) {
-  const selectedDots = prepareSelectedDots(realDots, activeQuadIndex);
+  const selectedDots = Array.isArray(realDots) ? realDots.map(dot => ({ ...dot })) : [];
   let result;
   switch (action) {
     case KEYS.JSON_MODIFY:
@@ -372,9 +340,7 @@ function updateQuadPoint(activeQuadIndex, pointIndex, nextPoint) {
     );
     if (!preparedPoints.success) return preparedPoints.error;
 
-    targetItem[datasetState.productSchema.ItemKey] = preparedPoints.points
-      .map(point => `${point.x} ${point.y}`)
-      .join(POINT_SEPARATOR);
+    targetItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedPoints.points);
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to update the dragged Quad point.');
 }
@@ -441,11 +407,10 @@ function modifyJsonContent(coordinateScale, activeQuadIndex, selectedDots) {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return 'Failed to find jsonItem.';
     }
-    const quadStr = transQuadDotsToString(selectedDots, coordinateScale, datasetState.currentItems[activeQuadIndex]);
-    if (quadStr === '') {
-      return 'Failed to trans dots to string.';
-    }
-    datasetState.currentItems[activeQuadIndex][datasetState.productSchema.ItemKey] = quadStr;
+    const targetItem = datasetState.currentItems[activeQuadIndex];
+    const preparedQuad = prepareDatasetQuad(selectedDots, coordinateScale, targetItem);
+    if (!preparedQuad.success) return preparedQuad.error;
+    targetItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedQuad.points);
     return KEYS.OPERATE_SUCCESS;
   }, 'Failed to modify jsonItem.');
 }
@@ -463,14 +428,10 @@ function deleteJsonContent(activeQuadIndex) {
 function addJsonContent(coordinateScale, selectedDots) {
   return operateJsonContent(() => {
     const newItem = createDefaultJsonItem();
-    if (selectedDots.length >= 2 && selectedDots.length <= 4) {
-      const quadStr = transQuadDotsToString(selectedDots, coordinateScale);
-      if (quadStr === '') {
-        return 'Failed to trans dots to string.';
-      }
-      newItem[datasetState.productSchema.ItemKey] = quadStr;
-    } else if (selectedDots.length > 4) {
-      return 'Failed to add jsonItem: no more than 4 points are allowed.';
+    if (selectedDots.length > 0) {
+      const preparedQuad = prepareDatasetQuad(selectedDots, coordinateScale);
+      if (!preparedQuad.success) return preparedQuad.error;
+      newItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedQuad.points);
     }
 
     datasetState.currentItems.push(newItem);

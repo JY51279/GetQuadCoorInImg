@@ -41,11 +41,20 @@ function createPicture(productType, imageSource, location = '0 0 10 0 10 10 0 10
 }
 
 function loadDbrDataset(location = '0 0 10 0 10 10 0 10', barcodeType = '') {
+  loadProductDataset('DBR', location, barcodeType);
+}
+
+function loadProductDataset(productType, location = '0 0 10 0 10 10 0 10', barcodeType = '') {
   const data = {
-    Picture: [createPicture('DBR', 'C:/images/one.png', location), createPicture('DBR', 'C:/images/two.png', location)],
+    Picture: [
+      createPicture(productType, 'C:/images/one.png', location),
+      createPicture(productType, 'C:/images/two.png', location),
+    ],
   };
-  data.Picture[0]['Barcode Info'][0]['Barcode Type'] = barcodeType;
-  data.Picture[1]['Barcode Info'][0]['Barcode Type'] = barcodeType;
+  if (productType === 'DBR') {
+    data.Picture[0]['Barcode Info'][0]['Barcode Type'] = barcodeType;
+    data.Picture[1]['Barcode Info'][0]['Barcode Type'] = barcodeType;
+  }
   data.Picture[1]['No.'] = '2';
 
   const prepared = prepareJsonProcess({
@@ -340,6 +349,88 @@ describe('Dataset state operations', () => {
     savedDataset = JSON.parse(getJsonFileInfo().str);
     expect(savedDataset.Picture[0]['Barcode Count']).toBe(1);
     expect(savedDataset.Picture[0]['Barcode Info']).toHaveLength(1);
+  });
+
+  it.each(['DBR', 'DDN', 'DLR'])('uses the same validated Quad preparation for %s annotations', productType => {
+    loadProductDataset(productType);
+    const schema = PRODUCT_SCHEMAS[productType];
+
+    const result = updateJsonWithHistory(KEYS.JSON_ADD, 1, -1, [
+      { x: 20, y: 20 },
+      { x: 30, y: 30 },
+    ]);
+
+    expect(result.success).toBe(true);
+    expect(result.historyEntry).not.toBeNull();
+    const picture = JSON.parse(getJsonFileInfo().str).Picture[0];
+    expect(picture[schema.ItemsCount]).toBe(2);
+    expect(picture[schema.targetKey][1][schema.ItemKey]).toBe('20 20 30 20 30 30 20 30');
+  });
+
+  it('preserves zero-point placeholder creation but rejects a one-point add without changing data or history', () => {
+    loadDbrDataset();
+
+    const placeholderResult = updateJsonWithHistory(KEYS.JSON_ADD, 1, -1, []);
+    expect(placeholderResult.success).toBe(true);
+    expect(placeholderResult.historyEntry.afterItem['Barcode Location']).toBe('0 0 0 0 0 0 0 0');
+
+    const beforeInvalidAdd = getJsonFileInfo().str;
+    const invalidResult = updateJsonWithHistory(KEYS.JSON_ADD, 1, -1, [{ x: 20, y: 20 }]);
+    expect(invalidResult).toEqual({
+      success: false,
+      error: 'At least two selected points are required to create a Quad.',
+    });
+    expect(invalidResult.historyEntry).toBeUndefined();
+    expect(getJsonFileInfo().str).toBe(beforeInvalidAdd);
+  });
+
+  it('rejects invalid completed or explicit Quads without changing the dataset', () => {
+    loadDbrDataset();
+    const before = getJsonFileInfo().str;
+
+    const degenerateRectangle = updateJsonWithHistory(KEYS.JSON_ADD, 1, -1, [
+      { x: 20, y: 20 },
+      { x: 20, y: 30 },
+    ]);
+    expect(degenerateRectangle).toMatchObject({
+      success: false,
+      error: 'A Quad must contain four distinct points.',
+    });
+
+    const concaveModify = updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 3, y: 3 },
+      { x: 0, y: 10 },
+    ]);
+    expect(concaveModify).toMatchObject({
+      success: false,
+      error: 'A Quad must remain convex and cannot contain crossing edges.',
+    });
+
+    expect(degenerateRectangle.historyEntry).toBeUndefined();
+    expect(concaveModify.historyEntry).toBeUndefined();
+    expect(getJsonFileInfo().str).toBe(before);
+  });
+
+  it('validates three-point completion and keeps the DataMatrix first selected point fixed', () => {
+    loadDbrDataset('0 0 10 0 10 10 0 10', 'datamatrix');
+
+    const result = updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [
+      { x: 10, y: 10 },
+      { x: 20, y: 10 },
+      { x: 22, y: 18 },
+    ]);
+
+    expect(result.success).toBe(true);
+    const points = getCurrentAnnotationView().quads[0];
+    expect(points[0]).toEqual({ x: 10, y: 10 });
+    expect(points).toEqual([
+      { x: 10, y: 10 },
+      { x: 20, y: 10 },
+      { x: 22, y: 18 },
+      { x: 12, y: 18 },
+    ]);
   });
 
   it('creates compact history entries for modifying annotations and applies undo and redo', () => {
