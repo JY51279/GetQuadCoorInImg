@@ -1,12 +1,17 @@
 /* global globalThis */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  calculateFitScale,
   calculateWheelScale,
   calculatePixelFocusTransform,
+  calculatePointerAnchoredOffset,
   calculateQuadFocusTransform,
   calculateSnappedPanOffset,
+  calculateVisibleImageAxis,
   canvasToImagePoint,
   clientToLocalPoint,
+  getRenderedImageSize,
+  getRenderedPixelPitch,
   imageToCanvasPoint,
   imageToScaledPoint,
   hasExceededPointerDragThreshold,
@@ -21,14 +26,9 @@ import { configureZoomCanvas, drawZoomPreview } from '../src/renderer/src/utils/
 import { loadRendererImage } from '../src/renderer/src/utils/RendererImageLoader.js';
 
 function getFocusedOuterQuadBounds(quad, focusTransform, gridLimit = 10) {
-  const sourceLeftTop = {
-    x: Math.floor(Math.max(0, -focusTransform.offsetX) / focusTransform.scale),
-    y: Math.floor(Math.max(0, -focusTransform.offsetY) / focusTransform.scale),
-  };
   const coordinateTransform = {
     scale: focusTransform.scale,
     gridLimit,
-    sourceLeftTop,
     offsetX: focusTransform.offsetX,
     offsetY: focusTransform.offsetY,
     canvasOffsetLeft: 0,
@@ -162,8 +162,6 @@ describe('Image view geometry', () => {
     const transform = {
       scale: 2,
       gridLimit: 10,
-      sourceLeftTop: { x: 0, y: 0 },
-      canvasLeftTop: { x: 0, y: 0 },
       offsetX: 5,
       offsetY: -3,
       canvasOffsetLeft: 22,
@@ -182,8 +180,6 @@ describe('Image view geometry', () => {
     const transform = {
       scale: 10,
       gridLimit: 10,
-      sourceLeftTop: { x: 10, y: 5 },
-      canvasLeftTop: { x: 127, y: 69 },
       offsetX: 5,
       offsetY: -3,
       canvasOffsetLeft: 22,
@@ -192,9 +188,41 @@ describe('Image view geometry', () => {
     const imagePoint = { x: 12, y: 8 };
     const canvasPoint = imageToCanvasPoint(imagePoint, transform);
 
-    expect(canvasPoint).toEqual({ x: 149, y: 102 });
+    expect(canvasPoint).toEqual({ x: 159, y: 107 });
     expect(canvasToImagePoint(canvasPoint, transform)).toEqual(imagePoint);
     expect(scaledToCanvasPoint({ x: 120, y: 80 }, transform)).toEqual(canvasPoint);
+  });
+
+  it('uses one rendered pixel pitch for image bounds and visible source ranges', () => {
+    expect(getRenderedPixelPitch(9.9)).toBe(9.9);
+    expect(getRenderedPixelPitch(10)).toBe(11);
+    expect(getRenderedImageSize(100, 10)).toBe(1100);
+
+    expect(calculateVisibleImageAxis(100, 100, -110, 10)).toEqual({
+      pixelPitch: 11,
+      renderedSize: 1100,
+      sourceStart: 10,
+      sourceEnd: 19,
+      sourceSize: 10,
+      canvasStart: 0,
+      canvasEnd: 110,
+    });
+    expect(calculateVisibleImageAxis(100, 100, -1100, 10)).toBeNull();
+  });
+
+  it('keeps the same image position under the pointer while crossing the grid threshold', () => {
+    const pointerPosition = 250;
+    const currentOffset = -120;
+    const imagePosition = (pointerPosition - currentOffset) / getRenderedPixelPitch(9.9);
+    const nextOffset = calculatePointerAnchoredOffset(pointerPosition, currentOffset, 9.9, 10);
+
+    expect((pointerPosition - nextOffset) / getRenderedPixelPitch(10)).toBeCloseTo(imagePosition);
+  });
+
+  it('fits images using rendered grid spacing without changing the intended scale modes', () => {
+    expect(calculateFitScale({ width: 1000, height: 500 }, { width: 1000, height: 800 })).toBe(1);
+    expect(calculateFitScale({ width: 50, height: 50 }, { width: 550, height: 550 })).toBe(10);
+    expect(calculateFitScale({ width: 50, height: 50 }, { width: 525, height: 525 })).toBe(9.9);
   });
 
   it('centers the rendered Quad pixels and fits their context into 75 percent of the viewport', () => {
@@ -237,10 +265,6 @@ describe('Image view geometry', () => {
     const coordinateTransform = {
       scale: result.scale,
       gridLimit: 10,
-      sourceLeftTop: {
-        x: Math.floor(Math.max(0, -result.offsetX) / result.scale),
-        y: Math.floor(Math.max(0, -result.offsetY) / result.scale),
-      },
       offsetX: result.offsetX,
       offsetY: result.offsetY,
       canvasOffsetLeft: 0,

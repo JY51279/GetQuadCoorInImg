@@ -137,19 +137,21 @@ import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from
 import { useMouse, useResizeObserver } from '@vueuse/core';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 import {
+  calculateFitScale,
   calculatePixelFocusTransform,
+  calculatePointerAnchoredOffset,
   calculateQuadFocusTransform,
   calculateSnappedPanOffset,
+  calculateVisibleImageAxis,
   calculateWheelScale,
   canvasToImagePoint,
   clientToLocalPoint,
+  getRenderedImageSize,
+  getRenderedPixelPitch,
   imageToCanvasPoint,
-  imageToScaledPoint,
   hasExceededPointerDragThreshold,
   normalizeScale,
   scaleToSliderPosition,
-  scaledToCanvasPoint,
-  scaledToImagePoint,
   sliderPositionToScale,
 } from '../utils/ImageViewGeometry.js';
 
@@ -454,11 +456,13 @@ function handleQuadPointDragKeyDown(event) {
 // Base image rendering
 function isImageOutsideViewport() {
   if (imageSrc === '' || scale.value <= 0 || initImgWidth.value <= 0 || initImgHeight.value <= 0) return false;
+  const renderedWidth = getRenderedImageSize(initImgWidth.value, scale.value, gridLimit);
+  const renderedHeight = getRenderedImageSize(initImgHeight.value, scale.value, gridLimit);
   return (
     offsetX.value >= viewportWidth.value ||
     offsetY.value >= viewportHeight.value ||
-    offsetX.value <= -initImgWidth.value * scale.value ||
-    offsetY.value <= -initImgHeight.value * scale.value
+    offsetX.value + renderedWidth <= 0 ||
+    offsetY.value + renderedHeight <= 0
   );
 }
 
@@ -476,29 +480,34 @@ function drawCanvas() {
     return false;
   }
 
-  const x1 = Math.max(0, offsetX.value);
-  const x2 = Math.min(viewportWidth.value - 1, offsetX.value + initImgWidth.value * scale.value - 1);
-  const y1 = Math.max(0, offsetY.value);
-  const y2 = Math.min(viewportHeight.value - 1, offsetY.value + initImgHeight.value * scale.value - 1);
-  let imgScaledLTCoord = { x: x1 - offsetX.value, y: y1 - offsetY.value };
-  let imgScaledRBCoord = { x: x2 - offsetX.value, y: y2 - offsetY.value };
+  const horizontalRegion = calculateVisibleImageAxis(
+    initImgWidth.value,
+    viewportWidth.value,
+    offsetX.value,
+    scale.value,
+    gridLimit,
+  );
+  const verticalRegion = calculateVisibleImageAxis(
+    initImgHeight.value,
+    viewportHeight.value,
+    offsetY.value,
+    scale.value,
+    gridLimit,
+  );
+  if (horizontalRegion === null || verticalRegion === null) {
+    ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
+    return false;
+  }
 
-  transScaled2RealInfo(sourceLTCoord, imgScaledLTCoord);
-  transScaled2RealInfo(sourceRBCoord, imgScaledRBCoord);
+  Object.assign(sourceLTCoord, { x: horizontalRegion.sourceStart, y: verticalRegion.sourceStart });
+  Object.assign(sourceRBCoord, { x: horizontalRegion.sourceEnd, y: verticalRegion.sourceEnd });
+  Object.assign(canvasLTCoord, { x: horizontalRegion.canvasStart, y: verticalRegion.canvasStart });
+  Object.assign(canvasRBCoord, { x: horizontalRegion.canvasEnd, y: verticalRegion.canvasEnd });
 
-  transReal2ScaledInfo(imgScaledLTCoord, sourceLTCoord);
-  transReal2ScaledInfo(imgScaledRBCoord, {
-    x: sourceRBCoord.x + 1,
-    y: sourceRBCoord.y + 1,
-  });
-
-  const sw = Math.abs(sourceLTCoord.x - sourceRBCoord.x) + 1;
-  const sh = Math.abs(sourceLTCoord.y - sourceRBCoord.y) + 1;
-  const dw = Math.abs(imgScaledRBCoord.x - imgScaledLTCoord.x);
-  const dh = Math.abs(imgScaledRBCoord.y - imgScaledLTCoord.y);
-
-  transScaled2CanvasInfo(canvasLTCoord, imgScaledLTCoord);
-  transScaled2CanvasInfo(canvasRBCoord, imgScaledRBCoord);
+  const sw = horizontalRegion.sourceSize;
+  const sh = verticalRegion.sourceSize;
+  const dw = horizontalRegion.canvasEnd - horizontalRegion.canvasStart;
+  const dh = verticalRegion.canvasEnd - verticalRegion.canvasStart;
 
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
   if (scale.value < gridLimit) {
@@ -522,7 +531,7 @@ function drawCanvas() {
 }
 
 function drawGrid() {
-  const space = scale.value + 1;
+  const space = getRenderedPixelPitch(scale.value, gridLimit);
   const areaX1 = canvasLTCoord.x,
     areaX2 = Math.min(canvasRBCoord.x, canvas.value.width);
   const areaY1 = canvasLTCoord.y,
@@ -545,7 +554,7 @@ function drawGrid() {
 }
 
 function drawImgInGrid(sourceWidth, sourceHeight) {
-  const space = scale.value + 1;
+  const space = getRenderedPixelPitch(scale.value, gridLimit);
   initCanvasSettings();
   ctx.value.drawImage(
     props.imageObj,
@@ -897,14 +906,16 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
     offsetX.value = rawPanOffsetX;
     offsetY.value = rawPanOffsetY;
   } else {
+    const renderedWidth = getRenderedImageSize(initImgWidth.value, scale.value, gridLimit);
+    const renderedHeight = getRenderedImageSize(initImgHeight.value, scale.value, gridLimit);
     const horizontalPan = calculateSnappedPanOffset(rawPanOffsetX, offsetX.value, deltaX, {
       leadingBoundary: 0,
-      trailingBoundary: viewportWidth.value - initImgWidth.value * scale.value,
+      trailingBoundary: viewportWidth.value - renderedWidth,
       snapDistance: autoAdaptBorderDis,
     });
     const verticalPan = calculateSnappedPanOffset(rawPanOffsetY, offsetY.value, deltaY, {
       leadingBoundary: 0,
-      trailingBoundary: viewportHeight.value - initImgHeight.value * scale.value,
+      trailingBoundary: viewportHeight.value - renderedHeight,
       snapDistance: autoAdaptBorderDis,
     });
     rawPanOffsetX = horizontalPan.rawOffset;
@@ -952,31 +963,18 @@ function emitHoveredQuadSelection(indicesArray, separator) {
 function updateOffsetForPointerScale(oldScale, newScale) {
   if (oldScale === 0) return;
 
-  const canvasCoord = { x: mouseCoord.x, y: mouseCoord.y };
-  const realCoord = { x: 0, y: 0 };
-  transCanvas2RealInfo(realCoord, canvasCoord, oldScale);
+  const renderedWidth = getRenderedImageSize(initImgWidth.value, oldScale, gridLimit);
+  const renderedHeight = getRenderedImageSize(initImgHeight.value, oldScale, gridLimit);
   if (
-    realCoord.x < sourceLTCoord.x ||
-    realCoord.x > sourceRBCoord.x ||
-    realCoord.y < sourceLTCoord.y ||
-    realCoord.y > sourceRBCoord.y
+    mouseCoord.x < offsetX.value ||
+    mouseCoord.x >= offsetX.value + renderedWidth ||
+    mouseCoord.y < offsetY.value ||
+    mouseCoord.y >= offsetY.value + renderedHeight
   )
     return;
 
-  transReal2CanvasInfo(canvasCoord, realCoord, oldScale);
-  const offsetPixels = {
-    x: mouseCoord.x - canvasCoord.x,
-    y: mouseCoord.y - canvasCoord.y,
-  };
-  const fineTuning = {
-    x: Math.floor((offsetPixels.x / oldScale) * newScale),
-    y: Math.floor((offsetPixels.y / oldScale) * newScale),
-  };
-
-  transReal2CanvasInfo(canvasCoord, realCoord, newScale);
-
-  offsetX.value -= canvasCoord.x + fineTuning.x - mouseCoord.x;
-  offsetY.value -= canvasCoord.y + fineTuning.y - mouseCoord.y;
+  offsetX.value = calculatePointerAnchoredOffset(mouseCoord.x, offsetX.value, oldScale, newScale, gridLimit);
+  offsetY.value = calculatePointerAnchoredOffset(mouseCoord.y, offsetY.value, oldScale, newScale, gridLimit);
 }
 
 function applyUserScale(newScale, { anchorAtPointer = false } = {}) {
@@ -1195,8 +1193,12 @@ async function initImgInfo() {
     }
     ctx.value = canvas.value.getContext('2d');
     ctxQuad.value = canvasForShowQuads.value.getContext('2d');
-    const scaleValue = Math.min(viewportWidth.value / img.width, viewportHeight.value / img.height);
-    scale.value = normalizeScale(scaleValue, 0.1, scaleRange, 1);
+    const fitScale = calculateFitScale(
+      { width: img.width, height: img.height },
+      { width: viewportWidth.value, height: viewportHeight.value },
+      { maximumScale: scaleRange, gridLimit },
+    );
+    scale.value = fitScale ?? 1;
     drawViewPortNow();
     await nextTick();
     return true;
@@ -1286,22 +1288,6 @@ function updateDotsCanvasCoord() {
 }
 
 // Coordinate adapters for component state
-function transScaled2RealInfo(targetCoord, scaledCoord) {
-  if (scale.value === 0) {
-    outputMessage('Failed transScaled2RealInfo: scale==0.');
-    return;
-  }
-  Object.assign(targetCoord, scaledToImagePoint(scaledCoord, scale.value));
-}
-
-function transReal2ScaledInfo(targetCoord, realCoord) {
-  Object.assign(targetCoord, imageToScaledPoint(realCoord, scale.value));
-}
-
-function transScaled2CanvasInfo(targetCoord, scaledCoord) {
-  Object.assign(targetCoord, scaledToCanvasPoint(scaledCoord, getCoordinateTransform()));
-}
-
 function transReal2CanvasInfo(targetCoord, realCoord, setScale = 0) {
   const targetScale = setScale === 0 ? scale.value : setScale;
   Object.assign(targetCoord, imageToCanvasPoint(realCoord, getCoordinateTransform(targetScale)));
@@ -1316,8 +1302,6 @@ function getCoordinateTransform(targetScale = scale.value) {
   return {
     scale: targetScale,
     gridLimit,
-    sourceLeftTop: sourceLTCoord,
-    canvasLeftTop: canvasLTCoord,
     offsetX: offsetX.value,
     offsetY: offsetY.value,
     canvasOffsetLeft: 0,

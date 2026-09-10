@@ -125,6 +125,71 @@ export function hasExceededPointerDragThreshold(startPoint, currentPoint, thresh
   return deltaX * deltaX + deltaY * deltaY > normalizedThreshold * normalizedThreshold;
 }
 
+export function getRenderedPixelPitch(scale, gridLimit = 10) {
+  if (!Number.isFinite(scale) || scale <= 0) return 0;
+  const gridWidth = Number.isFinite(gridLimit) && scale >= gridLimit ? 1 : 0;
+  return scale + gridWidth;
+}
+
+export function getRenderedImageSize(imageSize, scale, gridLimit = 10) {
+  if (!Number.isSafeInteger(imageSize) || imageSize <= 0) return 0;
+  return imageSize * getRenderedPixelPitch(scale, gridLimit);
+}
+
+export function calculateVisibleImageAxis(imageSize, viewportSize, offset, scale, gridLimit = 10) {
+  const pixelPitch = getRenderedPixelPitch(scale, gridLimit);
+  if (
+    !Number.isSafeInteger(imageSize) ||
+    imageSize <= 0 ||
+    !Number.isFinite(viewportSize) ||
+    viewportSize <= 0 ||
+    !Number.isFinite(offset) ||
+    pixelPitch <= 0
+  ) {
+    return null;
+  }
+
+  const renderedSize = imageSize * pixelPitch;
+  if (offset >= viewportSize || offset + renderedSize <= 0) return null;
+
+  const visibleStart = Math.max(0, -offset);
+  const visibleEnd = Math.min(renderedSize, viewportSize - offset);
+  const sourceStart = Math.min(imageSize - 1, Math.floor(visibleStart / pixelPitch));
+  const sourceEndExclusive = Math.min(imageSize, Math.max(sourceStart + 1, Math.ceil(visibleEnd / pixelPitch)));
+
+  return {
+    pixelPitch,
+    renderedSize,
+    sourceStart,
+    sourceEnd: sourceEndExclusive - 1,
+    sourceSize: sourceEndExclusive - sourceStart,
+    canvasStart: offset + sourceStart * pixelPitch,
+    canvasEnd: offset + sourceEndExclusive * pixelPitch,
+  };
+}
+
+export function calculatePointerAnchoredOffset(
+  pointerPosition,
+  currentOffset,
+  oldScale,
+  newScale,
+  gridLimit = 10,
+) {
+  const oldPixelPitch = getRenderedPixelPitch(oldScale, gridLimit);
+  const newPixelPitch = getRenderedPixelPitch(newScale, gridLimit);
+  if (
+    !Number.isFinite(pointerPosition) ||
+    !Number.isFinite(currentOffset) ||
+    oldPixelPitch <= 0 ||
+    newPixelPitch <= 0
+  ) {
+    return currentOffset;
+  }
+
+  const imagePosition = (pointerPosition - currentOffset) / oldPixelPitch;
+  return pointerPosition - imagePosition * newPixelPitch;
+}
+
 export function clientToLocalPoint(clientPoint, bounds, border = { left: 0, top: 0 }) {
   if (
     !clientPoint ||
@@ -154,18 +219,31 @@ function getFocusScale(visualPixelSize, gridLimit, minimumScale, maximumScale) {
 }
 
 function getCenteredOffset(center, viewportSize, scale, gridLimit) {
-  if (scale < gridLimit) return viewportSize / 2 - center * scale;
+  return viewportSize / 2 - center * getRenderedPixelPitch(scale, gridLimit);
+}
 
-  // Grid spacing depends on the first visible source pixel. Resolve that
-  // discrete offset in memory so focusing still needs only one canvas draw.
-  let offset = viewportSize / 2 - center * (scale + 1);
-  for (let iteration = 0; iteration < 8; iteration++) {
-    const sourceStart = Math.floor(Math.max(0, -offset) / scale);
-    const nextOffset = viewportSize / 2 - center * scale - (center - sourceStart);
-    if (Math.abs(nextOffset - offset) < 0.01) return nextOffset;
-    offset = nextOffset;
+export function calculateFitScale(
+  imageSize,
+  viewportSize,
+  { minimumScale = 0.1, maximumScale = 60, gridLimit = 10 } = {},
+) {
+  if (
+    !imageSize ||
+    !Number.isFinite(imageSize.width) ||
+    imageSize.width <= 0 ||
+    !Number.isFinite(imageSize.height) ||
+    imageSize.height <= 0 ||
+    !viewportSize ||
+    !Number.isFinite(viewportSize.width) ||
+    viewportSize.width <= 0 ||
+    !Number.isFinite(viewportSize.height) ||
+    viewportSize.height <= 0
+  ) {
+    return null;
   }
-  return offset;
+
+  const visualPixelSize = Math.min(viewportSize.width / imageSize.width, viewportSize.height / imageSize.height);
+  return getFocusScale(visualPixelSize, gridLimit, minimumScale, maximumScale);
 }
 
 export function calculateQuadFocusTransform(
@@ -278,43 +356,33 @@ export function imageToScaledPoint(imagePoint, scale) {
 
 export function imageToCanvasPoint(
   imagePoint,
-  { scale, gridLimit, sourceLeftTop, offsetX, offsetY, canvasOffsetLeft, canvasOffsetTop },
+  { scale, gridLimit, offsetX, offsetY, canvasOffsetLeft, canvasOffsetTop },
 ) {
-  const gridOffsetX = scale >= gridLimit ? imagePoint.x - sourceLeftTop.x : 0;
-  const gridOffsetY = scale >= gridLimit ? imagePoint.y - sourceLeftTop.y : 0;
+  const pixelPitch = getRenderedPixelPitch(scale, gridLimit);
 
   return {
-    x: imagePoint.x * scale + gridOffsetX + offsetX + canvasOffsetLeft,
-    y: imagePoint.y * scale + gridOffsetY + offsetY + canvasOffsetTop,
+    x: imagePoint.x * pixelPitch + offsetX + canvasOffsetLeft,
+    y: imagePoint.y * pixelPitch + offsetY + canvasOffsetTop,
   };
 }
 
 export function scaledToCanvasPoint(scaledPoint, transform) {
-  if (transform.scale >= transform.gridLimit) {
-    return imageToCanvasPoint(scaledToImagePoint(scaledPoint, transform.scale), transform);
-  }
+  const pixelPitch = getRenderedPixelPitch(transform.scale, transform.gridLimit);
 
   return {
-    x: scaledPoint.x + transform.offsetX + transform.canvasOffsetLeft,
-    y: scaledPoint.y + transform.offsetY + transform.canvasOffsetTop,
+    x: (scaledPoint.x / transform.scale) * pixelPitch + transform.offsetX + transform.canvasOffsetLeft,
+    y: (scaledPoint.y / transform.scale) * pixelPitch + transform.offsetY + transform.canvasOffsetTop,
   };
 }
 
 export function canvasToImagePoint(
   canvasPoint,
-  { scale, gridLimit, canvasLeftTop, offsetX, offsetY, canvasOffsetLeft, canvasOffsetTop },
+  { scale, gridLimit, offsetX, offsetY, canvasOffsetLeft, canvasOffsetTop },
 ) {
-  let gridOffsetX = 0;
-  let gridOffsetY = 0;
-  if (scale >= gridLimit) {
-    const gridX = (canvasPoint.x - canvasLeftTop.x) / (scale + 1);
-    const gridY = (canvasPoint.y - canvasLeftTop.y) / (scale + 1);
-    gridOffsetX = Number.isInteger(gridX) ? gridX : Math.floor(gridX) + 1;
-    gridOffsetY = Number.isInteger(gridY) ? gridY : Math.floor(gridY) + 1;
-  }
+  const pixelPitch = getRenderedPixelPitch(scale, gridLimit);
 
   return {
-    x: Math.floor((canvasPoint.x - gridOffsetX - offsetX - canvasOffsetLeft) / scale),
-    y: Math.floor((canvasPoint.y - gridOffsetY - offsetY - canvasOffsetTop) / scale),
+    x: Math.floor((canvasPoint.x - offsetX - canvasOffsetLeft) / pixelPitch),
+    y: Math.floor((canvasPoint.y - offsetY - canvasOffsetTop) / pixelPitch),
   };
 }
