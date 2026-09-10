@@ -107,6 +107,24 @@ export function calculateSnappedPanOffset(
   };
 }
 
+export function hasExceededPointerDragThreshold(startPoint, currentPoint, threshold = 4) {
+  if (
+    !startPoint ||
+    !currentPoint ||
+    !Number.isFinite(startPoint.x) ||
+    !Number.isFinite(startPoint.y) ||
+    !Number.isFinite(currentPoint.x) ||
+    !Number.isFinite(currentPoint.y)
+  ) {
+    return false;
+  }
+
+  const normalizedThreshold = Number.isFinite(threshold) && threshold >= 0 ? threshold : 4;
+  const deltaX = currentPoint.x - startPoint.x;
+  const deltaY = currentPoint.y - startPoint.y;
+  return deltaX * deltaX + deltaY * deltaY > normalizedThreshold * normalizedThreshold;
+}
+
 export function clientToLocalPoint(clientPoint, bounds, border = { left: 0, top: 0 }) {
   if (
     !clientPoint ||

@@ -79,7 +79,7 @@
         :active-quad-index="activeQuadIndex"
         :selected-dots="selectedDots"
         :image-load-error="imageLoadError"
-        :hover-select-mode="isHoverSelectMode"
+        :hover-quad-activation-enabled="isHoverQuadActivationEnabled"
         @update-zoom-view="updateZoomView"
         @output-message="outputMessage"
         @update-selected-dots="updateSelectedDots"
@@ -165,7 +165,7 @@
 
             <div class="annotation-list-heading section-heading">
               <span>标注数据</span>
-              <small>悬停选择</small>
+              <small>{{ isHoverQuadActivationEnabled ? '悬停联动开启' : '悬停联动关闭' }}</small>
             </div>
             <JsonView
               ref="jsonView"
@@ -248,10 +248,16 @@
             <div class="display-card">
               <div>
                 <strong>鼠标当前行为</strong>
-                <p>{{ isHoverSelectMode ? '悬停到单个 Quad 时自动选择' : '单击图像像素以添加或删除点位' }}</p>
+                <p>
+                  {{
+                    isHoverQuadActivationEnabled
+                      ? '悬停自动激活 Quad；点击图片标点'
+                      : '当前 Quad 保持不变；点击图片标点'
+                  }}
+                </p>
               </div>
-              <button class="action-button" :disabled="!canInteractWithImage" @click="toggleInteractionMode">
-                {{ isHoverSelectMode ? '切换为单击标点' : '切换为悬停选 Quad' }} <kbd>Tab</kbd>
+              <button class="action-button" :disabled="!canInteractWithImage" @click="toggleHoverQuadActivation">
+                {{ isHoverQuadActivationEnabled ? '关闭悬停联动' : '开启悬停联动' }} <kbd>Tab</kbd>
               </button>
             </div>
             <div class="stacked-actions">
@@ -302,7 +308,11 @@
       <div class="status-context">
         <span class="status-item"><i :class="['status-dot', workflowState.phase]"></i>{{ workflowStatusText }}</span>
         <span class="status-divider"></span>
-        <span>鼠标：{{ isHoverSelectMode ? '悬停选 Quad' : '单击标点' }}</span>
+        <span>点击：标点</span>
+        <span class="status-divider"></span>
+        <span>拖动：平移</span>
+        <span class="status-divider"></span>
+        <span>悬停联动：{{ isHoverQuadActivationEnabled ? '开' : '关' }}</span>
         <span class="status-divider"></span>
         <span>Quad {{ activeQuadLabel }}</span>
       </div>
@@ -425,7 +435,7 @@ const loadedProductType = ref('');
 let imgFilePath = '';
 const imageCoordinateScale = ref({ x: 1, y: 1 });
 let zoomSourceOrigin = null;
-const isHoverSelectMode = ref(false);
+const isHoverQuadActivationEnabled = ref(false);
 
 // Operation and image request state
 const workflowState = ref(createWorkflowState());
@@ -585,7 +595,7 @@ const keyActions = {
     default: () => changeJsonItemSelection(KEYS.NEXT),
   },
   Tab: {
-    default: () => toggleInteractionMode(),
+    default: () => toggleHoverQuadActivation(),
   },
 };
 
@@ -628,7 +638,7 @@ const shortcutHelpGroups = Object.freeze([
       { keys: ['Q'], label: '切换当前 Quad 显示' },
       { keys: ['Ctrl', 'Q'], label: '隐藏全部 Quad' },
       { keys: ['Ctrl', 'Shift', 'Q'], label: '显示全部 Quad' },
-      { keys: ['Tab'], label: '切换悬停选择 / 单击标点' },
+      { keys: ['Tab'], label: '开启或关闭悬停联动选择 Quad' },
       { keys: ['F1'], label: '打开或关闭帮助' },
     ],
   },
@@ -1608,10 +1618,10 @@ function clearShowQuads() {
   imgContainerRef.value?.clearShowQuadIndex();
 }
 
-function toggleInteractionMode() {
+function toggleHoverQuadActivation() {
   if (!canInteractWithImage.value) return;
-  isHoverSelectMode.value = !isHoverSelectMode.value;
-  outputMessage(isHoverSelectMode.value ? '鼠标已切换为悬停选择 Quad。' : '鼠标已切换为单击标点。');
+  isHoverQuadActivationEnabled.value = !isHoverQuadActivationEnabled.value;
+  outputMessage(isHoverQuadActivationEnabled.value ? '已开启悬停联动选择 Quad。' : '已关闭悬停联动选择 Quad。');
 }
 </script>
 

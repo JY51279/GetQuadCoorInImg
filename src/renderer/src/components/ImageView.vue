@@ -5,6 +5,11 @@
       class="image-container"
       @mouseenter="mouseEntered"
       @mouseleave="mouseLeft"
+      @pointerdown="startCanvasPointerGesture"
+      @pointermove="moveCanvasPointerGesture"
+      @pointerup="finishCanvasPointerGesture"
+      @pointercancel="cancelCanvasPointerGesture"
+      @lostpointercapture="handleCanvasLostPointerCapture"
       @wheel.prevent="onWheel"
     >
       <canvas
@@ -129,7 +134,7 @@
 
 <script setup>
 import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { useMouse, useMousePressed, useResizeObserver } from '@vueuse/core';
+import { useMouse, useResizeObserver } from '@vueuse/core';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 import {
   calculatePixelFocusTransform,
@@ -140,6 +145,7 @@ import {
   clientToLocalPoint,
   imageToCanvasPoint,
   imageToScaledPoint,
+  hasExceededPointerDragThreshold,
   normalizeScale,
   scaleToSliderPosition,
   scaledToCanvasPoint,
@@ -187,7 +193,7 @@ const props = defineProps({
     type: Object,
     default: null,
   },
-  hoverSelectMode: {
+  hoverQuadActivationEnabled: {
     type: Boolean,
     default: false,
   },
@@ -247,9 +253,16 @@ const outerQuadArray = [];
 const mouseIsOverContainer = ref(false);
 const mouseCoord = reactive({ x: 0, y: 0 });
 const indices2Show = ref('');
-let mouseMoved = false;
-let timer = null;
-let isNotLongPress = true;
+const pointerDragThreshold = 4;
+const canvasPointerGesture = {
+  active: false,
+  dragging: false,
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  lastX: 0,
+  lastY: 0,
+};
 const quadPointDrag = reactive({
   active: false,
   pointerId: null,
@@ -306,7 +319,7 @@ function deletePt(ptIndex) {
 }
 
 function deleteDot(index) {
-  if (!props.canEdit) return;
+  if (!props.canEdit || canvasPointerGesture.dragging) return;
   if (!deletePt(index)) {
     outputMessage('Error delete the pt in canvas!');
   }
@@ -765,21 +778,96 @@ function updateViewPortDraw() {
 
 // Pan and zoom interaction
 const { x, y } = useMouse();
-const { pressed } = useMousePressed({ target: imgContainerRef });
-watch([x, y], ([newX, newY], [oldX, oldY]) => {
+watch([x, y], ([newX, newY]) => {
   syncMouseCoord(newX, newY);
-  if (newX !== oldX || newY !== oldY) mouseMoved = true;
   if (!props.canInteract) {
     panDragActive = false;
     return;
   }
   if (quadPointDrag.active) return;
-  if (pressed.value) {
-    updateOffsetMoved(oldX, oldY, newX, newY);
-  } else {
-    updateHoveredQuadInfo(true);
-  }
+  if (!canvasPointerGesture.active) updateHoveredQuadInfo(true);
 });
+
+function startCanvasPointerGesture(event) {
+  if (!props.canInteract || event.button !== 0 || quadPointDrag.active) return;
+
+  Object.assign(canvasPointerGesture, {
+    active: true,
+    dragging: false,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    lastX: event.clientX,
+    lastY: event.clientY,
+  });
+  rawPanOffsetX = offsetX.value;
+  rawPanOffsetY = offsetY.value;
+  panDragActive = true;
+}
+
+function moveCanvasPointerGesture(event) {
+  if (
+    !canvasPointerGesture.active ||
+    event.pointerId !== canvasPointerGesture.pointerId ||
+    !props.canInteract ||
+    quadPointDrag.active
+  ) {
+    return;
+  }
+
+  if (!canvasPointerGesture.dragging) {
+    const exceededThreshold = hasExceededPointerDragThreshold(
+      { x: canvasPointerGesture.startX, y: canvasPointerGesture.startY },
+      { x: event.clientX, y: event.clientY },
+      pointerDragThreshold,
+    );
+    if (!exceededThreshold) return;
+
+    canvasPointerGesture.dragging = true;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    updateOffsetMoved(
+      canvasPointerGesture.startX,
+      canvasPointerGesture.startY,
+      event.clientX,
+      event.clientY,
+    );
+  } else {
+    updateOffsetMoved(canvasPointerGesture.lastX, canvasPointerGesture.lastY, event.clientX, event.clientY);
+  }
+
+  canvasPointerGesture.lastX = event.clientX;
+  canvasPointerGesture.lastY = event.clientY;
+}
+
+function resetCanvasPointerGesture({ preserveDragResult = true } = {}) {
+  const container = imgContainerRef.value;
+  if (container?.hasPointerCapture?.(canvasPointerGesture.pointerId)) {
+    container.releasePointerCapture(canvasPointerGesture.pointerId);
+  }
+  if (!preserveDragResult) canvasPointerGesture.dragging = false;
+  canvasPointerGesture.active = false;
+  canvasPointerGesture.pointerId = null;
+  panDragActive = false;
+}
+
+function finishCanvasPointerGesture(event) {
+  if (!canvasPointerGesture.active || event.pointerId !== canvasPointerGesture.pointerId) return;
+  moveCanvasPointerGesture(event);
+  resetCanvasPointerGesture();
+}
+
+function cancelCanvasPointerGesture(event) {
+  if (!canvasPointerGesture.active || event.pointerId !== canvasPointerGesture.pointerId) return;
+  canvasPointerGesture.dragging = true;
+  resetCanvasPointerGesture();
+}
+
+function handleCanvasLostPointerCapture(event) {
+  if (!canvasPointerGesture.active || event.pointerId !== canvasPointerGesture.pointerId) return;
+  canvasPointerGesture.active = false;
+  canvasPointerGesture.pointerId = null;
+  panDragActive = false;
+}
 
 const mouseEntered = event => {
   mouseIsOverContainer.value = true;
@@ -851,7 +939,7 @@ function updateHoveredQuadInfo(commitSelection = false) {
 }
 
 function emitHoveredQuadSelection(indicesArray, separator) {
-  if (!props.hoverSelectMode) return;
+  if (!props.hoverQuadActivationEnabled) return;
   const indicesNumberArray = indicesArray.split(separator).map(Number);
   if (indicesNumberArray.length !== 1) {
     emits('select-quad-index', -1);
@@ -916,27 +1004,6 @@ function applyScaleSliderInput(event) {
   event.target.value = scaleToSliderPosition(nextScale);
 }
 
-watch(pressed, newVal => {
-  if (newVal) {
-    rawPanOffsetX = offsetX.value;
-    rawPanOffsetY = offsetY.value;
-    panDragActive = true;
-    isNotLongPress = true;
-    mouseMoved = false;
-    timer = setTimeout(() => {
-      isNotLongPress = false;
-    }, 150);
-  } else {
-    panDragActive = false;
-    clearTimeout(timer);
-    if (isNotLongPress && !mouseMoved) {
-      isNotLongPress = true;
-    } else {
-      isNotLongPress = false;
-    }
-  }
-});
-
 // Component lifecycle
 useResizeObserver(imgContainerRef, () => {
   void updateViewSize();
@@ -950,11 +1017,8 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleQuadPointDragKeyDown, true);
   if (quadPointDrag.active) resetQuadPointDragState();
+  if (canvasPointerGesture.active) resetCanvasPointerGesture();
   cancelScheduledViewPortDraw();
-  if (timer !== null) {
-    clearTimeout(timer);
-    timer = null;
-  }
 });
 
 watch(
@@ -981,7 +1045,7 @@ watch(
 );
 
 function toggleDot(e) {
-  if (!props.canEdit || imageSrc === '' || !isNotLongPress) {
+  if (!props.canEdit || imageSrc === '' || canvasPointerGesture.dragging) {
     return;
   }
 
@@ -1318,6 +1382,7 @@ function initCanvasSettings() {
   overflow: hidden;
   background: url('../assets/bg.png') repeat;
   cursor: default;
+  touch-action: none;
 }
 
 .canvas-layer {

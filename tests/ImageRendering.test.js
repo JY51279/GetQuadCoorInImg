@@ -9,6 +9,7 @@ import {
   clientToLocalPoint,
   imageToCanvasPoint,
   imageToScaledPoint,
+  hasExceededPointerDragThreshold,
   normalizeScale,
   scaleToSliderPosition,
   scaledToCanvasPoint,
@@ -146,6 +147,15 @@ describe('Image view geometry', () => {
     }
 
     expect(pan).toEqual({ rawOffset: 10, renderedOffset: 10 });
+  });
+
+  it('distinguishes a tolerant pointer click from a canvas drag', () => {
+    const startPoint = { x: 100, y: 100 };
+
+    expect(hasExceededPointerDragThreshold(startPoint, { x: 103, y: 102 })).toBe(false);
+    expect(hasExceededPointerDragThreshold(startPoint, { x: 104, y: 100 })).toBe(false);
+    expect(hasExceededPointerDragThreshold(startPoint, { x: 104, y: 101 })).toBe(true);
+    expect(hasExceededPointerDragThreshold(startPoint, { x: 103, y: 103 })).toBe(true);
   });
 
   it('converts normal image, scaled, and canvas coordinates', () => {
