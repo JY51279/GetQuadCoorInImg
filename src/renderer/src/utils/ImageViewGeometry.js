@@ -67,6 +67,46 @@ export function calculateWheelScale(
   return normalizeScale(Number(nextScale.toPrecision(8)), minimumScale, maximumScale, normalizedScale);
 }
 
+export function calculateSnappedPanOffset(
+  rawOffset,
+  renderedOffset,
+  delta,
+  { leadingBoundary = 0, trailingBoundary = 0, snapDistance = 10 } = {},
+) {
+  const safeRenderedOffset = Number.isFinite(renderedOffset) ? renderedOffset : 0;
+  const safeRawOffset = Number.isFinite(rawOffset) ? rawOffset : safeRenderedOffset;
+  const safeDelta = Number.isFinite(delta) ? delta : 0;
+  const nextRawOffset = safeRawOffset + safeDelta;
+  let nextRenderedOffset = nextRawOffset;
+
+  if (
+    Number.isFinite(leadingBoundary) &&
+    Number.isFinite(trailingBoundary) &&
+    Number.isFinite(snapDistance) &&
+    snapDistance > 0
+  ) {
+    const isNearLeadingBoundary = Math.abs(nextRawOffset - leadingBoundary) < snapDistance;
+    const isNearTrailingBoundary = Math.abs(nextRawOffset - trailingBoundary) < snapDistance;
+    const isSnappedToLeadingBoundary = safeRenderedOffset === leadingBoundary;
+    const isSnappedToTrailingBoundary = safeRenderedOffset === trailingBoundary;
+
+    if (isSnappedToLeadingBoundary && isNearLeadingBoundary) {
+      nextRenderedOffset = leadingBoundary;
+    } else if (isSnappedToTrailingBoundary && isNearTrailingBoundary) {
+      nextRenderedOffset = trailingBoundary;
+    } else if (safeDelta < 0 && isNearLeadingBoundary) {
+      nextRenderedOffset = leadingBoundary;
+    } else if (safeDelta > 0 && isNearTrailingBoundary) {
+      nextRenderedOffset = trailingBoundary;
+    }
+  }
+
+  return {
+    rawOffset: nextRawOffset,
+    renderedOffset: nextRenderedOffset,
+  };
+}
+
 export function clientToLocalPoint(clientPoint, bounds, border = { left: 0, top: 0 }) {
   if (
     !clientPoint ||

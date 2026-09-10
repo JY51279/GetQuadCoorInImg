@@ -134,6 +134,7 @@ import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
 import {
   calculatePixelFocusTransform,
   calculateQuadFocusTransform,
+  calculateSnappedPanOffset,
   calculateWheelScale,
   canvasToImagePoint,
   clientToLocalPoint,
@@ -215,6 +216,11 @@ const scaleTicks = Object.freeze(
 );
 const offsetX = ref(0);
 const offsetY = ref(0);
+// Preserve unsnapped movement within one gesture so small pointer deltas can
+// accumulate past the snap threshold instead of being discarded every frame.
+let rawPanOffsetX = 0;
+let rawPanOffsetY = 0;
+let panDragActive = false;
 const viewportWidth = ref(0);
 const viewportHeight = ref(0);
 const initImgWidth = ref(0);
@@ -763,7 +769,10 @@ const { pressed } = useMousePressed({ target: imgContainerRef });
 watch([x, y], ([newX, newY], [oldX, oldY]) => {
   syncMouseCoord(newX, newY);
   if (newX !== oldX || newY !== oldY) mouseMoved = true;
-  if (!props.canInteract) return;
+  if (!props.canInteract) {
+    panDragActive = false;
+    return;
+  }
   if (quadPointDrag.active) return;
   if (pressed.value) {
     updateOffsetMoved(oldX, oldY, newX, newY);
@@ -788,23 +797,32 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
   if (deltaX === 0 && deltaY === 0) return;
   const wasOutsideViewport = isImageOutsideViewport();
 
-  offsetX.value += deltaX;
-  offsetY.value += deltaY;
+  if (!panDragActive) {
+    rawPanOffsetX = offsetX.value;
+    rawPanOffsetY = offsetY.value;
+    panDragActive = true;
+  }
 
-  if (!(imageSrc === '')) {
-    if (Math.abs(newX) < Math.abs(oldX)) {
-      if (Math.abs(offsetX.value) < autoAdaptBorderDis) offsetX.value = 0;
-    } else if (Math.abs(newX) > Math.abs(oldX)) {
-      if (Math.abs(offsetX.value + initImgWidth.value * scale.value - viewportWidth.value) < autoAdaptBorderDis)
-        offsetX.value = viewportWidth.value - initImgWidth.value * scale.value;
-    }
-
-    if (Math.abs(newY) < Math.abs(oldY)) {
-      if (Math.abs(offsetY.value) < autoAdaptBorderDis) offsetY.value = 0;
-    } else if (Math.abs(newY) > Math.abs(oldY)) {
-      if (Math.abs(offsetY.value + initImgHeight.value * scale.value - viewportHeight.value) < autoAdaptBorderDis)
-        offsetY.value = viewportHeight.value - initImgHeight.value * scale.value;
-    }
+  if (imageSrc === '') {
+    rawPanOffsetX += deltaX;
+    rawPanOffsetY += deltaY;
+    offsetX.value = rawPanOffsetX;
+    offsetY.value = rawPanOffsetY;
+  } else {
+    const horizontalPan = calculateSnappedPanOffset(rawPanOffsetX, offsetX.value, deltaX, {
+      leadingBoundary: 0,
+      trailingBoundary: viewportWidth.value - initImgWidth.value * scale.value,
+      snapDistance: autoAdaptBorderDis,
+    });
+    const verticalPan = calculateSnappedPanOffset(rawPanOffsetY, offsetY.value, deltaY, {
+      leadingBoundary: 0,
+      trailingBoundary: viewportHeight.value - initImgHeight.value * scale.value,
+      snapDistance: autoAdaptBorderDis,
+    });
+    rawPanOffsetX = horizontalPan.rawOffset;
+    rawPanOffsetY = verticalPan.rawOffset;
+    offsetX.value = horizontalPan.renderedOffset;
+    offsetY.value = verticalPan.renderedOffset;
   }
   notifyIfImageBecameInvisible(wasOutsideViewport);
   updateViewPortDraw();
@@ -900,12 +918,16 @@ function applyScaleSliderInput(event) {
 
 watch(pressed, newVal => {
   if (newVal) {
+    rawPanOffsetX = offsetX.value;
+    rawPanOffsetY = offsetY.value;
+    panDragActive = true;
     isNotLongPress = true;
     mouseMoved = false;
     timer = setTimeout(() => {
       isNotLongPress = false;
     }, 150);
   } else {
+    panDragActive = false;
     clearTimeout(timer);
     if (isNotLongPress && !mouseMoved) {
       isNotLongPress = true;

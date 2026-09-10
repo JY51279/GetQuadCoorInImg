@@ -4,6 +4,7 @@ import {
   calculateWheelScale,
   calculatePixelFocusTransform,
   calculateQuadFocusTransform,
+  calculateSnappedPanOffset,
   canvasToImagePoint,
   clientToLocalPoint,
   imageToCanvasPoint,
@@ -82,6 +83,69 @@ describe('Image view geometry', () => {
     expect(calculateWheelScale(10.5, 100)).toBe(10);
     expect(calculateWheelScale(60, -100)).toBe(60);
     expect(calculateWheelScale(0.1, 100)).toBe(0.1);
+  });
+
+  it('accumulates slow pointer movement while an image edge remains snapped', () => {
+    let pan = { rawOffset: 0, renderedOffset: 0 };
+
+    for (let step = 0; step < 9; step++) {
+      pan = calculateSnappedPanOffset(pan.rawOffset, pan.renderedOffset, -1, {
+        leadingBoundary: 0,
+        trailingBoundary: -400,
+      });
+      expect(pan.renderedOffset).toBe(0);
+    }
+
+    pan = calculateSnappedPanOffset(pan.rawOffset, pan.renderedOffset, -1, {
+      leadingBoundary: 0,
+      trailingBoundary: -400,
+    });
+    expect(pan).toEqual({ rawOffset: -10, renderedOffset: -10 });
+  });
+
+  it('preserves directional edge snapping while approaching a boundary', () => {
+    expect(
+      calculateSnappedPanOffset(12, 12, -3, {
+        leadingBoundary: 0,
+        trailingBoundary: -400,
+      }),
+    ).toEqual({ rawOffset: 9, renderedOffset: 0 });
+    expect(
+      calculateSnappedPanOffset(-412, -412, 3, {
+        leadingBoundary: 0,
+        trailingBoundary: -400,
+      }),
+    ).toEqual({ rawOffset: -409, renderedOffset: -400 });
+  });
+
+  it('releases every snapped edge after cumulative movement reaches the snap distance', () => {
+    const cases = [
+      { start: 0, delta: -1, leadingBoundary: 0, trailingBoundary: -400, expected: -10 },
+      { start: -400, delta: 1, leadingBoundary: 0, trailingBoundary: -400, expected: -390 },
+      { start: 0, delta: -1, leadingBoundary: 0, trailingBoundary: -300, expected: -10 },
+      { start: -300, delta: 1, leadingBoundary: 0, trailingBoundary: -300, expected: -290 },
+    ];
+
+    for (const testCase of cases) {
+      let pan = { rawOffset: testCase.start, renderedOffset: testCase.start };
+      for (let step = 0; step < 10; step++) {
+        pan = calculateSnappedPanOffset(pan.rawOffset, pan.renderedOffset, testCase.delta, testCase);
+      }
+      expect(pan.rawOffset).toBe(testCase.expected);
+      expect(pan.renderedOffset).toBe(testCase.expected);
+    }
+  });
+
+  it('can leave coincident boundaries when the image exactly fits the viewport', () => {
+    let pan = { rawOffset: 0, renderedOffset: 0 };
+    for (let step = 0; step < 10; step++) {
+      pan = calculateSnappedPanOffset(pan.rawOffset, pan.renderedOffset, 1, {
+        leadingBoundary: 0,
+        trailingBoundary: 0,
+      });
+    }
+
+    expect(pan).toEqual({ rawOffset: 10, renderedOffset: 10 });
   });
 
   it('converts normal image, scaled, and canvas coordinates', () => {
