@@ -65,6 +65,24 @@
         <span class="dot-pixel" :style="{ transform: `scale(${scale})` }"></span>
         <span class="dot-label">P{{ index + 1 }}</span>
       </div>
+      <button
+        v-for="handle in activeQuadPointHandles"
+        :key="`${activeQuadIndex}-${handle.pointIndex}`"
+        type="button"
+        class="quad-point-handle"
+        :class="{ dragging: quadPointDrag.active && quadPointDrag.pointIndex === handle.pointIndex }"
+        :style="{ top: `${handle.y}px`, left: `${handle.x}px` }"
+        :disabled="!canEdit"
+        :aria-label="`拖动当前 Quad 的 P${handle.pointIndex + 1}`"
+        @pointerdown.stop.prevent="startQuadPointDrag($event, handle.pointIndex)"
+        @pointermove.stop.prevent="moveQuadPointDrag"
+        @pointerup.stop.prevent="finishQuadPointDrag"
+        @pointercancel.stop.prevent="cancelQuadPointDrag"
+        @lostpointercapture="cancelQuadPointDrag"
+        @click.stop.prevent
+      >
+        <span>P{{ handle.pointIndex + 1 }}</span>
+      </button>
       <div
         v-show="scale < gridLimit"
         ref="zoomRectangle"
@@ -129,8 +147,15 @@ import {
 } from '../utils/ImageViewGeometry.js';
 
 import { isPointInPolygon } from '../utils/BasicFuncs.js';
+import { datasetPointToImagePoint } from '../utils/AnnotationCoordinates.js';
 
-const emits = defineEmits(['update-zoom-view', 'output-message', 'update-selected-dots', 'select-quad-index']);
+const emits = defineEmits([
+  'update-zoom-view',
+  'output-message',
+  'update-selected-dots',
+  'select-quad-index',
+  'commit-quad-point-drag',
+]);
 
 const props = defineProps({
   imageObj: {
@@ -203,6 +228,7 @@ let viewportDrawFrameId = null;
 
 // Annotation state
 const dotsCanvasCoord = ref([]);
+const activeQuadPointHandles = ref([]);
 const hoveredPixelCanvasCoord = ref(null);
 const markerHitSize = computed(() => `${Math.max(scale.value, 8)}px`);
 const realDot2GetZoom = ref({ x: -1, y: -1 });
@@ -218,6 +244,15 @@ const indices2Show = ref('');
 let mouseMoved = false;
 let timer = null;
 let isNotLongPress = true;
+const quadPointDrag = reactive({
+  active: false,
+  pointerId: null,
+  quadIndex: -1,
+  pointIndex: -1,
+  originalPoint: null,
+  currentPoint: null,
+});
+let quadPointCaptureElement = null;
 
 defineExpose({
   resetPosition,
@@ -283,6 +318,118 @@ function getDotInfo(e) {
     realDot => Math.abs(realDot.x - realCoord.x) < 2 && Math.abs(realDot.y - realCoord.y) < 2,
   );
   return { canvasCoord, realCoord, existingDotIndex };
+}
+
+function resetQuadPointDragState() {
+  const pointerId = quadPointDrag.pointerId;
+  if (quadPointCaptureElement?.hasPointerCapture?.(pointerId)) {
+    quadPointCaptureElement.releasePointerCapture(pointerId);
+  }
+  quadPointCaptureElement = null;
+  Object.assign(quadPointDrag, {
+    active: false,
+    pointerId: null,
+    quadIndex: -1,
+    pointIndex: -1,
+    originalPoint: null,
+    currentPoint: null,
+  });
+}
+
+function updateActiveQuadPointHandles() {
+  const quad = quadsArray[highlightQuadIndex.value];
+  if (!isValidQuadPoints(quad)) {
+    activeQuadPointHandles.value = [];
+    return;
+  }
+
+  const pixelInset = scale.value >= gridLimit ? 1 : 0;
+  activeQuadPointHandles.value = quad.slice(0, 4).map((point, pointIndex) => {
+    const canvasPoint = { x: 0, y: 0 };
+    transReal2CanvasInfo(canvasPoint, point);
+    return {
+      pointIndex,
+      x: canvasPoint.x + pixelInset + scale.value / 2,
+      y: canvasPoint.y + pixelInset + scale.value / 2,
+    };
+  });
+}
+
+function getDraggedImagePoint(event) {
+  const localPoint = syncMouseCoord(event.clientX, event.clientY);
+  if (localPoint === null || initImgWidth.value <= 0 || initImgHeight.value <= 0) return null;
+
+  const imagePoint = { x: 0, y: 0 };
+  transCanvas2RealInfo(imagePoint, localPoint);
+  return {
+    x: Math.min(initImgWidth.value - 1, Math.max(0, imagePoint.x)),
+    y: Math.min(initImgHeight.value - 1, Math.max(0, imagePoint.y)),
+  };
+}
+
+function startQuadPointDrag(event, pointIndex) {
+  if (!props.canEdit || !props.canInteract || event.button !== 0) return;
+
+  const quadIndex = highlightQuadIndex.value;
+  const quad = quadsArray[quadIndex];
+  if (!isValidQuadPoints(quad) || !Number.isInteger(pointIndex) || pointIndex < 0 || pointIndex >= 4) return;
+
+  const originalPoint = { ...quad[pointIndex] };
+  Object.assign(quadPointDrag, {
+    active: true,
+    pointerId: event.pointerId,
+    quadIndex,
+    pointIndex,
+    originalPoint,
+    currentPoint: { ...originalPoint },
+  });
+  quadPointCaptureElement = event.currentTarget;
+  quadPointCaptureElement.setPointerCapture?.(event.pointerId);
+}
+
+function moveQuadPointDrag(event) {
+  if (!quadPointDrag.active || event.pointerId !== quadPointDrag.pointerId) return;
+
+  const nextPoint = getDraggedImagePoint(event);
+  const quad = quadsArray[quadPointDrag.quadIndex];
+  if (nextPoint === null || !isValidQuadPoints(quad)) return;
+  if (nextPoint.x === quadPointDrag.currentPoint.x && nextPoint.y === quadPointDrag.currentPoint.y) return;
+
+  quad[quadPointDrag.pointIndex] = nextPoint;
+  quadPointDrag.currentPoint = { ...nextPoint };
+  drawCanvasForShowQuads();
+}
+
+function finishQuadPointDrag(event) {
+  if (!quadPointDrag.active || event.pointerId !== quadPointDrag.pointerId) return;
+  moveQuadPointDrag(event);
+
+  const payload = {
+    quadIndex: quadPointDrag.quadIndex,
+    pointIndex: quadPointDrag.pointIndex,
+    imagePoint: { ...quadPointDrag.currentPoint },
+  };
+  const changed =
+    payload.imagePoint.x !== quadPointDrag.originalPoint.x || payload.imagePoint.y !== quadPointDrag.originalPoint.y;
+  resetQuadPointDragState();
+  updateActiveQuadPointHandles();
+  if (changed) emits('commit-quad-point-drag', payload);
+}
+
+function cancelQuadPointDrag() {
+  if (!quadPointDrag.active) return;
+
+  const quad = quadsArray[quadPointDrag.quadIndex];
+  if (isValidQuadPoints(quad)) quad[quadPointDrag.pointIndex] = { ...quadPointDrag.originalPoint };
+  resetQuadPointDragState();
+  drawCanvasForShowQuads();
+}
+
+function handleQuadPointDragKeyDown(event) {
+  if (event.key !== 'Escape' || !quadPointDrag.active) return;
+  event.preventDefault();
+  event.stopPropagation();
+  cancelQuadPointDrag();
 }
 
 // Base image rendering
@@ -404,16 +551,15 @@ function isValidQuadPoints(quadPoints) {
 }
 
 function resetQuadsArray(newQuadArray, coordinateScale, { deletedIndex = null, insertedIndex = null } = {}) {
-  const scaleX = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.x;
-  const scaleY = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.y;
+  if (quadPointDrag.active) resetQuadPointDragState();
   quadsArray = Array.isArray(newQuadArray)
     ? newQuadArray.map(quad => (Array.isArray(quad) ? quad.map(dot => ({ ...dot })) : quad))
     : [];
   quadsArray.forEach(quad => {
-    if (!isValidQuadPoints(quad) || !Number.isFinite(scaleX) || !Number.isFinite(scaleY)) return;
-    quad.forEach(dot => {
-      dot.x = scaleX === 0 ? 0 : Math.round(dot.x * scaleX);
-      dot.y = scaleY === 0 ? 0 : Math.round(dot.y * scaleY);
+    if (!isValidQuadPoints(quad)) return;
+    quad.forEach((dot, index) => {
+      const mappedPoint = datasetPointToImagePoint(dot, coordinateScale);
+      if (mappedPoint !== null) quad[index] = mappedPoint;
     });
   });
 
@@ -429,10 +575,12 @@ function resetQuadsArray(newQuadArray, coordinateScale, { deletedIndex = null, i
       .filter(index => index >= 0 && index < quadsArray.length);
     showQuadIndex.splice(0, showQuadIndex.length, ...remappedIndices);
   }
+  updateActiveQuadPointHandles();
 }
 
 watch(highlightQuadIndex, (newHighlightQuadIndex, oldHighlightQuadIndex) => {
   if (oldHighlightQuadIndex === newHighlightQuadIndex) return;
+  if (quadPointDrag.active) cancelQuadPointDrag();
   if (moveHighlightToEnd()) return;
   drawCanvasForShowQuads();
 });
@@ -489,6 +637,7 @@ function drawCanvasForShowQuads() {
   drawShowQuads();
   if (!(highlightQuadIndex.value === -1 || highlightQuadIndex.value >= quadsArray.length))
     drawQuadLine(quadsArray[highlightQuadIndex.value], true);
+  updateActiveQuadPointHandles();
   updateHoveredQuadInfo();
 }
 
@@ -601,6 +750,7 @@ watch([x, y], ([newX, newY], [oldX, oldY]) => {
   syncMouseCoord(newX, newY);
   if (newX !== oldX || newY !== oldY) mouseMoved = true;
   if (!props.canInteract) return;
+  if (quadPointDrag.active) return;
   if (pressed.value) {
     updateOffsetMoved(oldX, oldY, newX, newY);
   } else {
@@ -757,16 +907,26 @@ useResizeObserver(imgContainerRef, () => {
 });
 
 onMounted(() => {
+  window.addEventListener('keydown', handleQuadPointDragKeyDown, true);
   void updateViewSize();
 });
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleQuadPointDragKeyDown, true);
+  if (quadPointDrag.active) resetQuadPointDragState();
   cancelScheduledViewPortDraw();
   if (timer !== null) {
     clearTimeout(timer);
     timer = null;
   }
 });
+
+watch(
+  () => props.canEdit,
+  canEdit => {
+    if (!canEdit) cancelQuadPointDrag();
+  },
+);
 
 // Point selection
 function isPointInVisibleImage(canvasPoint) {
@@ -884,7 +1044,9 @@ function resetViewportGeometry() {
 }
 
 function resetAnnotationOverlay() {
+  if (quadPointDrag.active) resetQuadPointDragState();
   quadsArray = [];
+  activeQuadPointHandles.value = [];
   showQuadIndex.splice(0, showQuadIndex.length);
   outerQuadArray.splice(0, outerQuadArray.length);
   indices2Show.value = '';
@@ -1185,6 +1347,42 @@ function initCanvasSettings() {
   border-right: 4px solid transparent;
   border-left: 4px solid transparent;
   content: '';
+}
+
+.quad-point-handle {
+  position: absolute;
+  z-index: 9;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.45);
+  font: 700 8px/1 var(--font-ui, sans-serif);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.quad-point-handle:hover,
+.quad-point-handle:focus-visible {
+  outline: 2px solid #f97316;
+  outline-offset: 2px;
+}
+
+.quad-point-handle.dragging {
+  background: #f97316;
+  cursor: grabbing;
+}
+
+.quad-point-handle:disabled {
+  cursor: default;
+  opacity: 0.65;
 }
 
 .rectangle {

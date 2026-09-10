@@ -15,6 +15,8 @@ import {
   getProductSchema,
   normalizeDataset,
 } from '../utils/DatasetSchema.js';
+import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
+import { prepareQuadPointUpdate } from '../utils/QuadGeometry.js';
 
 const ROOT_KEY = 'Picture';
 const IMAGE_SOURCE_KEY = 'Image Source';
@@ -229,22 +231,10 @@ function prepareSelectedDots(realDots, activeQuadIndex) {
   return selectedDots;
 }
 
-function normalizeCoordinateScale(coordinateScale) {
-  const x = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.x;
-  const y = typeof coordinateScale === 'number' ? coordinateScale : coordinateScale?.y;
-  if (!Number.isFinite(x) || x < 0 || !Number.isFinite(y) || y < 0) return null;
-  return { x, y };
-}
-
 function transQuadDotsToString(realDots, coordinateScale, baseItem = null) {
-  const normalizedScale = normalizeCoordinateScale(coordinateScale);
-  if (normalizedScale === null) return '';
-
   // 根据显示图相对原图的横纵缩放比例换算坐标，但不要修改工作图片中的原始点
-  let jsonDots = realDots.map(dot => ({
-    x: normalizedScale.x === 0 ? 0 : Math.round(dot.x / normalizedScale.x),
-    y: normalizedScale.y === 0 ? 0 : Math.round(dot.y / normalizedScale.y),
-  }));
+  let jsonDots = realDots.map(dot => imagePointToDatasetPoint(dot, coordinateScale));
+  if (jsonDots.some(dot => dot === null)) return '';
 
   // 判断是否为一个元素，并仅修改与当前点最近的点
   if (jsonDots.length === 1) {
@@ -317,12 +307,11 @@ function jsonValuesEqual(leftValue, rightValue) {
   return transJson2Str(leftValue) === transJson2Str(rightValue);
 }
 
-export function updateJsonWithHistory(action = KEYS.JSON_MODIFY, coordinateScale, activeQuadIndex = -1, realDots = []) {
+function runJsonMutationWithHistory(action, itemIndex, mutate) {
   if (datasetState.currentImageIndex < 0) {
     return { success: false, error: 'No JSON image is currently active.' };
   }
 
-  const itemIndex = action === KEYS.JSON_ADD ? datasetState.currentItems.length : activeQuadIndex;
   const beforeItem =
     action !== KEYS.JSON_ADD &&
     Number.isInteger(itemIndex) &&
@@ -330,7 +319,7 @@ export function updateJsonWithHistory(action = KEYS.JSON_MODIFY, coordinateScale
     itemIndex < datasetState.currentItems.length
       ? cloneDeep(datasetState.currentItems[itemIndex])
       : null;
-  const result = updateJson(action, coordinateScale, activeQuadIndex, realDots);
+  const result = mutate();
   if (result !== KEYS.OPERATE_SUCCESS) return { success: false, error: result };
 
   const afterItem =
@@ -354,6 +343,42 @@ export function updateJsonWithHistory(action = KEYS.JSON_MODIFY, coordinateScale
         }
       : null,
   };
+}
+
+export function updateJsonWithHistory(action = KEYS.JSON_MODIFY, coordinateScale, activeQuadIndex = -1, realDots = []) {
+  const itemIndex = action === KEYS.JSON_ADD ? datasetState.currentItems.length : activeQuadIndex;
+  return runJsonMutationWithHistory(action, itemIndex, () =>
+    updateJson(action, coordinateScale, activeQuadIndex, realDots),
+  );
+}
+
+function updateQuadPoint(activeQuadIndex, pointIndex, nextPoint) {
+  return operateJsonContent(() => {
+    if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
+      return 'Failed to find jsonItem.';
+    }
+
+    const targetItem = datasetState.currentItems[activeQuadIndex];
+    const currentPoints = parsePointString2Array(targetItem[datasetState.productSchema.ItemKey], POINT_SEPARATOR);
+    const preparedPoints = prepareQuadPointUpdate(
+      currentPoints,
+      pointIndex,
+      nextPoint,
+      targetItem['Barcode Type'] ?? '',
+    );
+    if (!preparedPoints.success) return preparedPoints.error;
+
+    targetItem[datasetState.productSchema.ItemKey] = preparedPoints.points
+      .map(point => `${point.x} ${point.y}`)
+      .join(POINT_SEPARATOR);
+    return KEYS.OPERATE_SUCCESS;
+  }, 'Failed to update the dragged Quad point.');
+}
+
+export function updateQuadPointWithHistory(activeQuadIndex = -1, pointIndex = -1, nextPoint = null) {
+  return runJsonMutationWithHistory(KEYS.JSON_MODIFY, activeQuadIndex, () =>
+    updateQuadPoint(activeQuadIndex, pointIndex, nextPoint),
+  );
 }
 
 export function applyJsonHistoryEntry(historyEntry, direction) {

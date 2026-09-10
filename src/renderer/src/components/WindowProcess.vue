@@ -84,6 +84,7 @@
         @output-message="outputMessage"
         @update-selected-dots="updateSelectedDots"
         @select-quad-index="selectQuadIndex"
+        @commit-quad-point-drag="commitQuadPointDrag"
       ></ImageView>
 
       <aside class="inspector-shell">
@@ -316,6 +317,7 @@ import {
   getJsonImageDialogContext,
   getJsonImageTarget,
   applyJsonHistoryEntry,
+  updateQuadPointWithHistory,
   updateJsonWithHistory,
   getJsonImagePosition,
   getJsonFileInfo,
@@ -332,6 +334,7 @@ import {
   recordHistoryEntry,
 } from '../state/UndoRedoHistory.js';
 import { KEYS } from '../utils/BasicFuncs.js';
+import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { loadRendererImage } from '../utils/RendererImageLoader.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
@@ -796,6 +799,45 @@ async function runSaveTransaction(mutate, onSaved = () => {}) {
   } finally {
     if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) finishOperation();
   }
+}
+
+async function commitQuadPointDrag(payload) {
+  const { quadIndex, pointIndex, imagePoint } = payload ?? {};
+  if (
+    !canOperate.value ||
+    quadIndex !== activeQuadIndex.value ||
+    !Number.isInteger(pointIndex) ||
+    pointIndex < 0 ||
+    pointIndex >= 4
+  ) {
+    refreshCurrentAnnotations({ redrawOverlay: true });
+    outputMessage('The dragged Quad point no longer matches the active annotation.');
+    return;
+  }
+
+  const datasetPoint = imagePointToDatasetPoint(imagePoint, imageCoordinateScale.value);
+  if (datasetPoint === null) {
+    refreshCurrentAnnotations({ redrawOverlay: true });
+    outputMessage('Failed to map the dragged point to the dataset coordinates.');
+    return;
+  }
+
+  let historyEntry = null;
+  const saved = await runSaveTransaction(
+    () => {
+      const updateResult = updateQuadPointWithHistory(quadIndex, pointIndex, datasetPoint);
+      historyEntry = updateResult.historyEntry ?? null;
+      return updateResult.success ? null : updateResult.error;
+    },
+    () => {
+      if (historyEntry) recordHistoryEntry(getCurrentJsonHistory(true), historyEntry);
+      refreshCurrentAnnotations({ redrawOverlay: true });
+      selectQuadIndex(quadIndex);
+      outputMessage(`已更新 Quad ${quadIndex + 1} 的顶点。`);
+    },
+  );
+
+  if (!saved) refreshCurrentAnnotations({ redrawOverlay: true });
 }
 
 async function performJsonAction(action) {

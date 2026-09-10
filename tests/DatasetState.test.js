@@ -20,6 +20,7 @@ import {
   resetPicJson,
   restoreDatasetMutationSnapshot,
   updateJson,
+  updateQuadPointWithHistory,
   updateJsonWithHistory,
 } from '../src/renderer/src/state/DatasetState.js';
 import { KEYS, parsePointString2Array } from '../src/renderer/src/utils/BasicFuncs.js';
@@ -39,10 +40,12 @@ function createPicture(productType, imageSource, location = '0 0 10 0 10 10 0 10
   };
 }
 
-function loadDbrDataset() {
+function loadDbrDataset(location = '0 0 10 0 10 10 0 10', barcodeType = '') {
   const data = {
-    Picture: [createPicture('DBR', 'C:/images/one.png'), createPicture('DBR', 'C:/images/two.png')],
+    Picture: [createPicture('DBR', 'C:/images/one.png', location), createPicture('DBR', 'C:/images/two.png', location)],
   };
+  data.Picture[0]['Barcode Info'][0]['Barcode Type'] = barcodeType;
+  data.Picture[1]['Barcode Info'][0]['Barcode Type'] = barcodeType;
   data.Picture[1]['No.'] = '2';
 
   const prepared = prepareJsonProcess({
@@ -243,6 +246,72 @@ describe('Dataset state operations', () => {
     expect(updateJson(KEYS.JSON_MODIFY, { x: 0.5, y: 0.25 }, 0, [{ x: 5, y: 2 }])).toBe(KEYS.OPERATE_SUCCESS);
 
     expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 10, y: 8 });
+  });
+
+  it('updates an explicit dragged vertex and recalculates the canonical point indices', () => {
+    loadDbrDataset('10 10 20 10 20 20 10 20');
+
+    const result = updateQuadPointWithHistory(0, 1, { x: 5, y: 10 });
+
+    expect(result.success).toBe(true);
+    expect(result.historyEntry).toMatchObject({
+      action: KEYS.JSON_MODIFY,
+      imageIndex: 0,
+      itemIndex: 0,
+    });
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Info'][0]['Barcode Location']).toBe(
+      '5 10 10 10 20 20 10 20',
+    );
+
+    expect(applyJsonHistoryEntry(result.historyEntry, 'undo').success).toBe(true);
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Info'][0]['Barcode Location']).toBe(
+      '10 10 20 10 20 20 10 20',
+    );
+  });
+
+  it('keeps the DataMatrix zero-index point fixed when a dragged vertex is reordered', () => {
+    loadDbrDataset('10 10 20 10 20 20 10 20', 'datamatrix');
+
+    const result = updateQuadPointWithHistory(0, 1, { x: 5, y: 10 });
+
+    expect(result.success).toBe(true);
+    const points = getCurrentAnnotationView().quads[0];
+    expect(points[0]).toEqual({ x: 10, y: 10 });
+    expect(points).toEqual(
+      expect.arrayContaining([
+        { x: 5, y: 10 },
+        { x: 20, y: 20 },
+        { x: 10, y: 20 },
+      ]),
+    );
+  });
+
+  it('preserves every untouched dataset coordinate during a direct point update', () => {
+    loadDbrDataset('1 1 101 1 101 101 1 101');
+
+    const result = updateQuadPointWithHistory(0, 1, { x: 80, y: 1 });
+
+    expect(result.success).toBe(true);
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Info'][0]['Barcode Location']).toBe(
+      '1 1 80 1 101 101 1 101',
+    );
+  });
+
+  it('rejects an invalid dragged Quad without changing the dataset', () => {
+    loadDbrDataset();
+    const before = getJsonFileInfo().str;
+
+    const result = updateQuadPointWithHistory(0, 1, { x: 0, y: 0 });
+
+    expect(result).toMatchObject({ success: false, error: 'A Quad must contain four distinct points.' });
+    expect(getJsonFileInfo().str).toBe(before);
+
+    const concaveResult = updateQuadPointWithHistory(0, 1, { x: 3, y: 7 });
+    expect(concaveResult).toMatchObject({
+      success: false,
+      error: 'A Quad must remain convex and cannot contain crossing edges.',
+    });
+    expect(getJsonFileInfo().str).toBe(before);
   });
 
   it('accepts the same explicit quad index after switching images', () => {
