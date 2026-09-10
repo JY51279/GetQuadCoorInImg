@@ -135,28 +135,17 @@
 <script setup>
 import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useResizeObserver } from '@vueuse/core';
-import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
+import { useCanvasPanGesture } from '../composables/useCanvasPanGesture.js';
+import { useImageViewport } from '../composables/useImageViewport.js';
+import { isValidQuadPoints, useQuadOverlay } from '../composables/useQuadOverlay.js';
 import {
-  calculateFitScale,
   calculatePixelFocusTransform,
-  calculatePointerAnchoredOffset,
   calculateQuadFocusTransform,
-  calculateSnappedPanOffset,
-  calculateVisibleImageAxis,
   calculateWheelScale,
-  canvasToImagePoint,
   clientToLocalPoint,
-  getRenderedImageSize,
-  getRenderedPixelPitch,
-  imageToCanvasPoint,
-  hasExceededPointerDragThreshold,
-  normalizeScale,
   scaleToSliderPosition,
   sliderPositionToScale,
 } from '../utils/ImageViewGeometry.js';
-
-import { isPointInQuad } from '../utils/QuadGeometry.js';
-import { datasetPointToImagePoint } from '../utils/AnnotationCoordinates.js';
 
 const emits = defineEmits([
   'update-zoom-view',
@@ -212,7 +201,33 @@ const canvasForShowQuads = ref(null);
 const zoomRectangle = ref(null);
 const ctx = ref(null);
 const ctxQuad = ref(null);
-const scale = ref(1);
+const {
+  scale,
+  viewportWidth,
+  viewportHeight,
+  imageWidth: initImgWidth,
+  imageHeight: initImgHeight,
+  canvasLeftTop: canvasLTCoord,
+  canvasRightBottom: canvasRBCoord,
+  sourceLeftTop: sourceLTCoord,
+  sourceRightBottom: sourceRBCoord,
+  pixelPitch,
+  setViewportSize,
+  setImageSize,
+  fitImageToViewport,
+  isImageOutsideViewport: isViewportImageOutside,
+  updateVisibleRegion,
+  beginPanGesture,
+  endPanGesture,
+  panBy,
+  updateScale,
+  applyTransform,
+  imageToCanvas,
+  canvasToImage,
+  isPointInVisibleImage,
+  resetPosition: resetViewportPosition,
+  clear: clearViewport,
+} = useImageViewport({ gridLimit, scaleRange, snapDistance: autoAdaptBorderDis });
 const scaleSliderPosition = computed(() => scaleToSliderPosition(scale.value));
 const scaleDisplayValue = computed(() => Number(scale.value.toFixed(scale.value < 10 ? 2 : 1)));
 const scaleTicks = Object.freeze(
@@ -222,49 +237,19 @@ const scaleTicks = Object.freeze(
     position: scaleToSliderPosition(value),
   })),
 );
-const offsetX = ref(0);
-const offsetY = ref(0);
-// Preserve unsnapped movement within one gesture so small pointer deltas can
-// accumulate past the snap threshold instead of being discarded every frame.
-let rawPanOffsetX = 0;
-let rawPanOffsetY = 0;
-let panDragActive = false;
-const viewportWidth = ref(0);
-const viewportHeight = ref(0);
-const initImgWidth = ref(0);
-const initImgHeight = ref(0);
-const canvasLTCoord = { x: 0, y: 0 };
-const canvasRBCoord = { x: 0, y: 0 };
-const sourceLTCoord = { x: 0, y: 0 };
-const sourceRBCoord = { x: 0, y: 0 };
 let imageSrc = '';
 let viewportDrawFrameId = null;
 
 // Annotation state
 const dotsCanvasCoord = ref([]);
-const activeQuadPointHandles = ref([]);
 const hoveredPixelCanvasCoord = ref(null);
 const markerHitSize = computed(() => `${Math.max(scale.value, 8)}px`);
 const realDot2GetZoom = ref({ x: -1, y: -1 });
-let quadsArray = [];
 const highlightQuadIndex = computed(() => props.activeQuadIndex);
-const showQuadIndex = reactive([]);
-const outerQuadArray = [];
 
 // Interaction and feedback state
 const mouseIsOverContainer = ref(false);
 const mouseCoord = reactive({ x: 0, y: 0 });
-const indices2Show = ref('');
-const pointerDragThreshold = 4;
-const canvasPointerGesture = {
-  active: false,
-  dragging: false,
-  pointerId: null,
-  startX: 0,
-  startY: 0,
-  lastX: 0,
-  lastY: 0,
-};
 const quadPointDrag = reactive({
   active: false,
   pointerId: null,
@@ -274,6 +259,51 @@ const quadPointDrag = reactive({
   currentPoint: null,
 });
 let quadPointCaptureElement = null;
+const {
+  shownQuadIndices: showQuadIndex,
+  activePointHandles: activeQuadPointHandles,
+  hoveredIndicesText: indices2Show,
+  getQuadCount,
+  getQuad,
+  setQuadPoint,
+  resetQuads: resetQuadOverlayData,
+  toggleShownQuad: toggleShowQuadIndex,
+  addShownQuad: addShowQuadIndex,
+  moveActiveQuadToEnd: moveHighlightToEnd,
+  clearShownQuads: clearShowQuadIndex,
+  drawOverlay: drawCanvasForShowQuads,
+  updateHoveredInfo: updateHoveredQuadInfo,
+  updateActivePointHandles: updateActiveQuadPointHandles,
+  clear: clearQuadOverlay,
+} = useQuadOverlay({
+  activeQuadIndex: highlightQuadIndex,
+  scale,
+  gridLimit,
+  getContext: () => ctxQuad.value,
+  imageToCanvas,
+  isMouseOver: () => mouseIsOverContainer.value,
+  mousePoint: mouseCoord,
+  outputMessage,
+  hoverActivationEnabled: () => props.hoverQuadActivationEnabled,
+  onSelectQuad: index => emits('select-quad-index', index),
+});
+const {
+  state: canvasPointerGesture,
+  start: startCanvasPointerGesture,
+  move: moveCanvasPointerGesture,
+  finish: finishCanvasPointerGesture,
+  cancel: cancelCanvasPointerGesture,
+  handleLostPointerCapture: handleCanvasLostPointerCapture,
+  reset: resetCanvasPointerGesture,
+} = useCanvasPanGesture({
+  canStart: () => props.canInteract && !quadPointDrag.active,
+  canContinue: () => props.canInteract && !quadPointDrag.active,
+  onGestureStart: beginPanGesture,
+  onDrag: ({ previousX, previousY, currentX, currentY }) => {
+    updateOffsetMoved(previousX, previousY, currentX, currentY);
+  },
+  onGestureEnd: endPanGesture,
+});
 
 defineExpose({
   resetPosition,
@@ -357,25 +387,6 @@ function resetQuadPointDragState() {
   });
 }
 
-function updateActiveQuadPointHandles() {
-  const quad = quadsArray[highlightQuadIndex.value];
-  if (!isValidQuadPoints(quad)) {
-    activeQuadPointHandles.value = [];
-    return;
-  }
-
-  const pixelInset = scale.value >= gridLimit ? 1 : 0;
-  activeQuadPointHandles.value = quad.slice(0, 4).map((point, pointIndex) => {
-    const canvasPoint = { x: 0, y: 0 };
-    transReal2CanvasInfo(canvasPoint, point);
-    return {
-      pointIndex,
-      x: canvasPoint.x + pixelInset + scale.value / 2,
-      y: canvasPoint.y + pixelInset + scale.value / 2,
-    };
-  });
-}
-
 function getDraggedImagePoint(event) {
   const localPoint = syncMouseCoord(event.clientX, event.clientY);
   if (localPoint === null || initImgWidth.value <= 0 || initImgHeight.value <= 0) return null;
@@ -392,7 +403,7 @@ function startQuadPointDrag(event, pointIndex) {
   if (!props.canEdit || !props.canInteract || event.button !== 0) return;
 
   const quadIndex = highlightQuadIndex.value;
-  const quad = quadsArray[quadIndex];
+  const quad = getQuad(quadIndex);
   if (!isValidQuadPoints(quad) || !Number.isInteger(pointIndex) || pointIndex < 0 || pointIndex >= 4) return;
 
   const originalPoint = { ...quad[pointIndex] };
@@ -412,11 +423,11 @@ function moveQuadPointDrag(event) {
   if (!quadPointDrag.active || event.pointerId !== quadPointDrag.pointerId) return;
 
   const nextPoint = getDraggedImagePoint(event);
-  const quad = quadsArray[quadPointDrag.quadIndex];
+  const quad = getQuad(quadPointDrag.quadIndex);
   if (nextPoint === null || !isValidQuadPoints(quad)) return;
   if (nextPoint.x === quadPointDrag.currentPoint.x && nextPoint.y === quadPointDrag.currentPoint.y) return;
 
-  quad[quadPointDrag.pointIndex] = nextPoint;
+  setQuadPoint(quadPointDrag.quadIndex, quadPointDrag.pointIndex, nextPoint);
   quadPointDrag.currentPoint = { ...nextPoint };
   drawCanvasForShowQuads();
 }
@@ -440,8 +451,7 @@ function finishQuadPointDrag(event) {
 function cancelQuadPointDrag() {
   if (!quadPointDrag.active) return;
 
-  const quad = quadsArray[quadPointDrag.quadIndex];
-  if (isValidQuadPoints(quad)) quad[quadPointDrag.pointIndex] = { ...quadPointDrag.originalPoint };
+  setQuadPoint(quadPointDrag.quadIndex, quadPointDrag.pointIndex, quadPointDrag.originalPoint);
   resetQuadPointDragState();
   drawCanvasForShowQuads();
 }
@@ -455,19 +465,7 @@ function handleQuadPointDragKeyDown(event) {
 
 // Base image rendering
 function isImageOutsideViewport() {
-  if (imageSrc === '' || scale.value <= 0 || initImgWidth.value <= 0 || initImgHeight.value <= 0) return false;
-  const renderedWidth = getRenderedImageSize(initImgWidth.value, scale.value, gridLimit);
-  const renderedHeight = getRenderedImageSize(initImgHeight.value, scale.value, gridLimit);
-  return (
-    offsetX.value >= viewportWidth.value ||
-    offsetY.value >= viewportHeight.value ||
-    offsetX.value + renderedWidth <= 0 ||
-    offsetY.value + renderedHeight <= 0
-  );
-}
-
-function notifyIfImageBecameInvisible(wasOutsideViewport) {
-  if (!wasOutsideViewport && isImageOutsideViewport()) outputMessage('The image is out of the visible area.');
+  return isViewportImageOutside(imageSrc !== '');
 }
 
 function drawCanvas() {
@@ -480,34 +478,16 @@ function drawCanvas() {
     return false;
   }
 
-  const horizontalRegion = calculateVisibleImageAxis(
-    initImgWidth.value,
-    viewportWidth.value,
-    offsetX.value,
-    scale.value,
-    gridLimit,
-  );
-  const verticalRegion = calculateVisibleImageAxis(
-    initImgHeight.value,
-    viewportHeight.value,
-    offsetY.value,
-    scale.value,
-    gridLimit,
-  );
-  if (horizontalRegion === null || verticalRegion === null) {
+  const visibleRegion = updateVisibleRegion();
+  if (visibleRegion === null) {
     ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
     return false;
   }
 
-  Object.assign(sourceLTCoord, { x: horizontalRegion.sourceStart, y: verticalRegion.sourceStart });
-  Object.assign(sourceRBCoord, { x: horizontalRegion.sourceEnd, y: verticalRegion.sourceEnd });
-  Object.assign(canvasLTCoord, { x: horizontalRegion.canvasStart, y: verticalRegion.canvasStart });
-  Object.assign(canvasRBCoord, { x: horizontalRegion.canvasEnd, y: verticalRegion.canvasEnd });
-
-  const sw = horizontalRegion.sourceSize;
-  const sh = verticalRegion.sourceSize;
-  const dw = horizontalRegion.canvasEnd - horizontalRegion.canvasStart;
-  const dh = verticalRegion.canvasEnd - verticalRegion.canvasStart;
+  const sw = visibleRegion.sourceWidth;
+  const sh = visibleRegion.sourceHeight;
+  const dw = visibleRegion.canvasWidth;
+  const dh = visibleRegion.canvasHeight;
 
   ctx.value.clearRect(0, 0, canvas.value.width, canvas.value.height);
   if (scale.value < gridLimit) {
@@ -531,7 +511,7 @@ function drawCanvas() {
 }
 
 function drawGrid() {
-  const space = getRenderedPixelPitch(scale.value, gridLimit);
+  const space = pixelPitch.value;
   const areaX1 = canvasLTCoord.x,
     areaX2 = Math.min(canvasRBCoord.x, canvas.value.width);
   const areaY1 = canvasLTCoord.y,
@@ -554,7 +534,7 @@ function drawGrid() {
 }
 
 function drawImgInGrid(sourceWidth, sourceHeight) {
-  const space = getRenderedPixelPitch(scale.value, gridLimit);
+  const space = pixelPitch.value;
   initCanvasSettings();
   ctx.value.drawImage(
     props.imageObj,
@@ -570,54 +550,13 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
 }
 
 // Annotation overlay rendering
-function isValidQuadPoints(quadPoints) {
-  return (
-    Array.isArray(quadPoints) &&
-    quadPoints.length >= 4 &&
-    quadPoints.every(point => point && Number.isFinite(point.x) && Number.isFinite(point.y))
-  );
-}
-
 function resetQuadsArray(
   newQuadArray,
   coordinateScale,
   { deletedIndex = null, insertedIndex = null, indexMutations = [] } = {},
 ) {
   if (quadPointDrag.active) resetQuadPointDragState();
-  quadsArray = Array.isArray(newQuadArray)
-    ? newQuadArray.map(quad => (Array.isArray(quad) ? quad.map(dot => ({ ...dot })) : quad))
-    : [];
-  quadsArray.forEach(quad => {
-    if (!isValidQuadPoints(quad)) return;
-    quad.forEach((dot, index) => {
-      const mappedPoint = datasetPointToImagePoint(dot, coordinateScale);
-      if (mappedPoint !== null) quad[index] = mappedPoint;
-    });
-  });
-
-  const mutations = Array.isArray(indexMutations) && indexMutations.length > 0 ? [...indexMutations] : [];
-  if (mutations.length === 0 && Number.isInteger(deletedIndex) && deletedIndex >= 0) {
-    mutations.push({ type: 'delete', index: deletedIndex });
-  } else if (mutations.length === 0 && Number.isInteger(insertedIndex) && insertedIndex >= 0) {
-    mutations.push({ type: 'insert', index: insertedIndex });
-  }
-
-  if (mutations.length > 0) {
-    let remappedIndices = [...showQuadIndex];
-    for (const mutation of mutations) {
-      if (!Number.isInteger(mutation?.index) || mutation.index < 0) continue;
-      if (mutation.type === 'delete') {
-        remappedIndices = remappedIndices
-          .filter(index => index !== mutation.index)
-          .map(index => (index > mutation.index ? index - 1 : index));
-      } else if (mutation.type === 'insert') {
-        remappedIndices = remappedIndices.map(index => (index >= mutation.index ? index + 1 : index));
-      }
-    }
-    remappedIndices = remappedIndices.filter(index => index >= 0 && index < quadsArray.length);
-    showQuadIndex.splice(0, showQuadIndex.length, ...remappedIndices);
-  }
-  updateActiveQuadPointHandles();
+  resetQuadOverlayData(newQuadArray, coordinateScale, { deletedIndex, insertedIndex, indexMutations });
 }
 
 watch(highlightQuadIndex, (newHighlightQuadIndex, oldHighlightQuadIndex) => {
@@ -630,136 +569,6 @@ watch(highlightQuadIndex, (newHighlightQuadIndex, oldHighlightQuadIndex) => {
 watch(showQuadIndex, () => {
   drawCanvasForShowQuads();
 });
-
-function toggleShowQuadIndex(newIndex) {
-  if (!Number.isInteger(newIndex) || newIndex < 0 || newIndex >= quadsArray.length) {
-    outputMessage('newIndex out of range.');
-    return;
-  }
-  let index = showQuadIndex.indexOf(newIndex);
-  if (index === -1) {
-    addShowQuadIndex(newIndex);
-  } else {
-    showQuadIndex.splice(index, 1);
-  }
-}
-
-function addShowQuadIndex(newIndex) {
-  if (!Number.isInteger(newIndex) || newIndex < 0 || newIndex >= quadsArray.length) {
-    outputMessage('newIndex out of range.');
-    return;
-  }
-  if (!showQuadIndex.includes(newIndex)) {
-    showQuadIndex.push(newIndex);
-    moveHighlightToEnd();
-  }
-}
-
-function moveHighlightToEnd() {
-  let index = showQuadIndex.indexOf(highlightQuadIndex.value);
-  if (index !== -1) {
-    showQuadIndex.splice(index, 1);
-    showQuadIndex.push(highlightQuadIndex.value);
-    return true; // highlight outerQuad is in showQuadIndex
-  }
-  return false; // highlight outerQuad is not in showQuadIndex
-}
-function clearShowQuadIndex() {
-  showQuadIndex.splice(0, showQuadIndex.length);
-}
-
-function drawCanvasForShowQuads() {
-  if (ctxQuad.value === null) {
-    console.warn('Failed to draw canvas for show quads');
-    return;
-  }
-  outerQuadArray.splice(0, outerQuadArray.length);
-  indices2Show.value = '';
-  ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
-  drawShowQuads();
-  if (!(highlightQuadIndex.value === -1 || highlightQuadIndex.value >= quadsArray.length))
-    drawQuadLine(quadsArray[highlightQuadIndex.value], true);
-  updateActiveQuadPointHandles();
-  updateHoveredQuadInfo();
-}
-
-function drawShowQuads() {
-  for (let i = 0; i < showQuadIndex.length; ++i) {
-    if (showQuadIndex[i] === highlightQuadIndex.value) continue;
-    drawQuadLine(quadsArray[showQuadIndex[i]]);
-  }
-}
-function drawQuadLine(quadRealPoints, isHighlight = false) {
-  if (!isValidQuadPoints(quadRealPoints)) {
-    console.warn('Failed to draw quad');
-    return;
-  }
-  const { outerQuadPoints, innerQuadPoints } = getQuads2Draw(quadRealPoints);
-  outerQuadArray.push(outerQuadPoints);
-  drawQuad(outerQuadPoints, isHighlight);
-  clearQuad(innerQuadPoints);
-}
-
-function drawQuad(quadPoints, isHighlight = false) {
-  if (quadPoints.length < 4) {
-    console.warn('Failed to draw quad');
-    return;
-  }
-  let fillColor = '#00FF00'; // green
-  let strokeColor = '#000000'; // black
-  if (isHighlight) {
-    fillColor = '#0000FF'; // blue
-    strokeColor = '#FF0000'; // red
-  }
-  ctxQuad.value.save();
-  ctxQuad.value.strokeStyle = strokeColor;
-  ctxQuad.value.lineWidth = 1;
-  drawPath(ctxQuad.value, quadPoints);
-  ctxQuad.value.stroke();
-
-  ctxQuad.value.fillStyle = fillColor;
-  ctxQuad.value.globalAlpha = 0.5;
-  ctxQuad.value.fill();
-
-  ctxQuad.value.restore();
-}
-
-function clearQuad(quadPoints) {
-  if (quadPoints.length < 4) {
-    console.warn('Failed to clear quad');
-    return;
-  }
-  ctxQuad.value.save();
-
-  ctxQuad.value.strokeStyle = '#FFFFFF'; //white
-  ctxQuad.value.lineWidth = 1;
-  drawPath(ctxQuad.value, quadPoints);
-  ctxQuad.value.stroke();
-
-  ctxQuad.value.clip();
-
-  const minX = Math.min(quadPoints[0].x, quadPoints[1].x, quadPoints[2].x, quadPoints[3].x);
-  const minY = Math.min(quadPoints[0].y, quadPoints[1].y, quadPoints[2].y, quadPoints[3].y);
-  const maxX = Math.max(quadPoints[0].x, quadPoints[1].x, quadPoints[2].x, quadPoints[3].x);
-  const maxY = Math.max(quadPoints[0].y, quadPoints[1].y, quadPoints[2].y, quadPoints[3].y);
-  ctxQuad.value.clearRect(minX, minY, maxX - minX, maxY - minY);
-
-  ctxQuad.value.restore();
-}
-
-function getQuads2Draw(quadRealPoints) {
-  let quadPointsLTInCanvas = [
-    { x: 0, y: 0 },
-    { x: 0, y: 0 },
-    { x: 0, y: 0 },
-    { x: 0, y: 0 },
-  ];
-  for (let i = 0; i < 4; ++i) {
-    transReal2CanvasInfo(quadPointsLTInCanvas[i], quadRealPoints[i]);
-  }
-  const { outerQuadPoints, innerQuadPoints } = getOuterInnerQuads(quadPointsLTInCanvas, scale.value);
-  return { outerQuadPoints, innerQuadPoints };
-}
 
 // Viewport redraw scheduling
 function cancelScheduledViewPortDraw() {
@@ -790,93 +599,12 @@ const { x, y } = useMouse();
 watch([x, y], ([newX, newY]) => {
   syncMouseCoord(newX, newY);
   if (!props.canInteract) {
-    panDragActive = false;
+    endPanGesture();
     return;
   }
   if (quadPointDrag.active) return;
   if (!canvasPointerGesture.active) updateHoveredQuadInfo(true);
 });
-
-function startCanvasPointerGesture(event) {
-  if (!props.canInteract || event.button !== 0 || quadPointDrag.active) return;
-
-  Object.assign(canvasPointerGesture, {
-    active: true,
-    dragging: false,
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    lastX: event.clientX,
-    lastY: event.clientY,
-  });
-  rawPanOffsetX = offsetX.value;
-  rawPanOffsetY = offsetY.value;
-  panDragActive = true;
-}
-
-function moveCanvasPointerGesture(event) {
-  if (
-    !canvasPointerGesture.active ||
-    event.pointerId !== canvasPointerGesture.pointerId ||
-    !props.canInteract ||
-    quadPointDrag.active
-  ) {
-    return;
-  }
-
-  if (!canvasPointerGesture.dragging) {
-    const exceededThreshold = hasExceededPointerDragThreshold(
-      { x: canvasPointerGesture.startX, y: canvasPointerGesture.startY },
-      { x: event.clientX, y: event.clientY },
-      pointerDragThreshold,
-    );
-    if (!exceededThreshold) return;
-
-    canvasPointerGesture.dragging = true;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    updateOffsetMoved(
-      canvasPointerGesture.startX,
-      canvasPointerGesture.startY,
-      event.clientX,
-      event.clientY,
-    );
-  } else {
-    updateOffsetMoved(canvasPointerGesture.lastX, canvasPointerGesture.lastY, event.clientX, event.clientY);
-  }
-
-  canvasPointerGesture.lastX = event.clientX;
-  canvasPointerGesture.lastY = event.clientY;
-}
-
-function resetCanvasPointerGesture({ preserveDragResult = true } = {}) {
-  const container = imgContainerRef.value;
-  if (container?.hasPointerCapture?.(canvasPointerGesture.pointerId)) {
-    container.releasePointerCapture(canvasPointerGesture.pointerId);
-  }
-  if (!preserveDragResult) canvasPointerGesture.dragging = false;
-  canvasPointerGesture.active = false;
-  canvasPointerGesture.pointerId = null;
-  panDragActive = false;
-}
-
-function finishCanvasPointerGesture(event) {
-  if (!canvasPointerGesture.active || event.pointerId !== canvasPointerGesture.pointerId) return;
-  moveCanvasPointerGesture(event);
-  resetCanvasPointerGesture();
-}
-
-function cancelCanvasPointerGesture(event) {
-  if (!canvasPointerGesture.active || event.pointerId !== canvasPointerGesture.pointerId) return;
-  canvasPointerGesture.dragging = true;
-  resetCanvasPointerGesture();
-}
-
-function handleCanvasLostPointerCapture(event) {
-  if (!canvasPointerGesture.active || event.pointerId !== canvasPointerGesture.pointerId) return;
-  canvasPointerGesture.active = false;
-  canvasPointerGesture.pointerId = null;
-  panDragActive = false;
-}
 
 const mouseEntered = event => {
   mouseIsOverContainer.value = true;
@@ -891,100 +619,19 @@ const mouseLeft = () => {
 function updateOffsetMoved(oldX, oldY, newX, newY) {
   const deltaX = newX - oldX;
   const deltaY = newY - oldY;
-  if (deltaX === 0 && deltaY === 0) return;
-  const wasOutsideViewport = isImageOutsideViewport();
-
-  if (!panDragActive) {
-    rawPanOffsetX = offsetX.value;
-    rawPanOffsetY = offsetY.value;
-    panDragActive = true;
-  }
-
-  if (imageSrc === '') {
-    rawPanOffsetX += deltaX;
-    rawPanOffsetY += deltaY;
-    offsetX.value = rawPanOffsetX;
-    offsetY.value = rawPanOffsetY;
-  } else {
-    const renderedWidth = getRenderedImageSize(initImgWidth.value, scale.value, gridLimit);
-    const renderedHeight = getRenderedImageSize(initImgHeight.value, scale.value, gridLimit);
-    const horizontalPan = calculateSnappedPanOffset(rawPanOffsetX, offsetX.value, deltaX, {
-      leadingBoundary: 0,
-      trailingBoundary: viewportWidth.value - renderedWidth,
-      snapDistance: autoAdaptBorderDis,
-    });
-    const verticalPan = calculateSnappedPanOffset(rawPanOffsetY, offsetY.value, deltaY, {
-      leadingBoundary: 0,
-      trailingBoundary: viewportHeight.value - renderedHeight,
-      snapDistance: autoAdaptBorderDis,
-    });
-    rawPanOffsetX = horizontalPan.rawOffset;
-    rawPanOffsetY = verticalPan.rawOffset;
-    offsetX.value = horizontalPan.renderedOffset;
-    offsetY.value = verticalPan.renderedOffset;
-  }
-  notifyIfImageBecameInvisible(wasOutsideViewport);
+  const result = panBy(deltaX, deltaY, { hasImage: imageSrc !== '' });
+  if (!result.changed) return;
+  if (result.becameInvisible) outputMessage('The image is out of the visible area.');
   updateViewPortDraw();
 }
 
-function updateHoveredQuadInfo(commitSelection = false) {
-  if (mouseIsOverContainer.value !== true || outerQuadArray.length === 0) return;
-  indices2Show.value = '';
-  const separator = ' ';
-  let i = 0;
-  for (i = 0; i < showQuadIndex.length; ++i) {
-    if (isPointInQuad(mouseCoord, outerQuadArray[i])) {
-      const showNum = showQuadIndex[i] + 1;
-      indices2Show.value += showNum + separator;
-    }
-  }
-
-  //Made sure that the highlighted outerQuad is drawn last.
-  if (showQuadIndex.length < outerQuadArray.length && isPointInQuad(mouseCoord, outerQuadArray[i])) {
-    const highlightNum = highlightQuadIndex.value + 1;
-    indices2Show.value += highlightNum + separator;
-  }
-  indices2Show.value = indices2Show.value.trimEnd();
-
-  if (commitSelection) emitHoveredQuadSelection(indices2Show.value, separator);
-}
-
-function emitHoveredQuadSelection(indicesArray, separator) {
-  if (!props.hoverQuadActivationEnabled) return;
-  const indicesNumberArray = indicesArray.split(separator).map(Number);
-  if (indicesNumberArray.length !== 1) {
-    emits('select-quad-index', -1);
-    return;
-  }
-  const targetIndex = indicesNumberArray[0] - 1;
-  emits('select-quad-index', targetIndex);
-}
-
-function updateOffsetForPointerScale(oldScale, newScale) {
-  if (oldScale === 0) return;
-
-  const renderedWidth = getRenderedImageSize(initImgWidth.value, oldScale, gridLimit);
-  const renderedHeight = getRenderedImageSize(initImgHeight.value, oldScale, gridLimit);
-  if (
-    mouseCoord.x < offsetX.value ||
-    mouseCoord.x >= offsetX.value + renderedWidth ||
-    mouseCoord.y < offsetY.value ||
-    mouseCoord.y >= offsetY.value + renderedHeight
-  )
-    return;
-
-  offsetX.value = calculatePointerAnchoredOffset(mouseCoord.x, offsetX.value, oldScale, newScale, gridLimit);
-  offsetY.value = calculatePointerAnchoredOffset(mouseCoord.y, offsetY.value, oldScale, newScale, gridLimit);
-}
-
 function applyUserScale(newScale, { anchorAtPointer = false } = {}) {
-  const previousScale = normalizeScale(scale.value, 0.1, scaleRange, 1);
-  const validScale = normalizeScale(newScale, 0.1, scaleRange, previousScale);
-  if (Object.is(previousScale, validScale)) return;
-  const wasOutsideViewport = isImageOutsideViewport();
-  if (anchorAtPointer) updateOffsetForPointerScale(previousScale, validScale);
-  scale.value = validScale;
-  notifyIfImageBecameInvisible(wasOutsideViewport);
+  const result = updateScale(newScale, {
+    anchorPoint: anchorAtPointer ? mouseCoord : null,
+    hasImage: imageSrc !== '',
+  });
+  if (!result.changed) return;
+  if (result.becameInvisible) outputMessage('The image is out of the visible area.');
   updateViewPortDraw();
 }
 
@@ -1015,7 +662,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleQuadPointDragKeyDown, true);
   if (quadPointDrag.active) resetQuadPointDragState();
-  if (canvasPointerGesture.active) resetCanvasPointerGesture();
+  if (canvasPointerGesture.active) resetCanvasPointerGesture({ preserveDragResult: false });
   cancelScheduledViewPortDraw();
 });
 
@@ -1025,16 +672,6 @@ watch(
     if (!canEdit) cancelQuadPointDrag();
   },
 );
-
-// Point selection
-function isPointInVisibleImage(canvasPoint) {
-  return (
-    canvasPoint.x >= canvasLTCoord.x &&
-    canvasPoint.x < canvasRBCoord.x &&
-    canvasPoint.y >= canvasLTCoord.y &&
-    canvasPoint.y < canvasRBCoord.y
-  );
-}
 
 watch(
   () => props.selectedDots,
@@ -1067,26 +704,23 @@ function toggleDot(e) {
 }
 
 function resetPosition() {
-  offsetX.value = 0;
-  offsetY.value = 0;
+  resetViewportPosition();
   updateViewPortDraw();
 }
 
 function applyViewTransform(transform) {
   cancelScheduledViewPortDraw();
-  scale.value = transform.scale;
-  offsetX.value = transform.offsetX;
-  offsetY.value = transform.offsetY;
+  applyTransform(transform);
   drawViewPortNow();
 }
 
 function focusQuad(quadIndex) {
   if (imageSrc === '') return { success: false, error: 'No image is available.' };
-  if (!Number.isInteger(quadIndex) || quadIndex < 0 || quadIndex >= quadsArray.length) {
+  if (!Number.isInteger(quadIndex) || quadIndex < 0 || quadIndex >= getQuadCount()) {
     return { success: false, error: 'No active Quad is available.' };
   }
 
-  const transform = calculateQuadFocusTransform(quadsArray[quadIndex], {
+  const transform = calculateQuadFocusTransform(getQuad(quadIndex), {
     viewportWidth: viewportWidth.value,
     viewportHeight: viewportHeight.value,
   });
@@ -1132,31 +766,15 @@ function clearDots() {
 }
 
 // Image lifecycle
-function resetViewportGeometry() {
-  offsetX.value = 0;
-  offsetY.value = 0;
-  Object.assign(canvasLTCoord, { x: 0, y: 0 });
-  Object.assign(canvasRBCoord, { x: 0, y: 0 });
-  Object.assign(sourceLTCoord, { x: 0, y: 0 });
-  Object.assign(sourceRBCoord, { x: 0, y: 0 });
-}
-
 function resetAnnotationOverlay() {
   if (quadPointDrag.active) resetQuadPointDragState();
-  quadsArray = [];
-  activeQuadPointHandles.value = [];
-  showQuadIndex.splice(0, showQuadIndex.length);
-  outerQuadArray.splice(0, outerQuadArray.length);
-  indices2Show.value = '';
+  clearQuadOverlay();
 }
 
 function clearImage() {
   cancelScheduledViewPortDraw();
   imageSrc = '';
-  initImgWidth.value = 0;
-  initImgHeight.value = 0;
-  scale.value = 0;
-  resetViewportGeometry();
+  clearViewport();
   resetAnnotationOverlay();
   realDot2GetZoom.value = { x: -1, y: -1 };
   hoveredPixelCanvasCoord.value = null;
@@ -1171,8 +789,7 @@ function clearImage() {
 
 async function initImgInfo() {
   cancelScheduledViewPortDraw();
-  scale.value = 0;
-  resetViewportGeometry();
+  clearViewport();
   resetAnnotationOverlay();
   clearDots();
   try {
@@ -1183,8 +800,7 @@ async function initImgInfo() {
 
     imageSrc = props.imageObj.src;
     const img = props.imageObj;
-    initImgWidth.value = img.naturalWidth || img.width;
-    initImgHeight.value = img.naturalHeight || img.height;
+    setImageSize(img.naturalWidth || img.width, img.naturalHeight || img.height);
     if (ctx.value !== null) {
       ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
     }
@@ -1193,12 +809,7 @@ async function initImgInfo() {
     }
     ctx.value = canvas.value.getContext('2d');
     ctxQuad.value = canvasForShowQuads.value.getContext('2d');
-    const fitScale = calculateFitScale(
-      { width: img.width, height: img.height },
-      { width: viewportWidth.value, height: viewportHeight.value },
-      { maximumScale: scaleRange, gridLimit },
-    );
-    scale.value = fitScale ?? 1;
+    fitImageToViewport();
     drawViewPortNow();
     await nextTick();
     return true;
@@ -1290,23 +901,12 @@ function updateDotsCanvasCoord() {
 // Coordinate adapters for component state
 function transReal2CanvasInfo(targetCoord, realCoord, setScale = 0) {
   const targetScale = setScale === 0 ? scale.value : setScale;
-  Object.assign(targetCoord, imageToCanvasPoint(realCoord, getCoordinateTransform(targetScale)));
+  Object.assign(targetCoord, imageToCanvas(realCoord, targetScale));
 }
 
 function transCanvas2RealInfo(targetCoord, canvasCoord, setScale = 0) {
   const targetScale = setScale === 0 ? scale.value : setScale;
-  Object.assign(targetCoord, canvasToImagePoint(canvasCoord, getCoordinateTransform(targetScale)));
-}
-
-function getCoordinateTransform(targetScale = scale.value) {
-  return {
-    scale: targetScale,
-    gridLimit,
-    offsetX: offsetX.value,
-    offsetY: offsetY.value,
-    canvasOffsetLeft: 0,
-    canvasOffsetTop: 0,
-  };
+  Object.assign(targetCoord, canvasToImage(canvasCoord, targetScale));
 }
 
 function updateRectanglePosition(rectCoord) {
@@ -1323,8 +923,7 @@ function updateRectanglePosition(rectCoord) {
 // Canvas sizing and loading feedback
 async function updateViewSize() {
   if (imgContainerRef.value) {
-    viewportWidth.value = imgContainerRef.value.clientWidth;
-    viewportHeight.value = imgContainerRef.value.clientHeight;
+    setViewportSize(imgContainerRef.value.clientWidth, imgContainerRef.value.clientHeight);
     await nextTick();
 
     initCanvasSettings();

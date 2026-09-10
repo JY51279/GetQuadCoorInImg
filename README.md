@@ -133,6 +133,10 @@ src/
 ├─ preload/
 │  └─ index.js                 向渲染端暴露 Electron API
 └─ renderer/src/
+   ├─ composables/
+   │  ├─ useCanvasPanGesture.js 画布点击/平移手势及指针捕获
+   │  ├─ useImageViewport.js    图片缩放、平移、可见区域和坐标换算
+   │  └─ useQuadOverlay.js      Quad 显示、命中判断和可见索引管理
    ├─ components/
    │  ├─ WindowProcess.vue     页面与数据/图片加载流程编排
    │  ├─ ImageView.vue         图片画布、缩放、标点和四边形显示
