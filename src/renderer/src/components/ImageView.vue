@@ -550,7 +550,11 @@ function isValidQuadPoints(quadPoints) {
   );
 }
 
-function resetQuadsArray(newQuadArray, coordinateScale, { deletedIndex = null, insertedIndex = null } = {}) {
+function resetQuadsArray(
+  newQuadArray,
+  coordinateScale,
+  { deletedIndex = null, insertedIndex = null, indexMutations = [] } = {},
+) {
   if (quadPointDrag.active) resetQuadPointDragState();
   quadsArray = Array.isArray(newQuadArray)
     ? newQuadArray.map(quad => (Array.isArray(quad) ? quad.map(dot => ({ ...dot })) : quad))
@@ -563,16 +567,26 @@ function resetQuadsArray(newQuadArray, coordinateScale, { deletedIndex = null, i
     });
   });
 
-  if (Number.isInteger(deletedIndex) && deletedIndex >= 0) {
-    const remappedIndices = showQuadIndex
-      .filter(index => index !== deletedIndex)
-      .map(index => (index > deletedIndex ? index - 1 : index))
-      .filter(index => index >= 0 && index < quadsArray.length);
-    showQuadIndex.splice(0, showQuadIndex.length, ...remappedIndices);
-  } else if (Number.isInteger(insertedIndex) && insertedIndex >= 0) {
-    const remappedIndices = showQuadIndex
-      .map(index => (index >= insertedIndex ? index + 1 : index))
-      .filter(index => index >= 0 && index < quadsArray.length);
+  const mutations = Array.isArray(indexMutations) && indexMutations.length > 0 ? [...indexMutations] : [];
+  if (mutations.length === 0 && Number.isInteger(deletedIndex) && deletedIndex >= 0) {
+    mutations.push({ type: 'delete', index: deletedIndex });
+  } else if (mutations.length === 0 && Number.isInteger(insertedIndex) && insertedIndex >= 0) {
+    mutations.push({ type: 'insert', index: insertedIndex });
+  }
+
+  if (mutations.length > 0) {
+    let remappedIndices = [...showQuadIndex];
+    for (const mutation of mutations) {
+      if (!Number.isInteger(mutation?.index) || mutation.index < 0) continue;
+      if (mutation.type === 'delete') {
+        remappedIndices = remappedIndices
+          .filter(index => index !== mutation.index)
+          .map(index => (index > mutation.index ? index - 1 : index));
+      } else if (mutation.type === 'insert') {
+        remappedIndices = remappedIndices.map(index => (index >= mutation.index ? index + 1 : index));
+      }
+    }
+    remappedIndices = remappedIndices.filter(index => index >= 0 && index < quadsArray.length);
     showQuadIndex.splice(0, showQuadIndex.length, ...remappedIndices);
   }
   updateActiveQuadPointHandles();

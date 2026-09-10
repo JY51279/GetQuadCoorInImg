@@ -407,6 +407,28 @@ describe('Dataset state operations', () => {
     expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Count']).toBe(1);
   });
 
+  it('applies multiple history entries in the required order for direct timeline jumps', () => {
+    loadDbrDataset();
+
+    const addEntry = updateJsonWithHistory(KEYS.JSON_ADD, 1, -1, [
+      { x: 20, y: 20 },
+      { x: 30, y: 30 },
+    ]).historyEntry;
+    const modifyEntry = updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }]).historyEntry;
+
+    for (const entry of [modifyEntry, addEntry]) {
+      expect(applyJsonHistoryEntry(entry, 'undo').success).toBe(true);
+    }
+    expect(getCurrentAnnotationView().quads).toHaveLength(1);
+    expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 10, y: 0 });
+
+    for (const entry of [addEntry, modifyEntry]) {
+      expect(applyJsonHistoryEntry(entry, 'redo').success).toBe(true);
+    }
+    expect(getCurrentAnnotationView().quads).toHaveLength(2);
+    expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 9, y: 1 });
+  });
+
   it('restores the data before a mutation when persistence fails', () => {
     loadDbrDataset();
     const snapshot = createDatasetMutationSnapshot();

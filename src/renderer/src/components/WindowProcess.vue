@@ -275,6 +275,20 @@
             <p class="panel-note">放大到像素网格后，深色描边框表示鼠标当前对应的单个像素。</p>
           </section>
 
+          <section v-show="activeInspectorPage === INSPECTOR_PAGE.HISTORY" class="inspector-page history-page">
+            <header class="panel-header">
+              <div>
+                <span class="eyebrow">当前会话</span>
+                <h2>JSON 操作历史</h2>
+              </div>
+            </header>
+            <p class="history-page-note">
+              点击当前图片的记录可回到对应状态；其他图片只读。每图最多
+              {{ jsonHistoryLimits.perImage }} 条，图集最多 {{ jsonHistoryLimits.total }} 条。
+            </p>
+            <HistoryView :groups="jsonHistoryGroups" @jump-history="jumpJsonHistory" />
+          </section>
+
           <Help
             v-show="activeInspectorPage === INSPECTOR_PAGE.HELP"
             class="inspector-page"
@@ -308,6 +322,7 @@ import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from
 import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
 import Help from './Help.vue';
+import HistoryView from './HistoryView.vue';
 import {
   prepareJsonProcess,
   commitPreparedJsonProcess,
@@ -328,11 +343,22 @@ import {
 import {
   HISTORY_DIRECTION,
   clearUndoRedoHistory,
+  commitHistoryEntries,
   commitHistoryStep,
   createUndoRedoHistory,
+  getHistoryTimeline,
+  getHistoryTransition,
   peekHistoryEntry,
   recordHistoryEntry,
 } from '../state/UndoRedoHistory.js';
+import {
+  DEFAULT_JSON_HISTORY_LIMITS,
+  clearJsonHistoryStore,
+  createJsonHistoryStore,
+  getJsonHistoryForImage,
+  getJsonHistoryImageIndexes,
+  recordJsonHistory,
+} from '../state/JsonHistoryStore.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { getAdjacentListSelectionIndex, handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
@@ -369,12 +395,14 @@ const INSPECTOR_PAGE = Object.freeze({
   ANNOTATION: 'annotation',
   DATASET: 'dataset',
   DISPLAY: 'display',
+  HISTORY: 'history',
   HELP: 'help',
 });
 const inspectorPages = Object.freeze([
   { id: INSPECTOR_PAGE.DATASET, label: '图集与图片', icon: '▤', shortcut: 'Ctrl+1' },
   { id: INSPECTOR_PAGE.ANNOTATION, label: 'Quad 标注', icon: '◇', shortcut: 'Ctrl+2' },
   { id: INSPECTOR_PAGE.DISPLAY, label: '视图与交互', icon: '◐', shortcut: 'Ctrl+3' },
+  { id: INSPECTOR_PAGE.HISTORY, label: '操作历史', icon: '↶', shortcut: 'Ctrl+4' },
 ]);
 const validInspectorPages = new Set([...inspectorPages.map(page => page.id), INSPECTOR_PAGE.HELP]);
 const activeInspectorPage = ref(INSPECTOR_PAGE.DATASET);
@@ -388,7 +416,8 @@ const imagePositionView = ref({ currentIndex: -1, total: 0 });
 const jumpImageIndex = ref('');
 const selectedDots = reactive([]);
 const pointHistory = reactive(createUndoRedoHistory(50));
-const jsonHistoryByImage = reactive(new Map());
+const jsonHistoryStore = reactive(createJsonHistoryStore());
+const jsonHistoryLimits = DEFAULT_JSON_HISTORY_LIMITS;
 const imageObj = ref(new Image());
 const imgFileName = ref(null);
 const jsonFileName = ref(null);
@@ -406,6 +435,7 @@ const canUndoPoints = computed(() => canOperate.value && pointHistory.undoStack.
 const canRedoPoints = computed(() => canOperate.value && pointHistory.redoStack.length > 0);
 const canUndoJson = computed(() => canOperate.value && Boolean(getCurrentJsonHistory()?.undoStack.length));
 const canRedoJson = computed(() => canOperate.value && Boolean(getCurrentJsonHistory()?.redoStack.length));
+const jsonHistoryGroups = computed(() => buildJsonHistoryGroups());
 const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
 const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
@@ -496,6 +526,7 @@ const keyActions = {
   },
   4: {
     default: () => clearOneDot(3),
+    ctrl: () => selectInspectorPage(INSPECTOR_PAGE.HISTORY),
   },
   w: {
     default: () => changeJsonItemSelection(KEYS.PREVIOUS),
@@ -565,6 +596,7 @@ const shortcutHelpGroups = Object.freeze([
       { keys: ['Ctrl', '1'], label: '打开图集与图片页' },
       { keys: ['Ctrl', '2'], label: '打开 Quad 标注页' },
       { keys: ['Ctrl', '3'], label: '打开视图与交互页' },
+      { keys: ['Ctrl', '4'], label: '打开操作历史页' },
       { keys: ['W', '↑'], separator: '/', label: '上一个 Quad' },
       { keys: ['S', '↓'], separator: '/', label: '下一个 Quad' },
       { keys: ['A', '←'], separator: '/', label: '上一张图片' },
@@ -728,16 +760,15 @@ function clearDots() {
 }
 
 // JSON Operations
-function getCurrentJsonHistory(createIfMissing = false) {
+function getCurrentJsonHistory() {
   const imageIndex = getCurrentJsonImageIndex();
-  if (imageIndex < 0) return null;
+  return getJsonHistoryForImage(jsonHistoryStore, imageIndex);
+}
 
-  let history = jsonHistoryByImage.get(imageIndex);
-  if (!history && createIfMissing) {
-    history = createUndoRedoHistory(30);
-    jsonHistoryByImage.set(imageIndex, history);
-  }
-  return history ?? null;
+function recordCurrentJsonHistory(historyEntry) {
+  const result = recordJsonHistory(jsonHistoryStore, getCurrentJsonImageIndex(), historyEntry);
+  if (!result.success) outputMessage(result.error);
+  return result.success;
 }
 
 function getJsonActionLabel(action) {
@@ -747,6 +778,71 @@ function getJsonActionLabel(action) {
     [KEYS.JSON_DELETE]: '删除 Quad',
   };
   return labels[action] ?? 'JSON 操作';
+}
+
+function getHistoryRowState(targetPosition, currentPosition) {
+  if (targetPosition === currentPosition) return { state: 'current', stateLabel: '当前' };
+  if (targetPosition < currentPosition) return { state: 'applied', stateLabel: '已应用' };
+  return { state: 'future', stateLabel: '已撤销' };
+}
+
+function formatHistoryTime(recordedAt) {
+  const date = new Date(recordedAt);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = value => String(value).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function buildJsonHistoryGroups() {
+  const currentImageIndex = imagePositionView.value.currentIndex;
+  const imageIndexes = new Set(getJsonHistoryImageIndexes(jsonHistoryStore));
+  if (currentImageIndex >= 0) imageIndexes.add(currentImageIndex);
+
+  return [...imageIndexes]
+    .sort((leftIndex, rightIndex) => {
+      if (leftIndex === currentImageIndex) return -1;
+      if (rightIndex === currentImageIndex) return 1;
+      return leftIndex - rightIndex;
+    })
+    .map(imageIndex => {
+      const history = getJsonHistoryForImage(jsonHistoryStore, imageIndex);
+      const { entries, currentPosition } = getHistoryTimeline(history);
+      const isCurrent = imageIndex === currentImageIndex;
+      const imageTarget = getJsonImageTarget(imageIndex);
+      const imagePath = imageTarget.success ? imageTarget.path : '';
+      const fileName = imagePath.split('/').at(-1) || imagePath || '未知图片';
+      const rows = [
+        {
+          key: 'initial',
+          label: '历史起点',
+          targetPosition: 0,
+          ...getHistoryRowState(0, currentPosition),
+        },
+        ...entries.map((entry, index) => {
+          const targetPosition = index + 1;
+          return {
+            key: `operation-${targetPosition}`,
+            label: `${getJsonActionLabel(entry.action)} ${entry.itemIndex + 1}`,
+            recordedAt: entry.recordedAt ?? '',
+            timestampLabel: formatHistoryTime(entry.recordedAt),
+            targetPosition,
+            ...getHistoryRowState(targetPosition, currentPosition),
+          };
+        }),
+      ].map(row => ({
+        ...row,
+        canJump: isCurrent && canOperate.value && row.targetPosition !== currentPosition,
+      }));
+
+      return {
+        imageIndex,
+        label: `图片 ${imageIndex + 1}`,
+        fileName,
+        isCurrent,
+        recordCount: entries.length,
+        rows,
+      };
+    });
 }
 
 async function runSaveTransaction(mutate, onSaved = () => {}) {
@@ -768,9 +864,26 @@ async function runSaveTransaction(mutate, onSaved = () => {}) {
     return operationCompleted;
   }
 
+  function restoreMutationState() {
+    if (restoreDatasetMutationSnapshot(datasetSnapshot)) return true;
+
+    outputMessage('Failed to restore JSON state after the operation error. Please reload the dataset.');
+    completionPhase = WORKFLOW_PHASE.DATASET_READY;
+    clearCurrentAnnotations('JSON state is unavailable. Please reload the dataset.');
+    return false;
+  }
+
   try {
-    const mutationError = mutate();
+    let mutationError;
+    try {
+      mutationError = mutate();
+    } catch (error) {
+      restoreMutationState();
+      outputMessage(`JSON operation failed: ${error.message}`);
+      return false;
+    }
     if (mutationError !== null) {
+      restoreMutationState();
       outputMessage(mutationError);
       return false;
     }
@@ -782,11 +895,7 @@ async function runSaveTransaction(mutate, onSaved = () => {}) {
     }
 
     if (!saved) {
-      if (!restoreDatasetMutationSnapshot(datasetSnapshot)) {
-        outputMessage('Failed to restore JSON state after the save error. Please reload the dataset.');
-        completionPhase = WORKFLOW_PHASE.DATASET_READY;
-        clearCurrentAnnotations('JSON state is unavailable. Please reload the dataset.');
-      }
+      restoreMutationState();
       return false;
     }
 
@@ -827,7 +936,7 @@ async function commitQuadPointDrag(payload) {
       return updateResult.success ? null : updateResult.error;
     },
     () => {
-      if (historyEntry) recordHistoryEntry(getCurrentJsonHistory(true), historyEntry);
+      if (historyEntry) recordCurrentJsonHistory(historyEntry);
       refreshCurrentAnnotations({ redrawOverlay: true });
       selectQuadIndex(quadIndex);
       outputMessage(`已更新 Quad ${quadIndex + 1} 的顶点。`);
@@ -858,7 +967,7 @@ async function performJsonAction(action) {
       return updateResult.success ? null : updateResult.error;
     },
     () => {
-      if (historyEntry) recordHistoryEntry(getCurrentJsonHistory(true), historyEntry);
+      if (historyEntry) recordCurrentJsonHistory(historyEntry);
       if (action === KEYS.JSON_DELETE) {
         refreshCurrentAnnotations({ resetSelection: true, deletedQuadIndex: affectedQuadIndex });
       } else if (action === KEYS.JSON_ADD) {
@@ -872,41 +981,77 @@ async function performJsonAction(action) {
   );
 }
 
-async function applyJsonHistory(direction) {
+async function moveJsonHistoryTo(targetPosition, { announceTarget = false } = {}) {
   if (!canOperate.value) return;
 
   const history = getCurrentJsonHistory();
-  const historyEntry = peekHistoryEntry(history, direction);
-  if (!historyEntry) return;
+  const transition = getHistoryTransition(history, targetPosition);
+  if (!transition.success) {
+    outputMessage(transition.error);
+    return;
+  }
+  if (transition.entries.length === 0) return;
 
-  let mutationResult = null;
+  const mutationResults = [];
   await runSaveTransaction(
     () => {
-      mutationResult = applyJsonHistoryEntry(historyEntry, direction);
-      return mutationResult.success ? null : mutationResult.error;
+      for (const historyEntry of transition.entries) {
+        const mutationResult = applyJsonHistoryEntry(historyEntry, transition.direction);
+        if (!mutationResult.success) return mutationResult.error;
+        mutationResults.push(mutationResult);
+      }
+      return null;
     },
     () => {
-      if (!commitHistoryStep(history, direction, historyEntry)) {
+      if (!commitHistoryEntries(history, transition.direction, transition.entries)) {
         outputMessage('JSON 历史状态异常，请重新加载图集。');
         return;
       }
 
-      const refreshOptions = { resetSelection: true };
-      if (mutationResult.mutationType === 'delete') {
-        refreshOptions.deletedQuadIndex = mutationResult.itemIndex;
-      } else if (mutationResult.mutationType === 'insert') {
-        refreshOptions.insertedQuadIndex = mutationResult.itemIndex;
-        refreshOptions.showQuadIndex = mutationResult.itemIndex;
-      } else {
-        refreshOptions.redrawOverlay = true;
+      const finalMutation = mutationResults.at(-1);
+      const indexMutations = mutationResults
+        .filter(result => result.mutationType === 'insert' || result.mutationType === 'delete')
+        .map(result => ({ type: result.mutationType, index: result.itemIndex }));
+      const refreshOptions = {
+        resetSelection: true,
+        indexMutations,
+        redrawOverlay: indexMutations.length === 0,
+      };
+      if (finalMutation.mutationType === 'insert') {
+        refreshOptions.showQuadIndex = finalMutation.itemIndex;
       }
       refreshCurrentAnnotations(refreshOptions);
-      selectQuadIndex(mutationResult.activeQuadIndex);
-      outputMessage(
-        `${direction === HISTORY_DIRECTION.UNDO ? '已撤销' : '已重做'}：${getJsonActionLabel(historyEntry.action)}。`,
-      );
+      selectQuadIndex(finalMutation.activeQuadIndex);
+
+      if (announceTarget || transition.entries.length > 1) {
+        const targetLabel = targetPosition === 0 ? '历史起点' : `第 ${targetPosition} 条记录`;
+        outputMessage(`已回到图片 ${getCurrentJsonImageIndex() + 1} 的${targetLabel}。`);
+      } else {
+        const historyEntry = transition.entries[0];
+        outputMessage(
+          `${transition.direction === HISTORY_DIRECTION.UNDO ? '已撤销' : '已重做'}：${getJsonActionLabel(historyEntry.action)}。`,
+        );
+      }
     },
   );
+}
+
+function applyJsonHistory(direction) {
+  const history = getCurrentJsonHistory();
+  const { entries, currentPosition } = getHistoryTimeline(history);
+  if (
+    (direction === HISTORY_DIRECTION.UNDO && currentPosition === 0) ||
+    (direction === HISTORY_DIRECTION.REDO && currentPosition === entries.length)
+  ) {
+    return;
+  }
+  const targetPosition = currentPosition + (direction === HISTORY_DIRECTION.UNDO ? -1 : 1);
+  void moveJsonHistoryTo(targetPosition);
+}
+
+function jumpJsonHistory(imageIndex, targetPosition) {
+  if (imageIndex !== getCurrentJsonImageIndex()) return;
+  void moveJsonHistoryTo(targetPosition, { announceTarget: true });
 }
 
 function undoJsonEdit() {
@@ -1006,6 +1151,7 @@ function renderAnnotationQuads({
   resetVisibility = false,
   deletedQuadIndex = null,
   insertedQuadIndex = null,
+  indexMutations = [],
   showNewQuad = false,
   showQuadIndex = null,
   redrawOverlay = false,
@@ -1013,6 +1159,7 @@ function renderAnnotationQuads({
   imgContainerRef.value.resetQuadsArray(annotationView.value.quads, imageCoordinateScale.value, {
     deletedIndex: deletedQuadIndex,
     insertedIndex: insertedQuadIndex,
+    indexMutations,
   });
   if (resetVisibility) {
     clearShowQuads();
@@ -1279,7 +1426,7 @@ async function handlePreparedImageResponse(response) {
 }
 
 function resetImageForDatasetChange() {
-  jsonHistoryByImage.clear();
+  clearJsonHistoryStore(jsonHistoryStore);
   imageObj.value = null;
   imgFileName.value = '';
   imgFilePath = '';
@@ -1993,6 +2140,16 @@ function toggleInteractionMode() {
 .display-card p,
 .panel-note {
   margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.history-page-note {
+  margin: 12px 0;
+  padding: 10px 11px;
+  border-radius: 7px;
+  background: var(--surface-muted);
   color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.5;

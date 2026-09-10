@@ -41,17 +41,61 @@ export function peekHistoryEntry(history, direction) {
   return stacks?.source.at(-1) ?? null;
 }
 
-export function commitHistoryStep(history, direction, expectedEntry = null) {
+export function getHistoryTimeline(history) {
+  if (!history) return { entries: [], currentPosition: 0 };
+  return {
+    entries: [...history.undoStack, ...history.redoStack.toReversed()],
+    currentPosition: history.undoStack.length,
+  };
+}
+
+export function getHistoryTransition(history, targetPosition) {
+  const { entries, currentPosition } = getHistoryTimeline(history);
+  if (!Number.isInteger(targetPosition) || targetPosition < 0 || targetPosition > entries.length) {
+    return { success: false, error: 'Invalid history target position.' };
+  }
+
+  if (targetPosition === currentPosition) {
+    return { success: true, direction: null, entries: [], currentPosition, targetPosition };
+  }
+
+  const direction = targetPosition < currentPosition ? HISTORY_DIRECTION.UNDO : HISTORY_DIRECTION.REDO;
+  const transitionEntries =
+    direction === HISTORY_DIRECTION.UNDO
+      ? history.undoStack.slice(targetPosition).toReversed()
+      : history.redoStack.slice(-(targetPosition - currentPosition)).toReversed();
+  return {
+    success: true,
+    direction,
+    entries: transitionEntries,
+    currentPosition,
+    targetPosition,
+  };
+}
+
+export function commitHistoryEntries(history, direction, expectedEntries) {
   const stacks = getHistoryStacks(history, direction);
-  if (!stacks || stacks.source.length === 0) return false;
+  if (!stacks || !Array.isArray(expectedEntries) || expectedEntries.length === 0) return false;
 
-  const entry = stacks.source.at(-1);
-  if (expectedEntry !== null && entry !== expectedEntry) return false;
+  const sourceEntries = stacks.source.slice(-expectedEntries.length).toReversed();
+  if (
+    sourceEntries.length !== expectedEntries.length ||
+    sourceEntries.some((entry, index) => entry !== expectedEntries[index])
+  ) {
+    return false;
+  }
 
-  stacks.source.pop();
-  stacks.target.push(entry);
+  for (const entry of expectedEntries) {
+    stacks.source.pop();
+    stacks.target.push(entry);
+  }
   trimStack(stacks.target, history.limit);
   return true;
+}
+
+export function commitHistoryStep(history, direction, expectedEntry = null) {
+  const entry = expectedEntry ?? peekHistoryEntry(history, direction);
+  return entry === null ? false : commitHistoryEntries(history, direction, [entry]);
 }
 
 export function clearUndoRedoHistory(history) {
