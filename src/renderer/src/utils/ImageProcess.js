@@ -1,4 +1,5 @@
-import { getQuadCenterPoint, getNearestOrFarthestPointIndex } from './BasicFuncs.js';
+import { getNearestOrFarthestPointIndex } from './BasicFuncs.js';
+import { getQuadCenterPoint } from './QuadGeometry.js';
 export function getOuterInnerQuads(quadPointsLTInCanvas, pixelScale) {
   const endOfQuadPoints = [];
   for (let i = 0; i < 4; ++i) {

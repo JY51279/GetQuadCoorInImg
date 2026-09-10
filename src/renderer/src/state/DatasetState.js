@@ -3,8 +3,6 @@ import {
   KEYS,
   getNearestOrFarthestPointIndex,
   parsePointString2Array,
-  setQuadDots2ClockWise,
-  serializePointArray2String,
   transJson2Str,
   transStr2Json,
 } from '../utils/BasicFuncs.js';
@@ -16,7 +14,7 @@ import {
   normalizeDataset,
 } from '../utils/DatasetSchema.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
-import { prepareQuadPointUpdate } from '../utils/QuadGeometry.js';
+import { prepareQuadPointUpdate, sortQuadPointsClockwise } from '../utils/QuadGeometry.js';
 
 const ROOT_KEY = 'Picture';
 const IMAGE_SOURCE_KEY = 'Image Source';
@@ -226,9 +224,15 @@ export function restoreDatasetMutationSnapshot(snapshot) {
 function prepareSelectedDots(realDots, activeQuadIndex) {
   const selectedDots = Array.isArray(realDots) ? realDots.map(dot => ({ ...dot })) : [];
   if (selectedDots.length === 4) {
-    setQuadDots2ClockWise(selectedDots, datasetState.currentItems[activeQuadIndex]?.['Barcode Type'] ?? '');
+    sortQuadPointsClockwise(selectedDots, datasetState.currentItems[activeQuadIndex]?.['Barcode Type'] ?? '');
   }
   return selectedDots;
+}
+
+function serializeQuadPoints(points, separator, barcodeType = '') {
+  const normalizedPoints = points.map(point => ({ ...point }));
+  if (!sortQuadPointsClockwise(normalizedPoints, barcodeType)) return '';
+  return normalizedPoints.map(point => `${point.x} ${point.y}`).join(separator);
 }
 
 function transQuadDotsToString(realDots, coordinateScale, baseItem = null) {
@@ -278,7 +282,7 @@ function transQuadDotsToString(realDots, coordinateScale, baseItem = null) {
   let targetStr = '';
   if (jsonDots.length !== 4) return targetStr;
   const barcodeType = baseItem?.['Barcode Type'] ?? '';
-  targetStr = serializePointArray2String(jsonDots, POINT_SEPARATOR, barcodeType ?? '');
+  targetStr = serializeQuadPoints(jsonDots, POINT_SEPARATOR, barcodeType);
   if (targetStr === '') return targetStr;
   return targetStr;
 }

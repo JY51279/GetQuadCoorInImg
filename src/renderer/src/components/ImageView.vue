@@ -146,7 +146,7 @@ import {
   sliderPositionToScale,
 } from '../utils/ImageViewGeometry.js';
 
-import { isPointInPolygon } from '../utils/BasicFuncs.js';
+import { isPointInQuad } from '../utils/QuadGeometry.js';
 import { datasetPointToImagePoint } from '../utils/AnnotationCoordinates.js';
 
 const emits = defineEmits([
@@ -802,14 +802,14 @@ function updateHoveredQuadInfo(commitSelection = false) {
   const separator = ' ';
   let i = 0;
   for (i = 0; i < showQuadIndex.length; ++i) {
-    if (isPointInPolygon(mouseCoord, outerQuadArray[i])) {
+    if (isPointInQuad(mouseCoord, outerQuadArray[i])) {
       const showNum = showQuadIndex[i] + 1;
       indices2Show.value += showNum + separator;
     }
   }
 
   //Made sure that the highlighted outerQuad is drawn last.
-  if (showQuadIndex.length < outerQuadArray.length && isPointInPolygon(mouseCoord, outerQuadArray[i])) {
+  if (showQuadIndex.length < outerQuadArray.length && isPointInQuad(mouseCoord, outerQuadArray[i])) {
     const highlightNum = highlightQuadIndex.value + 1;
     indices2Show.value += highlightNum + separator;
   }
