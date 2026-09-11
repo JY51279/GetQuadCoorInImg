@@ -353,6 +353,12 @@ import {
 } from '../state/DatasetState.js';
 import { DATASET_LOAD_STATUS, prepareDatasetLoad } from '../services/DatasetLoadService.js';
 import {
+  IMAGE_FAILURE_ACTION,
+  IMAGE_REQUEST_SOURCE,
+  IMAGE_REQUEST_STATUS,
+  createImageRequestService,
+} from '../services/ImageRequestService.js';
+import {
   HISTORY_DIRECTION,
   commitHistoryEntries,
   getHistoryTimeline,
@@ -367,9 +373,8 @@ import {
   recordJsonHistory,
 } from '../state/JsonHistoryStore.js';
 import { KEYS } from '../utils/BasicFuncs.js';
-import { imagePointToDatasetPoint, normalizeCoordinateScale } from '../utils/AnnotationCoordinates.js';
+import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { getAdjacentListSelectionIndex, handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
-import { loadRendererImage } from '../utils/RendererImageLoader.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import {
   WORKFLOW_OPERATION,
@@ -472,8 +477,17 @@ const workflowStatusText = computed(() => {
   return labels[workflowState.value.phase] ?? '未知状态';
 });
 const imageLoadError = ref(null);
-let activeImageRequest = null;
-let imageAttemptCounter = 0;
+const {
+  getActiveRequest,
+  beginManualRequest,
+  beginDatasetRequest,
+  clear: resetImageRequestState,
+  execute: executeImageRequest,
+  planFailure: planImageRequestFailure,
+} = createImageRequestService({
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+  getAdjacentTarget: getAdjacentJsonImageTarget,
+});
 
 // Notification state
 const { notifications, notify: outputMessage, clear: clearNotifications } = useToastNotifications();
@@ -1122,17 +1136,11 @@ function chooseImgFile() {
     }
 
     imageLoadError.value = null;
-    const requestId = ++imageAttemptCounter;
-    activeImageRequest = {
-      requestId,
-      operationId: started.operationId,
-      source: 'manual',
-      targetImageIndex: null,
-      path: '',
-      direction: '',
-      attemptedIndexes: new Set(),
-    };
-    void requestPreparedImage('open-image-file-dialog', { ...getJsonImageDialogContext(), requestId });
+    const request = beginManualRequest(started.operationId);
+    void requestPreparedImage('open-image-file-dialog', {
+      ...getJsonImageDialogContext(),
+      requestId: request.requestId,
+    });
   } catch (error) {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
     handleImageRequestFailure(error.message);
@@ -1191,21 +1199,15 @@ function sendImageFileRequest(path, requestId) {
 }
 
 async function requestPreparedImage(channel, request) {
-  try {
-    const response = await ipcRenderer.invoke(channel, request);
-    await handlePreparedImageResponse(response);
-  } catch (error) {
-    if (activeImageRequest?.requestId === request.requestId) {
-      handleImageRequestFailure(error.message, activeImageRequest.path);
-    }
-  }
+  const result = await executeImageRequest(channel, request, {
+    isOperationCurrent: operationId =>
+      isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_IMAGE),
+  });
+  await handleImageRequestResult(result);
 }
 
 function startDatasetImageRequest(target, direction, previousRequest = null) {
-  const attemptedIndexes = previousRequest?.attemptedIndexes ?? new Set();
   const currentImageIndex = getCurrentJsonImageIndex();
-  if (!previousRequest && currentImageIndex >= 0) attemptedIndexes.add(currentImageIndex);
-  attemptedIndexes.add(target.index);
 
   let operationId;
   if (previousRequest) {
@@ -1219,50 +1221,36 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
     operationId = started.operationId;
   }
 
-  const requestId = ++imageAttemptCounter;
-  activeImageRequest = {
-    requestId,
+  const request = beginDatasetRequest({
     operationId,
-    source: 'dataset',
-    targetImageIndex: target.index,
-    path: target.path,
+    target,
     direction,
-    attemptedIndexes,
-  };
+    currentImageIndex,
+    previousRequest,
+  });
   imageLoadError.value = null;
-  sendImageFileRequest(target.path, requestId);
+  sendImageFileRequest(target.path, request.requestId);
   return true;
-}
-
-function retryDatasetImageRequest() {
-  const failedRequest = activeImageRequest;
-  if (failedRequest?.source !== 'dataset') return false;
-
-  const nextTarget = getAdjacentJsonImageTarget(failedRequest.direction, failedRequest.targetImageIndex);
-  if (!nextTarget.success || failedRequest.attemptedIndexes.has(nextTarget.index)) return false;
-
-  outputMessage(`Skipping unavailable image and trying JSON item ${nextTarget.index + 1}.`);
-  startDatasetImageRequest(nextTarget, failedRequest.direction, failedRequest);
-  return true;
-}
-
-function resetImageRequestState() {
-  activeImageRequest = null;
 }
 
 function handleImageRequestFailure(errorMessage, failedPath = '') {
-  const failedRequest = activeImageRequest;
+  const failedRequest = getActiveRequest();
   outputMessage(`Failed to open image${failedPath ? `: ${failedPath}` : ''}.`);
   outputMessage(errorMessage || 'Unknown image loading error.');
-
-  if (retryDatasetImageRequest()) return;
 
   const canRestorePreviousImage = operationReturnsTo(
     workflowState.value,
     failedRequest?.operationId,
     WORKFLOW_PHASE.READY,
   );
-  if (canRestorePreviousImage) {
+  const failurePlan = planImageRequestFailure({ canRestorePreviousImage });
+  if (failurePlan.action === IMAGE_FAILURE_ACTION.RETRY) {
+    outputMessage(`Skipping unavailable image and trying JSON item ${failurePlan.target.index + 1}.`);
+    startDatasetImageRequest(failurePlan.target, failedRequest.direction, failurePlan.previousRequest);
+    return;
+  }
+
+  if (failurePlan.action === IMAGE_FAILURE_ACTION.RESTORE) {
     const position = refreshImagePositionView();
     jumpImageIndex.value = position.currentIndex >= 0 ? position.currentIndex + 1 : '';
     imageLoadError.value = null;
@@ -1285,68 +1273,36 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
   resetImageRequestState();
 }
 
-async function handlePreparedImageResponse(response) {
-  if (!activeImageRequest || response?.requestId !== activeImageRequest.requestId) return;
-  if (!isCurrentOperation(workflowState.value, activeImageRequest.operationId, WORKFLOW_OPERATION.LOAD_IMAGE)) return;
-
-  if (response.canceled) {
-    const canceledRequest = activeImageRequest;
-    applyWorkflowTransition(failOperation(workflowState.value, canceledRequest.operationId));
+async function handleImageRequestResult(result) {
+  if (result.status === IMAGE_REQUEST_STATUS.STALE) return;
+  if (result.status === IMAGE_REQUEST_STATUS.CANCELED) {
+    applyWorkflowTransition(failOperation(workflowState.value, result.request.operationId));
     resetImageRequestState();
     return;
   }
-
-  if (response.success) {
-    const completedRequest = activeImageRequest;
-    const imageInfo = response.imageInfo;
-    try {
-      const coordinateScale = normalizeCoordinateScale({
-        x: imageInfo.coordinateScaleX,
-        y: imageInfo.coordinateScaleY,
-      });
-      if (coordinateScale === null) {
-        throw new Error('The prepared image coordinate scale must contain two positive finite values.');
-      }
-      const loadedImage = await loadRendererImage(imageInfo.url);
-      if (
-        !activeImageRequest ||
-        activeImageRequest.requestId !== completedRequest.requestId ||
-        !isCurrentOperation(workflowState.value, completedRequest.operationId, WORKFLOW_OPERATION.LOAD_IMAGE)
-      ) {
-        return;
-      }
-      if (
-        loadedImage.naturalWidth !== imageInfo.displayWidth ||
-        loadedImage.naturalHeight !== imageInfo.displayHeight
-      ) {
-        throw new Error('The prepared image dimensions do not match the loaded image.');
-      }
-      resetZoomPreview();
-      imageObj.value = loadedImage;
-      imageCoordinateScale.value = coordinateScale;
-    } catch (error) {
-      handleImageRequestFailure(error.message, imageInfo?.path || completedRequest?.path || '');
-      return;
-    }
-
-    imgFileName.value = imageInfo.fileName;
-    imgFilePath = imageInfo.path.replace(/\\/g, '/');
-    imageLoadError.value = null;
-    const requestedJsonImageIndex = completedRequest?.source === 'dataset' ? completedRequest.targetImageIndex : null;
-    const isReady = await initProcessInfo(requestedJsonImageIndex);
-    applyWorkflowTransition(
-      completeOperation(
-        workflowState.value,
-        completedRequest.operationId,
-        isReady ? WORKFLOW_PHASE.READY : WORKFLOW_PHASE.DATASET_READY,
-      ),
-    );
-    resetImageRequestState();
-    outputMessage(isReady ? 'Load Pic Successfully.' : 'Image loaded, but no matching JSON data was found.');
-  } else {
-    const failedPath = (response.path || '').replace(/[\\/]/g, '/');
-    handleImageRequestFailure(response.error, failedPath);
+  if (result.status === IMAGE_REQUEST_STATUS.FAILED) {
+    handleImageRequestFailure(result.error, result.path);
+    return;
   }
+
+  const { request, image, imageInfo, coordinateScale } = result;
+  resetZoomPreview();
+  imageObj.value = image;
+  imageCoordinateScale.value = coordinateScale;
+  imgFileName.value = imageInfo.fileName;
+  imgFilePath = imageInfo.path;
+  imageLoadError.value = null;
+  const requestedJsonImageIndex = request.source === IMAGE_REQUEST_SOURCE.DATASET ? request.targetImageIndex : null;
+  const isReady = await initProcessInfo(requestedJsonImageIndex);
+  applyWorkflowTransition(
+    completeOperation(
+      workflowState.value,
+      request.operationId,
+      isReady ? WORKFLOW_PHASE.READY : WORKFLOW_PHASE.DATASET_READY,
+    ),
+  );
+  resetImageRequestState();
+  outputMessage(isReady ? 'Load Pic Successfully.' : 'Image loaded, but no matching JSON data was found.');
 }
 
 function resetImageForDatasetChange() {

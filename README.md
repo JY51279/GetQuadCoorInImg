@@ -140,7 +140,8 @@ src/
    │  ├─ useQuadOverlay.js      Quad 显示、命中判断和可见索引管理
    │  └─ useToastNotifications.js 临时通知队列与定时清理
    ├─ services/
-   │  └─ DatasetLoadService.js JSON 解析、修复、路径解析与规范化保存
+   │  ├─ DatasetLoadService.js JSON 解析、修复、路径解析与规范化保存
+   │  └─ ImageRequestService.js 图片请求跟踪、验证、重试与失败决策
    ├─ components/
    │  ├─ WindowProcess.vue     页面与数据/图片加载流程编排
    │  ├─ ImageView.vue         图片画布、缩放、标点和四边形显示
