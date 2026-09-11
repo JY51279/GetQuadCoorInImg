@@ -135,13 +135,16 @@ src/
 └─ renderer/src/
    ├─ composables/
    │  ├─ useCanvasPanGesture.js 画布点击/平移手势及指针捕获
+   │  ├─ useDatasetSaveTransaction.js JSON 保存事务与失败回滚
    │  ├─ useImageViewport.js    图片缩放、平移、可见区域和坐标换算
+   │  ├─ useJsonHistory.js      JSON 历史状态与历史页展示模型
    │  ├─ usePointSelectionHistory.js 选点状态及撤回/重做
    │  ├─ useQuadOverlay.js      Quad 显示、命中判断和可见索引管理
    │  └─ useToastNotifications.js 临时通知队列与定时清理
    ├─ services/
    │  ├─ DatasetLoadService.js JSON 解析、修复、路径解析与规范化保存
-   │  └─ ImageRequestService.js 图片请求跟踪、验证、重试与失败决策
+   │  ├─ ImageRequestService.js 图片请求跟踪、验证、重试与失败决策
+   │  └─ JsonFileService.js     JSON 保存 IPC 与结果归一化
    ├─ components/
    │  ├─ WindowProcess.vue     页面与数据/图片加载流程编排
    │  ├─ ImageView.vue         图片画布、缩放、标点和四边形显示

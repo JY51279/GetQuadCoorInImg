@@ -328,11 +328,13 @@
 </template>
 
 <script setup>
-import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
 import Help from './Help.vue';
 import HistoryView from './HistoryView.vue';
+import { useDatasetSaveTransaction } from '../composables/useDatasetSaveTransaction.js';
+import { getJsonActionLabel, useJsonHistory } from '../composables/useJsonHistory.js';
 import { usePointSelectionHistory } from '../composables/usePointSelectionHistory.js';
 import { useToastNotifications } from '../composables/useToastNotifications.js';
 import {
@@ -348,8 +350,6 @@ import {
   getJsonImagePosition,
   getJsonFileInfo,
   resetPicJson,
-  createDatasetMutationSnapshot,
-  restoreDatasetMutationSnapshot,
 } from '../state/DatasetState.js';
 import { DATASET_LOAD_STATUS, prepareDatasetLoad } from '../services/DatasetLoadService.js';
 import {
@@ -358,20 +358,13 @@ import {
   IMAGE_REQUEST_STATUS,
   createImageRequestService,
 } from '../services/ImageRequestService.js';
+import { createJsonFileService } from '../services/JsonFileService.js';
 import {
   HISTORY_DIRECTION,
   commitHistoryEntries,
   getHistoryTimeline,
   getHistoryTransition,
 } from '../state/UndoRedoHistory.js';
-import {
-  DEFAULT_JSON_HISTORY_LIMITS,
-  clearJsonHistoryStore,
-  createJsonHistoryStore,
-  getJsonHistoryForImage,
-  getJsonHistoryImageIndexes,
-  recordJsonHistory,
-} from '../state/JsonHistoryStore.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { getAdjacentListSelectionIndex, handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
@@ -379,7 +372,6 @@ import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.
 import {
   WORKFLOW_OPERATION,
   WORKFLOW_PHASE,
-  canApplySaveResult,
   canChangeQuadSelection,
   canEdit as canEditWorkflow,
   canStartOperation,
@@ -393,10 +385,12 @@ import {
   operationReturnsTo,
   startDatasetLoad,
   startImageLoad,
-  startSave,
 } from '../state/WorkflowState.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
+const { save: saveJsonFileRequest } = createJsonFileService({
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+});
 
 // Child component and canvas references
 const imgContainerRef = ref(null);
@@ -426,8 +420,6 @@ const annotationView = ref({ formattedItems: [], quads: [], errorMessage: '' });
 const quadTotal = computed(() => annotationView.value.formattedItems.length);
 const imagePositionView = ref({ currentIndex: -1, total: 0 });
 const jumpImageIndex = ref('');
-const jsonHistoryStore = reactive(createJsonHistoryStore());
-const jsonHistoryLimits = DEFAULT_JSON_HISTORY_LIMITS;
 const imageObj = ref(new Image());
 const imgFileName = ref(null);
 const jsonFileName = ref(null);
@@ -441,6 +433,11 @@ const isHoverQuadActivationEnabled = ref(false);
 const workflowState = ref(createWorkflowState());
 const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
 const canOperate = computed(() => canEditWorkflow(workflowState.value));
+const { run: executeSaveTransaction } = useDatasetSaveTransaction({
+  workflowState,
+  getCurrentImageIndex: getCurrentJsonImageIndex,
+  saveJsonFile,
+});
 const {
   selectedDots,
   canUndo: canUndoPoints,
@@ -452,9 +449,6 @@ const {
   clear: clearDots,
   reset: resetDots,
 } = usePointSelectionHistory({ canEdit: canOperate });
-const canUndoJson = computed(() => canOperate.value && Boolean(getCurrentJsonHistory()?.undoStack.length));
-const canRedoJson = computed(() => canOperate.value && Boolean(getCurrentJsonHistory()?.redoStack.length));
-const jsonHistoryGroups = computed(() => buildJsonHistoryGroups());
 const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
 const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
@@ -491,6 +485,20 @@ const {
 
 // Notification state
 const { notifications, notify: outputMessage, clear: clearNotifications } = useToastNotifications();
+const {
+  limits: jsonHistoryLimits,
+  canUndo: canUndoJson,
+  canRedo: canRedoJson,
+  groups: jsonHistoryGroups,
+  getCurrentHistory: getCurrentJsonHistory,
+  recordCurrent: recordCurrentJsonHistory,
+  clear: clearJsonHistory,
+} = useJsonHistory({
+  canEdit: canOperate,
+  currentImageIndex: computed(() => imagePositionView.value.currentIndex),
+  getImageTarget: getJsonImageTarget,
+  outputMessage,
+});
 
 let removeChooseJsonFileResponseListener = null;
 
@@ -700,151 +708,17 @@ function focusPixelAtMouse() {
 }
 
 // JSON Operations
-function getCurrentJsonHistory() {
-  const imageIndex = getCurrentJsonImageIndex();
-  return getJsonHistoryForImage(jsonHistoryStore, imageIndex);
-}
-
-function recordCurrentJsonHistory(historyEntry) {
-  const result = recordJsonHistory(jsonHistoryStore, getCurrentJsonImageIndex(), historyEntry);
-  if (!result.success) outputMessage(result.error);
-  return result.success;
-}
-
-function getJsonActionLabel(action) {
-  const labels = {
-    [KEYS.JSON_MODIFY]: '更新 Quad',
-    [KEYS.JSON_ADD]: '新增 Quad',
-    [KEYS.JSON_DELETE]: '删除 Quad',
-  };
-  return labels[action] ?? 'JSON 操作';
-}
-
-function getHistoryRowState(targetPosition, currentPosition) {
-  if (targetPosition === currentPosition) return { state: 'current', stateLabel: '当前' };
-  if (targetPosition < currentPosition) return { state: 'applied', stateLabel: '已应用' };
-  return { state: 'future', stateLabel: '已撤销' };
-}
-
-function formatHistoryTime(recordedAt) {
-  const date = new Date(recordedAt);
-  if (Number.isNaN(date.getTime())) return '';
-  const pad = value => String(value).padStart(2, '0');
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-
-function buildJsonHistoryGroups() {
-  const currentImageIndex = imagePositionView.value.currentIndex;
-  const imageIndexes = new Set(getJsonHistoryImageIndexes(jsonHistoryStore));
-  if (currentImageIndex >= 0) imageIndexes.add(currentImageIndex);
-
-  return [...imageIndexes]
-    .sort((leftIndex, rightIndex) => {
-      if (leftIndex === currentImageIndex) return -1;
-      if (rightIndex === currentImageIndex) return 1;
-      return leftIndex - rightIndex;
-    })
-    .map(imageIndex => {
-      const history = getJsonHistoryForImage(jsonHistoryStore, imageIndex);
-      const { entries, currentPosition } = getHistoryTimeline(history);
-      const isCurrent = imageIndex === currentImageIndex;
-      const imageTarget = getJsonImageTarget(imageIndex);
-      const imagePath = imageTarget.success ? imageTarget.path : '';
-      const fileName = imagePath.split('/').at(-1) || imagePath || '未知图片';
-      const rows = [
-        {
-          key: 'initial',
-          label: '历史起点',
-          targetPosition: 0,
-          ...getHistoryRowState(0, currentPosition),
-        },
-        ...entries.map((entry, index) => {
-          const targetPosition = index + 1;
-          return {
-            key: `operation-${targetPosition}`,
-            label: `${getJsonActionLabel(entry.action)} ${entry.itemIndex + 1}`,
-            recordedAt: entry.recordedAt ?? '',
-            timestampLabel: formatHistoryTime(entry.recordedAt),
-            targetPosition,
-            ...getHistoryRowState(targetPosition, currentPosition),
-          };
-        }),
-      ].map(row => ({
-        ...row,
-        canJump: isCurrent && canOperate.value && row.targetPosition !== currentPosition,
-      }));
-
-      return {
-        imageIndex,
-        label: `图片 ${imageIndex + 1}`,
-        fileName,
-        isCurrent,
-        recordCount: entries.length,
-        rows,
-      };
-    });
-}
-
 async function runSaveTransaction(mutate, onSaved = () => {}) {
-  const sourceImageIndex = getCurrentJsonImageIndex();
-  const started = startSave(workflowState.value, { sourceImageIndex });
-  if (!applyWorkflowTransition(started)) {
-    outputMessage(started.error);
-    return false;
-  }
-
-  const operationId = started.operationId;
-  const datasetSnapshot = createDatasetMutationSnapshot();
-  let completionPhase = null;
-  let operationCompleted = false;
-
-  function finishOperation() {
-    if (operationCompleted) return true;
-    operationCompleted = applyWorkflowTransition(completeOperation(workflowState.value, operationId, completionPhase));
-    return operationCompleted;
-  }
-
-  function restoreMutationState() {
-    if (restoreDatasetMutationSnapshot(datasetSnapshot)) return true;
-
+  const result = await executeSaveTransaction(mutate);
+  if (result.rollbackFailed) {
     outputMessage('Failed to restore JSON state after the operation error. Please reload the dataset.');
-    completionPhase = WORKFLOW_PHASE.DATASET_READY;
     clearCurrentAnnotations('JSON state is unavailable. Please reload the dataset.');
-    return false;
   }
+  if (result.error) outputMessage(result.error);
+  if (!result.success) return false;
 
-  try {
-    let mutationError;
-    try {
-      mutationError = mutate();
-    } catch (error) {
-      restoreMutationState();
-      outputMessage(`JSON operation failed: ${error.message}`);
-      return false;
-    }
-    if (mutationError !== null) {
-      restoreMutationState();
-      outputMessage(mutationError);
-      return false;
-    }
-
-    const saved = await saveJsonFile();
-    if (!canApplySaveResult(workflowState.value, operationId, getCurrentJsonImageIndex())) {
-      outputMessage('Ignored a stale save result because the dataset or image context changed.');
-      return false;
-    }
-
-    if (!saved) {
-      restoreMutationState();
-      return false;
-    }
-
-    if (!finishOperation()) return false;
-    onSaved();
-    return true;
-  } finally {
-    if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) finishOperation();
-  }
+  onSaved();
+  return true;
 }
 
 async function commitQuadPointDrag(payload) {
@@ -1019,25 +893,15 @@ async function saveJsonFile() {
 }
 
 async function saveJsonFileInfo(jsonFileInfo, { backupOriginal = false } = {}) {
-  try {
-    const response = await ipcRenderer.invoke('save-json-file', { ...jsonFileInfo, backupOriginal });
-    if (!response.success) {
-      const errorMessage = response.error || 'Unknown error';
-      console.error('Failed to save JSON file:', errorMessage);
-      outputMessage(`Failed to save JSON: ${errorMessage}`);
-      return false;
-    }
-    if (response.backupPath) {
-      outputMessage(
-        `Temporary JSON backup created and scheduled for automatic deletion in 7 days: ${response.backupPath}`,
-      );
-    }
-    return true;
-  } catch (error) {
-    console.error('An error occurred while saving JSON file:', error);
-    outputMessage(`Failed to save JSON: ${error.message}`);
+  const result = await saveJsonFileRequest(jsonFileInfo, { backupOriginal });
+  if (!result.success) {
+    outputMessage(`Failed to save JSON: ${result.error}`);
     return false;
   }
+  if (result.backupPath) {
+    outputMessage(`Temporary JSON backup created and scheduled for automatic deletion in 7 days: ${result.backupPath}`);
+  }
+  return true;
 }
 
 function refreshImagePositionView() {
@@ -1284,6 +1148,7 @@ async function handleImageRequestResult(result) {
     handleImageRequestFailure(result.error, result.path);
     return;
   }
+  if (result.status !== IMAGE_REQUEST_STATUS.READY) return;
 
   const { request, image, imageInfo, coordinateScale } = result;
   resetZoomPreview();
@@ -1306,7 +1171,7 @@ async function handleImageRequestResult(result) {
 }
 
 function resetImageForDatasetChange() {
-  clearJsonHistoryStore(jsonHistoryStore);
+  clearJsonHistory();
   imageObj.value = null;
   imgFileName.value = '';
   imgFilePath = '';
