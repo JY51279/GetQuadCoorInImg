@@ -333,8 +333,9 @@ import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
 import Help from './Help.vue';
 import HistoryView from './HistoryView.vue';
+import { usePointSelectionHistory } from '../composables/usePointSelectionHistory.js';
+import { useToastNotifications } from '../composables/useToastNotifications.js';
 import {
-  prepareJsonProcess,
   commitPreparedJsonProcess,
   getAdjacentJsonImageTarget,
   getCurrentAnnotationView,
@@ -350,16 +351,12 @@ import {
   createDatasetMutationSnapshot,
   restoreDatasetMutationSnapshot,
 } from '../state/DatasetState.js';
+import { DATASET_LOAD_STATUS, prepareDatasetLoad } from '../services/DatasetLoadService.js';
 import {
   HISTORY_DIRECTION,
-  clearUndoRedoHistory,
   commitHistoryEntries,
-  commitHistoryStep,
-  createUndoRedoHistory,
   getHistoryTimeline,
   getHistoryTransition,
-  peekHistoryEntry,
-  recordHistoryEntry,
 } from '../state/UndoRedoHistory.js';
 import {
   DEFAULT_JSON_HISTORY_LIMITS,
@@ -424,8 +421,6 @@ const annotationView = ref({ formattedItems: [], quads: [], errorMessage: '' });
 const quadTotal = computed(() => annotationView.value.formattedItems.length);
 const imagePositionView = ref({ currentIndex: -1, total: 0 });
 const jumpImageIndex = ref('');
-const selectedDots = reactive([]);
-const pointHistory = reactive(createUndoRedoHistory(50));
 const jsonHistoryStore = reactive(createJsonHistoryStore());
 const jsonHistoryLimits = DEFAULT_JSON_HISTORY_LIMITS;
 const imageObj = ref(new Image());
@@ -441,8 +436,17 @@ const isHoverQuadActivationEnabled = ref(false);
 const workflowState = ref(createWorkflowState());
 const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
 const canOperate = computed(() => canEditWorkflow(workflowState.value));
-const canUndoPoints = computed(() => canOperate.value && pointHistory.undoStack.length > 0);
-const canRedoPoints = computed(() => canOperate.value && pointHistory.redoStack.length > 0);
+const {
+  selectedDots,
+  canUndo: canUndoPoints,
+  canRedo: canRedoPoints,
+  updateFromChild: updateSelectedDots,
+  removePoint: clearOneDot,
+  undo: undoPointEdit,
+  redo: redoPointEdit,
+  clear: clearDots,
+  reset: resetDots,
+} = usePointSelectionHistory({ canEdit: canOperate });
 const canUndoJson = computed(() => canOperate.value && Boolean(getCurrentJsonHistory()?.undoStack.length));
 const canRedoJson = computed(() => canOperate.value && Boolean(getCurrentJsonHistory()?.redoStack.length));
 const jsonHistoryGroups = computed(() => buildJsonHistoryGroups());
@@ -472,11 +476,7 @@ let activeImageRequest = null;
 let imageAttemptCounter = 0;
 
 // Notification state
-const NOTIFICATION_DURATION = 3000;
-const MAX_VISIBLE_NOTIFICATIONS = 4;
-const notifications = ref([]);
-const notificationTimers = new Map();
-let notificationId = 0;
+const { notifications, notify: outputMessage, clear: clearNotifications } = useToastNotifications();
 
 let removeChooseJsonFileResponseListener = null;
 
@@ -660,36 +660,7 @@ function handleKeyDown(e) {
   handleShortcutKeyDown(e, keyActions);
 }
 
-// Notifications
-function removeNotification(id) {
-  notifications.value = notifications.value.filter(notification => notification.id !== id);
-  const timer = notificationTimers.get(id);
-  if (timer) clearTimeout(timer);
-  notificationTimers.delete(id);
-}
-
-function outputMessage(message) {
-  const notification = { id: ++notificationId, message: String(message) };
-  notifications.value.push(notification);
-
-  if (notifications.value.length > MAX_VISIBLE_NOTIFICATIONS) {
-    removeNotification(notifications.value[0].id);
-  }
-
-  const timer = setTimeout(() => removeNotification(notification.id), NOTIFICATION_DURATION);
-  notificationTimers.set(notification.id, timer);
-}
-
 // Child component commands
-function clearOneDot(index) {
-  if (!canOperate.value) return;
-  if (!Number.isInteger(index) || index < 0 || index >= selectedDots.length) return;
-
-  const nextDots = cloneSelectedDots(selectedDots);
-  nextDots.splice(index, 1);
-  applyPointEdit(nextDots);
-}
-
 function changeJsonItemSelection(direction) {
   if (!canOperate.value) return;
   const nextIndex = getAdjacentListSelectionIndex(activeQuadIndex.value, quadTotal.value, direction);
@@ -712,61 +683,6 @@ function focusActiveQuad() {
 function focusPixelAtMouse() {
   const result = imgContainerRef.value?.focusPixelAtMouse();
   if (!result?.success) outputMessage(result?.error || 'Failed to focus the pixel under the mouse.');
-}
-
-function cloneSelectedDots(dots) {
-  return dots.map(dot => ({ ...dot }));
-}
-
-function selectedDotsEqual(leftDots, rightDots) {
-  return (
-    leftDots.length === rightDots.length &&
-    leftDots.every((dot, index) => dot.x === rightDots[index]?.x && dot.y === rightDots[index]?.y)
-  );
-}
-
-function replaceSelectedDots(dots) {
-  selectedDots.splice(0, selectedDots.length, ...cloneSelectedDots(dots));
-}
-
-function applyPointEdit(nextDots) {
-  if (!Array.isArray(nextDots)) return false;
-
-  const beforeDots = cloneSelectedDots(selectedDots);
-  const afterDots = cloneSelectedDots(nextDots);
-  if (selectedDotsEqual(beforeDots, afterDots)) return false;
-
-  replaceSelectedDots(afterDots);
-  recordHistoryEntry(pointHistory, { beforeDots, afterDots });
-  return true;
-}
-
-function applyPointHistory(direction) {
-  if (!canOperate.value) return;
-
-  const historyEntry = peekHistoryEntry(pointHistory, direction);
-  if (!historyEntry) return;
-
-  replaceSelectedDots(direction === HISTORY_DIRECTION.UNDO ? historyEntry.beforeDots : historyEntry.afterDots);
-  commitHistoryStep(pointHistory, direction, historyEntry);
-}
-
-function undoPointEdit() {
-  applyPointHistory(HISTORY_DIRECTION.UNDO);
-}
-
-function redoPointEdit() {
-  applyPointHistory(HISTORY_DIRECTION.REDO);
-}
-
-function resetDots() {
-  replaceSelectedDots([]);
-  clearUndoRedoHistory(pointHistory);
-}
-
-function clearDots() {
-  if (!canOperate.value) return;
-  applyPointEdit([]);
 }
 
 // JSON Operations
@@ -1108,12 +1024,6 @@ async function saveJsonFileInfo(jsonFileInfo, { backupOriginal = false } = {}) {
     outputMessage(`Failed to save JSON: ${error.message}`);
     return false;
   }
-}
-
-function clearNotifications() {
-  for (const timer of notificationTimers.values()) clearTimeout(timer);
-  notificationTimers.clear();
-  notifications.value = [];
 }
 
 function refreshImagePositionView() {
@@ -1483,102 +1393,42 @@ async function handleChooseJsonFileResponse(_event, response) {
   const operationId = response?.requestId;
   if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return;
 
-  if (response.canceled) {
-    failDatasetLoad(operationId);
+  const loadResult = await prepareDatasetLoad(response, {
+    confirmLossyRepair: message => window.confirm(message),
+    resolveImagePaths: request => ipcRenderer.invoke('resolve-json-image-paths', request),
+    saveJsonFile: saveJsonFileInfo,
+    isCurrent: () => isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET),
+  });
+  if (loadResult.status === DATASET_LOAD_STATUS.STALE) return;
+  if (loadResult.status !== DATASET_LOAD_STATUS.READY) {
+    failDatasetLoad(operationId, loadResult.error);
     return;
   }
 
-  try {
-    if (response.success) {
-      const jsonData = response.jsonInfo;
-      jsonData.path = jsonData.path.replace(/[\\/]/g, '/');
-      let preparedJson = prepareJsonProcess(jsonData);
-      if (!preparedJson.success) {
-        failDatasetLoad(operationId, `Failed to load JSON: ${preparedJson.error}`);
-        return;
-      }
-
-      if (preparedJson.requiresLossyRepair) {
-        const confirmed = window.confirm(
-          `${preparedJson.lossyRepairSummary}\n\nThese changes can discard original data. Continue? ` +
-            'A temporary backup will be retained for 7 days and then deleted automatically.',
-        );
-        if (!confirmed) {
-          failDatasetLoad(operationId, 'Dataset loading was canceled before any lossy repair was applied.');
-          return;
-        }
-
-        preparedJson = prepareJsonProcess(jsonData, { allowLossyRepairs: true });
-        if (!preparedJson.success) {
-          failDatasetLoad(operationId, `Failed to repair JSON: ${preparedJson.error}`);
-          return;
-        }
-      }
-
-      const resolvedPathResult = await ipcRenderer.invoke('resolve-json-image-paths', {
-        jsonFilePath: preparedJson.path,
-        imagePaths: preparedJson.imagePaths,
-      });
-      if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return;
-      if (!resolvedPathResult.success) {
-        failDatasetLoad(operationId, `Failed to resolve JSON image paths: ${resolvedPathResult.error}`);
-        return;
-      }
-      preparedJson.imagePaths = resolvedPathResult.imagePaths.map(imagePath => imagePath.replace(/[\\/]/g, '/'));
-
-      if (preparedJson.changed) {
-        if (
-          !(await saveJsonFileInfo(preparedJson.fileInfo, {
-            backupOriginal: preparedJson.lossyRepairsApplied,
-          }))
-        ) {
-          failDatasetLoad(operationId);
-          return;
-        }
-        if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return;
-      }
-
-      if (!commitPreparedJsonProcess(preparedJson)) {
-        failDatasetLoad(operationId, 'Failed to load JSON: unable to commit the prepared dataset.');
-        return;
-      }
-      if (!applyWorkflowTransition(commitDataset(workflowState.value, operationId))) return;
-
-      loadedProductType.value = preparedJson.productType;
-      jsonFileName.value = jsonData.fileName;
-      resetImageForDatasetChange();
-      selectInspectorPage(INSPECTOR_PAGE.ANNOTATION);
-      if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
-
-      if (preparedJson.data.Picture.length === 0) {
-        outputMessage('JSON loaded successfully, but the dataset contains no valid image items.');
-      } else {
-        const firstImageTarget = getJsonImageTarget(0);
-        if (!firstImageTarget.success) {
-          outputMessage(firstImageTarget.error);
-          return;
-        }
-        startDatasetImageRequest(firstImageTarget, KEYS.NEXT);
-      }
-    } else {
-      const errorMessage = response.error || 'Unknown JSON loading error.';
-      console.error('Failed to read JSON file:', errorMessage);
-      failDatasetLoad(operationId, `Failed to read JSON file: ${errorMessage}`);
-    }
-  } catch (error) {
-    console.error('An error occurred while processing JSON file:', error);
-    failDatasetLoad(operationId, `Failed to process JSON file: ${error.message}`);
+  const { preparedJson, jsonData } = loadResult;
+  if (!commitPreparedJsonProcess(preparedJson)) {
+    failDatasetLoad(operationId, 'Failed to load JSON: unable to commit the prepared dataset.');
+    return;
   }
-}
+  if (!applyWorkflowTransition(commitDataset(workflowState.value, operationId))) return;
 
-function updateSelectedDots(newSelectedDots) {
-  if (!Array.isArray(newSelectedDots)) return;
-  if (canOperate.value) {
-    applyPointEdit(newSelectedDots);
-  } else {
-    replaceSelectedDots(newSelectedDots);
-    clearUndoRedoHistory(pointHistory);
+  loadedProductType.value = preparedJson.productType;
+  jsonFileName.value = jsonData.fileName;
+  resetImageForDatasetChange();
+  selectInspectorPage(INSPECTOR_PAGE.ANNOTATION);
+  if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
+
+  if (preparedJson.data.Picture.length === 0) {
+    outputMessage('JSON loaded successfully, but the dataset contains no valid image items.');
+    return;
   }
+
+  const firstImageTarget = getJsonImageTarget(0);
+  if (!firstImageTarget.success) {
+    outputMessage(firstImageTarget.error);
+    return;
+  }
+  startDatasetImageRequest(firstImageTarget, KEYS.NEXT);
 }
 
 watch(selectedDots, () => {
