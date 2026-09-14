@@ -1321,8 +1321,13 @@ function toggleHoverQuadActivation() {
   --border-strong: #c7ced8;
   --font-ui: 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
   --font-mono: 'Cascadia Mono', 'Consolas', monospace;
+  --font-size-body: 13px;
+  --font-size-secondary: 12px;
+  --font-size-caption: 11px;
+  --font-size-code: 12px;
+  --font-size-key: 10px;
   display: grid;
-  grid-template-rows: 60px minmax(0, 1fr) 42px;
+  grid-template-rows: 60px minmax(0, 1fr) 46px;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -1375,7 +1380,7 @@ function toggleHoverQuadActivation() {
 
 .app-identity div span {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
 }
 
 .toolbar-group {
@@ -1395,7 +1400,7 @@ function toggleHoverQuadActivation() {
   border-radius: 7px;
   background: var(--surface-raised);
   color: var(--text-primary);
-  font: 600 12px/1 var(--font-ui);
+  font: 600 var(--font-size-body) / 1 var(--font-ui);
   cursor: pointer;
   transition:
     border-color 120ms ease,
@@ -1470,7 +1475,7 @@ function toggleHoverQuadActivation() {
   gap: 5px;
   align-items: center;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   white-space: nowrap;
 }
 
@@ -1481,7 +1486,7 @@ function toggleHoverQuadActivation() {
   border-radius: 6px;
   background: var(--surface-muted);
   color: var(--text-primary);
-  font: 12px var(--font-mono);
+  font: var(--font-size-code) var(--font-mono);
   text-align: center;
 }
 
@@ -1496,7 +1501,7 @@ function toggleHoverQuadActivation() {
 
 .inspector-shell {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: 84px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -1524,24 +1529,24 @@ function toggleHoverQuadActivation() {
   display: grid;
   gap: 3px;
   place-items: center;
-  min-height: 62px;
+  min-height: 64px;
   padding: 5px 2px;
   border: 0;
   border-radius: 7px;
   background: transparent;
   color: var(--text-muted);
-  font: 600 10px/1.2 var(--font-ui);
+  font: 600 var(--font-size-caption) / 1.2 var(--font-ui);
   cursor: pointer;
 }
 
 .inspector-tab > span:not(.inspector-tab-icon) {
-  max-width: 64px;
+  max-width: 72px;
   line-height: 1.25;
 }
 
 .inspector-tab small {
   color: currentColor;
-  font: 500 8px/1 var(--font-mono);
+  font: 500 var(--font-size-key) / 1 var(--font-mono);
   opacity: 0.72;
 }
 
@@ -1605,7 +1610,7 @@ function toggleHoverQuadActivation() {
 
 .eyebrow {
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1622,18 +1627,18 @@ function toggleHoverQuadActivation() {
   border-radius: 99px;
   background: var(--surface-muted);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
 }
 
 .section-heading {
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-body);
   font-weight: 700;
 }
 
 .section-heading small {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   font-weight: 400;
 }
 
@@ -1700,7 +1705,7 @@ function toggleHoverQuadActivation() {
 
 .point-list li > span {
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   font-weight: 800;
 }
 
@@ -1713,7 +1718,7 @@ function toggleHoverQuadActivation() {
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font: 10px/1.2 var(--font-mono);
+  font: var(--font-size-code) / 1.2 var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1730,7 +1735,7 @@ function toggleHoverQuadActivation() {
   padding: 0 7px;
   flex-direction: column;
   gap: 4px;
-  font-size: 10px;
+  font-size: var(--font-size-caption);
 }
 
 .annotation-list-heading {
@@ -1787,7 +1792,7 @@ function toggleHoverQuadActivation() {
 
 .metadata-list dt {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
 }
 
 .metadata-list dd {
@@ -1795,7 +1800,7 @@ function toggleHoverQuadActivation() {
   margin: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font: 12px/1.3 var(--font-mono);
+  font: var(--font-size-code) / 1.3 var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1819,14 +1824,14 @@ function toggleHoverQuadActivation() {
 }
 
 .display-card strong {
-  font-size: 12px;
+  font-size: var(--font-size-body);
 }
 
 .display-card p,
 .panel-note {
   margin: 5px 0 0;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   line-height: 1.5;
 }
 
@@ -1836,7 +1841,7 @@ function toggleHoverQuadActivation() {
   border-radius: 7px;
   background: var(--surface-muted);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   line-height: 1.5;
 }
 
@@ -1857,7 +1862,7 @@ function toggleHoverQuadActivation() {
   border-top: 1px solid var(--border-subtle);
   background: var(--surface-raised);
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   white-space: nowrap;
 }
 
@@ -1932,7 +1937,7 @@ function toggleHoverQuadActivation() {
   border-radius: 4px;
   background: var(--surface-muted);
   color: var(--text-secondary);
-  font: 600 9px/1 var(--font-ui);
+  font: 600 var(--font-size-key) / 1 var(--font-ui);
   vertical-align: middle;
 }
 
@@ -1967,7 +1972,7 @@ function toggleHoverQuadActivation() {
   border-radius: 7px;
   background: rgba(28, 36, 48, 0.94);
   color: white;
-  font-size: 12px;
+  font-size: var(--font-size-body);
   line-height: 1.4;
   overflow-wrap: anywhere;
   box-shadow: 0 6px 20px rgba(28, 36, 48, 0.24);

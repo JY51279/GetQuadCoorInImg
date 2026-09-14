@@ -62,7 +62,7 @@ defineEmits(['jump-history']);
 .history-group-empty {
   margin: 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-secondary, 12px);
   line-height: 1.5;
 }
 
@@ -110,12 +110,12 @@ defineEmits(['jump-history']);
 
 .history-group-header strong {
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-body, 13px);
 }
 
 .history-group-header small {
   color: var(--text-muted);
-  font: 9px/1.2 var(--font-mono);
+  font: var(--font-size-key, 10px) / 1.2 var(--font-mono);
 }
 
 .history-group-state {
@@ -124,7 +124,7 @@ defineEmits(['jump-history']);
   border-radius: 99px;
   background: var(--surface-raised);
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--font-size-key, 10px);
 }
 
 .current .history-group-state {
@@ -150,13 +150,13 @@ defineEmits(['jump-history']);
   gap: 8px;
   align-items: center;
   width: 100%;
-  min-height: 34px;
+  min-height: 36px;
   padding: 5px 7px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--text-primary);
-  font: 500 11px/1.3 var(--font-ui);
+  font: 500 var(--font-size-secondary, 12px) / 1.3 var(--font-ui);
   text-align: left;
   cursor: pointer;
 }
@@ -185,7 +185,7 @@ defineEmits(['jump-history']);
 
 .history-sequence {
   color: var(--text-muted);
-  font: 9px/1 var(--font-mono);
+  font: var(--font-size-key, 10px) / 1 var(--font-mono);
   text-align: center;
 }
 
@@ -204,12 +204,12 @@ defineEmits(['jump-history']);
 
 .history-entry-info time {
   color: var(--text-muted);
-  font: 9px/1 var(--font-mono);
+  font: var(--font-size-key, 10px) / 1 var(--font-mono);
 }
 
 .history-row small {
   color: currentColor;
-  font-size: 9px;
+  font-size: var(--font-size-key, 10px);
   opacity: 0.72;
 }
 </style>

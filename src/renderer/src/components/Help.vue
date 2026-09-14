@@ -55,7 +55,7 @@ defineProps({
 
 .eyebrow {
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--font-size-caption, 11px);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -65,7 +65,7 @@ defineProps({
 .help-footer {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-body, 13px);
   line-height: 1.5;
 }
 
@@ -78,7 +78,7 @@ defineProps({
 .shortcut-group h3 {
   margin: 0 0 10px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--font-size-secondary, 12px);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -95,7 +95,7 @@ defineProps({
   grid-template-columns: minmax(104px, 0.9fr) minmax(130px, 1.1fr);
   gap: 14px;
   align-items: center;
-  min-height: 32px;
+  min-height: 34px;
   padding: 5px 8px;
   border-radius: 6px;
 }
@@ -113,13 +113,13 @@ defineProps({
 .shortcut-row dd {
   margin: 0;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-body, 13px);
 }
 
 .key-separator {
   margin: 0 4px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-caption, 11px);
 }
 
 .help-footer {

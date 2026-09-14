@@ -139,7 +139,7 @@ async function scrollToBottom() {
   border-radius: 5px;
   background: var(--surface-raised);
   color: var(--text-muted);
-  font: 600 10px/1 var(--font-ui);
+  font: 600 var(--font-size-caption, 11px) / 1 var(--font-ui);
 }
 
 .json-item-container.active .json-index {
@@ -151,7 +151,7 @@ async function scrollToBottom() {
   min-width: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  font: 11px/1.45 var(--font-mono);
+  font: var(--font-size-code, 12px) / 1.45 var(--font-mono);
 }
 
 .json-empty,
@@ -162,7 +162,7 @@ async function scrollToBottom() {
   box-sizing: border-box;
   padding: 24px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-body, 13px);
   text-align: center;
 }
 

@@ -1015,7 +1015,7 @@ function initCanvasSettings() {
   border-radius: 5px;
   background: #ff2d55;
   color: white;
-  font: 700 10px/1 var(--font-ui, sans-serif);
+  font: 700 var(--font-size-caption, 11px) / 1 var(--font-ui, sans-serif);
   text-align: center;
   box-shadow: 0 2px 7px rgba(28, 36, 48, 0.28);
   cursor: pointer;
@@ -1037,8 +1037,8 @@ function initCanvasSettings() {
   position: absolute;
   z-index: 9;
   display: grid;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   place-items: center;
   transform: translate(-50%, -50%);
@@ -1047,7 +1047,7 @@ function initCanvasSettings() {
   background: #2563eb;
   color: #ffffff;
   box-shadow: 0 1px 5px rgba(15, 23, 42, 0.45);
-  font: 700 8px/1 var(--font-ui, sans-serif);
+  font: 700 var(--font-size-key, 10px) / 1 var(--font-ui, sans-serif);
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -1153,7 +1153,7 @@ function initCanvasSettings() {
 .scale-label,
 .scale-value {
   color: var(--text-secondary, #5b6675);
-  font-size: 12px;
+  font-size: var(--font-size-body, 13px);
 }
 
 .scale-value {
@@ -1169,7 +1169,7 @@ function initCanvasSettings() {
   border-radius: 6px;
   background: var(--surface-muted, #f7f8fa);
   color: var(--text-primary, #1c2430);
-  font: 12px var(--font-mono, monospace);
+  font: var(--font-size-code, 12px) var(--font-mono, monospace);
 }
 
 .scale-range {
@@ -1194,7 +1194,7 @@ function initCanvasSettings() {
   left: 0;
   height: 12px;
   color: var(--text-muted, #8a94a3);
-  font: 9px/1 var(--font-mono, monospace);
+  font: var(--font-size-key, 10px) / 1 var(--font-mono, monospace);
   pointer-events: none;
 }
 
