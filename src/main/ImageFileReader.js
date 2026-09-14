@@ -243,7 +243,8 @@ export async function prepareImageFile(filePath, limits = {}) {
   const description = await getImageDescription(filePath, extension);
   const displaySize = calculateDisplaySize(description.width, description.height, limits);
   const requiresResize = displaySize.width !== description.width || displaySize.height !== description.height;
-  const requiresPngConversion = description.isAnimated || PNG_CONVERSION_EXTENSIONS.includes(extension) || requiresResize;
+  const requiresPngConversion =
+    description.isAnimated || PNG_CONVERSION_EXTENSIONS.includes(extension) || requiresResize;
   const outputKind = requiresPngConversion ? 'png' : extension;
   const token = createAssetToken(filePath, stats, displaySize.width, displaySize.height, outputKind);
 

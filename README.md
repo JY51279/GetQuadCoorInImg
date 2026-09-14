@@ -99,7 +99,7 @@ npm run dev
 npm test               # 运行 Vitest 单元测试
 npm run lint:check     # 检查 ESLint 错误，不修改文件
 npm run format:check   # 检查受管理文件的格式，不修改文件
-npm run check          # 依次运行测试、静态检查和生产构建
+npm run check          # 依次运行格式检查、测试、静态检查和生产构建
 ```
 
 自动修复命令：
@@ -110,6 +110,8 @@ npm run format
 ```
 
 `format` 只处理项目源码、配置和文档；构建产物、依赖、测试数据以及图片资源已被排除。
+
+测试按职责分为数据模式、数据集状态、数据变更、历史、图片几何、渲染、服务、IPC 和少量 Vue 组件交互。相邻层级不会仅为了减少文件数量而合并；这可以让失败位置直接对应代码职责。桌面原生对话框和真实文件系统连接采用[人工冒烟检查](docs/manual-smoke-test.md)验证，当前个人离线使用场景不引入完整 Electron E2E 框架。
 
 ## 构建和打包
 

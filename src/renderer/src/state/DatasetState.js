@@ -215,12 +215,7 @@ function prepareDatasetQuad(realDots, coordinateScale, baseItem = null) {
     if (closestIndex === -1) {
       return { success: false, error: 'Failed to find the nearest Quad point.' };
     }
-    return prepareQuadPointUpdate(
-      currentPoints,
-      closestIndex,
-      newPoint,
-      baseItem['Barcode Type'] ?? '',
-    );
+    return prepareQuadPointUpdate(currentPoints, closestIndex, newPoint, baseItem['Barcode Type'] ?? '');
   }
 
   const barcodeType = baseItem?.['Barcode Type'] ?? '';

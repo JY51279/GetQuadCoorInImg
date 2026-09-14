@@ -111,10 +111,7 @@ export function prepareQuad(points, barcodeType = '') {
   const normalizedPoints = points.map(point => ({ ...point }));
   if (normalizedPoints.length === 2) {
     const [firstPoint, secondPoint] = normalizedPoints;
-    normalizedPoints.push(
-      { x: firstPoint.x, y: secondPoint.y },
-      { x: secondPoint.x, y: firstPoint.y },
-    );
+    normalizedPoints.push({ x: firstPoint.x, y: secondPoint.y }, { x: secondPoint.x, y: firstPoint.y });
   } else if (normalizedPoints.length === 3) {
     const [firstPoint, secondPoint, thirdPoint] = normalizedPoints;
     normalizedPoints.push({

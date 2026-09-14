@@ -117,5 +117,4 @@ describe('Workflow state', () => {
     expect(failed.success).toBe(true);
     expect(failed.state.phase).toBe(WORKFLOW_PHASE.DATASET_READY);
   });
-
 });

@@ -1,5 +1,4 @@
-/* global globalThis */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   calculateFitScale,
   calculateWheelScale,
@@ -22,8 +21,6 @@ import {
   sliderPositionToScale,
 } from '../src/renderer/src/utils/ImageViewGeometry.js';
 import { getOuterInnerQuads } from '../src/renderer/src/utils/ImageProcess.js';
-import { configureZoomCanvas, drawZoomPreview } from '../src/renderer/src/utils/ZoomViewRenderer.js';
-import { loadRendererImage } from '../src/renderer/src/utils/RendererImageLoader.js';
 
 function getFocusedOuterQuadBounds(quad, focusTransform, gridLimit = 10) {
   const coordinateTransform = {
@@ -293,103 +290,5 @@ describe('Image view geometry', () => {
     expect(
       calculatePixelFocusTransform({ x: Number.NaN, y: 0 }, { viewportWidth: 1000, viewportHeight: 800 }),
     ).toBeNull();
-  });
-});
-
-describe('Zoom preview renderer', () => {
-  function createCanvasContext() {
-    const context = {
-      drawImage: vi.fn(),
-      fillRect: vi.fn(),
-      strokeRect: vi.fn(),
-      beginPath: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      stroke: vi.fn(),
-    };
-    return { context, canvas: { getContext: () => context } };
-  }
-
-  it('disables smoothing and draws only points inside the 6 by 6 source area', () => {
-    const { context, canvas } = createCanvasContext();
-    const image = { id: 'image' };
-
-    configureZoomCanvas(canvas);
-    drawZoomPreview(canvas, image, { x: 10, y: 20 }, [
-      { x: 11, y: 22 },
-      { x: 15, y: 25 },
-      { x: 9, y: 20 },
-      { x: 16, y: 20 },
-    ]);
-
-    expect(context.imageSmoothingEnabled).toBe(false);
-    expect(context.drawImage).toHaveBeenCalledWith(image, 10, 20, 6, 6, 0, 0, 120, 120);
-    expect(context.fillRect.mock.calls).toEqual([
-      [20, 40, 20, 20],
-      [100, 100, 20, 20],
-    ]);
-    expect(context.strokeRect).toHaveBeenCalledWith(60, 60, 20, 20);
-  });
-});
-
-describe('Renderer image loader', () => {
-  const originalImage = globalThis.Image;
-
-  afterEach(() => {
-    globalThis.Image = originalImage;
-  });
-
-  function installImageMocks() {
-    const imageSizes = new Map([
-      ['small-image', { width: 640, height: 480 }],
-      ['prepared-image', { width: 3072, height: 1536 }],
-    ]);
-    const createdImages = [];
-
-    globalThis.Image = class MockImage {
-      constructor() {
-        this.complete = false;
-        createdImages.push(this);
-      }
-
-      get src() {
-        return this.imageSource;
-      }
-
-      set src(value) {
-        this.imageSource = value;
-        queueMicrotask(() => {
-          const size = imageSizes.get(value);
-          if (!size) {
-            this.onerror?.(new Error('Unknown mock image.'));
-            return;
-          }
-          this.width = size.width;
-          this.height = size.height;
-          this.naturalWidth = size.width;
-          this.naturalHeight = size.height;
-          this.complete = true;
-          this.onload?.();
-        });
-      }
-    };
-
-    return { createdImages };
-  }
-
-  it('loads a prepared image without allocating a resize canvas', async () => {
-    const { createdImages } = installImageMocks();
-    const result = await loadRendererImage('prepared-image');
-
-    expect(result).toBe(createdImages[0]);
-    expect(result.crossOrigin).toBe('anonymous');
-    expect(result.naturalWidth).toBe(3072);
-    expect(createdImages).toHaveLength(1);
-  });
-
-  it('rejects when the prepared image URL cannot be decoded', async () => {
-    installImageMocks();
-
-    await expect(loadRendererImage('missing-image')).rejects.toThrow('Unknown mock image.');
   });
 });

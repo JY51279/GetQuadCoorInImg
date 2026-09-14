@@ -4,11 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
 import { initializeFileOperations } from './FileOperations.js';
 import { registerIpcHandlers } from './IpcHandlers.js';
-import {
-  IMAGE_PROTOCOL_SCHEME,
-  initializeImageFileReader,
-  registerImageProtocol,
-} from './ImageFileReader.js';
+import { IMAGE_PROTOCOL_SCHEME, initializeImageFileReader, registerImageProtocol } from './ImageFileReader.js';
 
 protocol.registerSchemesAsPrivileged([
   {

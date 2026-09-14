@@ -168,13 +168,7 @@ export function calculateVisibleImageAxis(imageSize, viewportSize, offset, scale
   };
 }
 
-export function calculatePointerAnchoredOffset(
-  pointerPosition,
-  currentOffset,
-  oldScale,
-  newScale,
-  gridLimit = 10,
-) {
+export function calculatePointerAnchoredOffset(pointerPosition, currentOffset, oldScale, newScale, gridLimit = 10) {
   const oldPixelPitch = getRenderedPixelPitch(oldScale, gridLimit);
   const newPixelPitch = getRenderedPixelPitch(newScale, gridLimit);
   if (

@@ -79,31 +79,34 @@ export async function handleOpenJsonDialog(event, context) {
   }
 }
 
+export function handleResolveJsonImagePaths(_event, data) {
+  try {
+    if (!data || typeof data.jsonFilePath !== 'string' || !Array.isArray(data.imagePaths)) {
+      throw new Error('Invalid image path resolution request.');
+    }
+    const imagePaths = data.imagePaths.map(imagePath => resolveJsonImagePath(imagePath, data.jsonFilePath));
+    return { success: true, imagePaths };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function handleSaveJsonFile(_event, data) {
+  try {
+    const result = await saveJsonFileAtomically(data);
+    return { success: true, ...result };
+  } catch (error) {
+    console.error('Failed to save JSON:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export function registerIpcHandlers() {
   ipcMain.handle('open-image-file-dialog', handleOpenImageDialog);
   ipcMain.handle('prepare-image', handlePrepareImage);
 
   ipcMain.on('open-json-file-dialog', handleOpenJsonDialog);
 
-  ipcMain.handle('resolve-json-image-paths', (_event, data) => {
-    try {
-      if (!data || typeof data.jsonFilePath !== 'string' || !Array.isArray(data.imagePaths)) {
-        throw new Error('Invalid image path resolution request.');
-      }
-      const imagePaths = data.imagePaths.map(imagePath => resolveJsonImagePath(imagePath, data.jsonFilePath));
-      return { success: true, imagePaths };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  });
-
-  ipcMain.handle('save-json-file', async (_event, data) => {
-    try {
-      const result = await saveJsonFileAtomically(data);
-      return { success: true, ...result };
-    } catch (error) {
-      console.error('Failed to save JSON:', error.message);
-      return { success: false, error: error.message };
-    }
-  });
+  ipcMain.handle('resolve-json-image-paths', handleResolveJsonImagePaths);
+  ipcMain.handle('save-json-file', handleSaveJsonFile);
 }
