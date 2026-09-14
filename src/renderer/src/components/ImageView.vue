@@ -353,7 +353,7 @@ function deletePt(ptIndex) {
 function deleteDot(index) {
   if (!props.canEdit || canvasPointerGesture.dragging) return;
   if (!deletePt(index)) {
-    outputMessage('Error delete the pt in canvas!');
+    outputMessage('删除画布标点失败。');
   }
 }
 
@@ -621,7 +621,7 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
   const deltaY = newY - oldY;
   const result = panBy(deltaX, deltaY, { hasImage: imageSrc !== '' });
   if (!result.changed) return;
-  if (result.becameInvisible) outputMessage('The image is out of the visible area.');
+  if (result.becameInvisible) outputMessage('图片已移出可见区域。');
   updateViewPortDraw();
 }
 
@@ -631,7 +631,7 @@ function applyUserScale(newScale, { anchorAtPointer = false } = {}) {
     hasImage: imageSrc !== '',
   });
   if (!result.changed) return;
-  if (result.becameInvisible) outputMessage('The image is out of the visible area.');
+  if (result.becameInvisible) outputMessage('图片已移出可见区域。');
   updateViewPortDraw();
 }
 
@@ -686,7 +686,7 @@ function toggleDot(e) {
 
   const localPoint = getLocalPoint(e.clientX, e.clientY);
   if (localPoint === null || !isPointInVisibleImage(localPoint)) {
-    outputMessage('The pt is not in the pic.');
+    outputMessage('所选点不在图片范围内。');
     return;
   }
 
@@ -695,9 +695,9 @@ function toggleDot(e) {
   const { realCoord, existingDotIndex } = dotInfo;
   if (existingDotIndex !== -1) {
     deletePt(existingDotIndex);
-    outputMessage('Delete the pt.');
+    outputMessage('已删除标点。');
   } else if (props.selectedDots.length >= 4) {
-    outputMessage('Already set 4 pts.');
+    outputMessage('最多只能选择四个点。');
   } else {
     emits('update-selected-dots', [...props.selectedDots.map(dot => ({ ...dot })), { x: realCoord.x, y: realCoord.y }]);
   }
@@ -715,28 +715,28 @@ function applyViewTransform(transform) {
 }
 
 function focusQuad(quadIndex) {
-  if (imageSrc === '') return { success: false, error: 'No image is available.' };
+  if (imageSrc === '') return { success: false, error: '当前没有可用图片。' };
   if (!Number.isInteger(quadIndex) || quadIndex < 0 || quadIndex >= getQuadCount()) {
-    return { success: false, error: 'No active Quad is available.' };
+    return { success: false, error: '当前没有激活的 Quad。' };
   }
 
   const transform = calculateQuadFocusTransform(getQuad(quadIndex), {
     viewportWidth: viewportWidth.value,
     viewportHeight: viewportHeight.value,
   });
-  if (transform === null) return { success: false, error: 'The active Quad has invalid coordinates.' };
+  if (transform === null) return { success: false, error: '当前 Quad 的坐标无效。' };
 
   applyViewTransform(transform);
   return { success: true };
 }
 
 function focusPixelAtMouse() {
-  if (!props.canInteract || imageSrc === '') return { success: false, error: 'No image is available.' };
+  if (!props.canInteract || imageSrc === '') return { success: false, error: '当前没有可用图片。' };
 
   syncMouseCoord(x.value, y.value);
   const mousePoint = { x: mouseCoord.x, y: mouseCoord.y };
   if (!mouseIsOverContainer.value || !isPointInVisibleImage(mousePoint)) {
-    return { success: false, error: 'Please move the mouse over a visible image pixel before focusing it.' };
+    return { success: false, error: '请先将鼠标移到可见的图片像素上。' };
   }
 
   const imagePoint = { x: 0, y: 0 };
@@ -747,14 +747,14 @@ function focusPixelAtMouse() {
     imagePoint.y < 0 ||
     imagePoint.y >= initImgHeight.value
   ) {
-    return { success: false, error: 'The pixel under the mouse is outside the image.' };
+    return { success: false, error: '鼠标所在像素超出图片范围。' };
   }
 
   const transform = calculatePixelFocusTransform(imagePoint, {
     viewportWidth: viewportWidth.value,
     viewportHeight: viewportHeight.value,
   });
-  if (transform === null) return { success: false, error: 'Failed to calculate the pixel focus position.' };
+  if (transform === null) return { success: false, error: '无法计算像素聚焦位置。' };
 
   applyViewTransform(transform);
   return { success: true };

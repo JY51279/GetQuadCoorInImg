@@ -39,10 +39,10 @@ export function calculateDisplaySize(
   { maxPixels = MAX_DISPLAY_PIXELS, maxDimension = MAX_DISPLAY_DIMENSION } = {},
 ) {
   if (!Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0) {
-    throw new Error('Invalid image dimensions.');
+    throw new Error('图片尺寸无效。');
   }
   if (!Number.isSafeInteger(maxPixels) || maxPixels <= 0 || !Number.isSafeInteger(maxDimension) || maxDimension <= 0) {
-    throw new Error('Invalid image display limits.');
+    throw new Error('图片显示尺寸限制无效。');
   }
 
   const dimensionScale = Math.min(maxDimension / width, maxDimension / height);
@@ -68,7 +68,7 @@ export function calculateDisplaySize(
     displaySize.height > maxDimension ||
     displaySize.width * displaySize.height > maxPixels
   ) {
-    throw new Error('Image display limits are too small to preserve editable coordinates.');
+    throw new Error('图片显示尺寸限制过小，无法保留可编辑坐标。');
   }
   return displaySize;
 }
@@ -80,11 +80,11 @@ export function calculateCoordinateScale(originalSize, displaySize) {
     !Number.isSafeInteger(displaySize) ||
     displaySize <= 0
   ) {
-    throw new Error('Invalid coordinate dimensions.');
+    throw new Error('坐标尺寸无效。');
   }
   if (originalSize === displaySize) return 1;
   if (originalSize <= 1 || displaySize <= 1) {
-    throw new Error('Cannot preserve editable coordinates when only one endpoint remains.');
+    throw new Error('仅剩一个端点时无法保留可编辑坐标。');
   }
   return (displaySize - 1) / (originalSize - 1);
 }
@@ -105,13 +105,13 @@ async function getImageDescription(filePath, extension) {
       limitInputPixels: MAX_INPUT_PIXELS,
     }).metadata();
     const dimensions = getOrientedDimensions(metadata);
-    if (!dimensions.width || !dimensions.height) throw new Error('Unable to determine image dimensions.');
+    if (!dimensions.width || !dimensions.height) throw new Error('无法确定图片尺寸。');
     return { ...dimensions, sharpSupported: true, isAnimated: (metadata.pages ?? 1) > 1 };
   }
 
-  if (!nativeImageApi) throw new Error(`Image format .${extension} cannot be decoded.`);
+  if (!nativeImageApi) throw new Error(`无法解码 .${extension} 图片格式。`);
   const image = nativeImageApi.createFromPath(filePath);
-  if (image.isEmpty()) throw new Error('Unable to decode the image.');
+  if (image.isEmpty()) throw new Error('无法解码图片。');
   return { ...image.getSize(), sharpSupported: false, nativeImage: image };
 }
 
@@ -229,15 +229,15 @@ export function registerImageProtocol(electronProtocol, electronNet) {
 }
 
 export async function prepareImageFile(filePath, limits = {}) {
-  if (!imageCacheDirectory) throw new Error('Image file reader is not initialized.');
+  if (!imageCacheDirectory) throw new Error('图片读取服务尚未初始化。');
 
   const extension = path.extname(filePath).slice(1).toLowerCase();
-  if (!IMAGE_EXTENSIONS.includes(extension)) throw new Error('Unsupported image format');
+  if (!IMAGE_EXTENSIONS.includes(extension)) throw new Error('不支持该图片格式。');
 
   const stats = await fs.promises.stat(filePath);
-  if (!stats.isFile()) throw new Error('Image path does not point to a file.');
+  if (!stats.isFile()) throw new Error('图片路径没有指向文件。');
   if (stats.size > MAX_INPUT_FILE_BYTES) {
-    throw new Error('Image file exceeds the 64 MB input limit.');
+    throw new Error('图片文件超过 64 MB 输入限制。');
   }
 
   const description = await getImageDescription(filePath, extension);

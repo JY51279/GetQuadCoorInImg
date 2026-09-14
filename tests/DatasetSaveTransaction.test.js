@@ -90,7 +90,7 @@ describe('Dataset save transaction', () => {
 
     expect(result).toMatchObject({
       status: SAVE_TRANSACTION_STATUS.MUTATION_FAILED,
-      error: 'JSON operation failed: mutation crashed',
+      error: 'JSON 操作失败。',
       rollbackFailed: true,
     });
     expect(context.rollbackMutation).not.toHaveBeenCalled();
@@ -126,7 +126,7 @@ describe('Dataset save transaction', () => {
 
     expect(result).toMatchObject({
       status: SAVE_TRANSACTION_STATUS.SAVE_FAILED,
-      error: 'Failed to save JSON: disk unavailable',
+      error: '保存 JSON 文件失败。',
       rollbackFailed: false,
     });
     expect(context.rollbackMutation).toHaveBeenCalledWith(mutationResult.receipt);
@@ -146,7 +146,7 @@ describe('Dataset save transaction', () => {
 
     expect(result).toMatchObject({
       status: SAVE_TRANSACTION_STATUS.STALE,
-      error: 'Ignored a stale save failure because the dataset or image context changed.',
+      error: '图集或图片已切换，已忽略过期的保存失败结果。',
     });
     expect(context.rollbackMutation).not.toHaveBeenCalled();
   });
@@ -166,7 +166,7 @@ describe('Dataset save transaction', () => {
     expect(result).toMatchObject({
       success: false,
       status: SAVE_TRANSACTION_STATUS.STALE,
-      error: 'Ignored a stale save result because the dataset or image context changed.',
+      error: '图集或图片已切换，已忽略过期的保存结果。',
       changed: true,
     });
     expect(context.rollbackMutation).not.toHaveBeenCalled();
@@ -195,7 +195,7 @@ describe('Dataset save transaction', () => {
 
     expect(result).toMatchObject({
       status: SAVE_TRANSACTION_STATUS.MUTATION_FAILED,
-      error: 'JSON operation changed data without returning a rollback receipt.',
+      error: 'JSON 操作修改了数据，但没有返回可用于回滚的变更记录。',
       rollbackFailed: true,
     });
     expect(context.saveJsonFile).not.toHaveBeenCalled();
@@ -212,7 +212,7 @@ describe('Dataset save transaction', () => {
     expect(result).toMatchObject({
       success: false,
       status: SAVE_TRANSACTION_STATUS.START_FAILED,
-      error: 'Cannot start save while workflow is saving.',
+      error: '正在保存数据状态下不能开始保存数据。',
     });
     expect(mutate).not.toHaveBeenCalled();
     expect(context.saveJsonFile).not.toHaveBeenCalled();

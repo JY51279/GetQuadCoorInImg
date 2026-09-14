@@ -85,17 +85,17 @@ function createRecordedAt(store) {
 }
 
 export function recordJsonHistory(store, imageIndex, historyEntry) {
-  if (!historyEntry) return { success: false, error: 'A JSON history entry is required.' };
+  if (!historyEntry) return { success: false, error: '缺少 JSON 历史记录。' };
   if (Number.isInteger(historyEntry.imageIndex) && historyEntry.imageIndex !== imageIndex) {
-    return { success: false, error: 'The JSON history entry does not match its image index.' };
+    return { success: false, error: 'JSON 历史记录与图片序号不匹配。' };
   }
 
   const history = getJsonHistoryForImage(store, imageIndex, { createIfMissing: true });
-  if (!history) return { success: false, error: 'Invalid JSON history image index.' };
+  if (!history) return { success: false, error: 'JSON 历史记录的图片序号无效。' };
 
   const recordedEntry = { ...historyEntry, recordedAt: createRecordedAt(store) };
   if (!recordHistoryEntry(history, recordedEntry)) {
-    return { success: false, error: 'Failed to record the JSON history entry.' };
+    return { success: false, error: '无法记录 JSON 操作历史。' };
   }
 
   touchImageHistory(store, imageIndex, history);

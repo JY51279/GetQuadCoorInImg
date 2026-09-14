@@ -65,7 +65,7 @@ describe('JSON history view state', () => {
     const history = useJsonHistory({ currentImageIndex, outputMessage });
 
     expect(history.recordCurrent(createEntry(KEYS.JSON_ADD, 0, -1))).toBe(false);
-    expect(outputMessage).toHaveBeenCalledWith('Invalid JSON history image index.');
+    expect(outputMessage).toHaveBeenCalledWith('JSON 历史记录的图片序号无效。');
 
     currentImageIndex.value = 0;
     history.recordCurrent(createEntry(KEYS.JSON_ADD, 0, 0));

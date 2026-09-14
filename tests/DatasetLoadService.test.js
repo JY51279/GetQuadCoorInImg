@@ -37,7 +37,7 @@ describe('Dataset load service', () => {
 
     expect(result).toEqual({
       status: DATASET_LOAD_STATUS.CANCELED,
-      error: 'Dataset loading was canceled before any lossy repair was applied.',
+      error: '已取消加载，原始数据未执行任何有损修复。',
     });
     expect(confirmLossyRepair).toHaveBeenCalledOnce();
     expect(resolveImagePaths).not.toHaveBeenCalled();
@@ -95,7 +95,7 @@ describe('Dataset load service', () => {
 
     expect(result).toEqual({
       status: DATASET_LOAD_STATUS.FAILED,
-      error: 'Failed to resolve JSON image paths: path unavailable',
+      error: '解析图片路径失败。',
     });
     expect(saveJsonFile).not.toHaveBeenCalled();
   });
@@ -111,14 +111,17 @@ describe('Dataset load service', () => {
       },
     );
 
-    expect(result).toEqual({ status: DATASET_LOAD_STATUS.FAILED, error: '' });
+    expect(result).toEqual({
+      status: DATASET_LOAD_STATUS.FAILED,
+      error: '保存规范化后的 JSON 文件失败。',
+    });
     expect(saveJsonFile).toHaveBeenCalledOnce();
   });
 
   it('returns a stable error for a failed file response', async () => {
     await expect(prepareDatasetLoad({ success: false, error: 'denied' })).resolves.toEqual({
       status: DATASET_LOAD_STATUS.FAILED,
-      error: 'Failed to read JSON file: denied',
+      error: '读取 JSON 文件失败。',
     });
   });
 });

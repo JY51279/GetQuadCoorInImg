@@ -5,7 +5,7 @@ export const KEYS = {
   JSON_DELETE: 'Delete JSON content',
   JSON_ADD: 'Add JSON content',
   OPERATE_SUCCESS: 'Operate Success',
-  OPERATE_FAIL: 'Operate Fail',
+  OPERATE_FAIL: '操作失败。',
   // 其他键...
 };
 

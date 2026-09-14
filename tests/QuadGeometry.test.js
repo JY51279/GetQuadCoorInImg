@@ -82,7 +82,7 @@ describe('Quad geometry', () => {
         { x: 10, y: 10 },
         { x: 10, y: 30 },
       ]),
-    ).toMatchObject({ success: false, error: 'A Quad must contain four distinct points.' });
+    ).toMatchObject({ success: false, error: 'Quad 必须包含四个不同的点。' });
     expect(
       prepareQuad([
         { x: 0, y: 0 },
@@ -90,14 +90,14 @@ describe('Quad geometry', () => {
         { x: 10, y: 10 },
         { x: 10, y: 10 },
       ]),
-    ).toMatchObject({ success: false, error: 'A Quad must contain four distinct points.' });
+    ).toMatchObject({ success: false, error: 'Quad 必须包含四个不同的点。' });
     expect(
       prepareQuad([
         { x: 0, y: 0 },
         { x: 3, y: 0 },
         { x: 10, y: 0 },
       ]),
-    ).toMatchObject({ success: false, error: 'A Quad cannot contain three collinear points.' });
+    ).toMatchObject({ success: false, error: 'Quad 不能包含三个共线点。' });
     expect(
       prepareQuad([
         { x: 0, y: 0 },
@@ -107,7 +107,7 @@ describe('Quad geometry', () => {
       ]),
     ).toMatchObject({
       success: false,
-      error: 'A Quad must remain convex and cannot contain crossing edges.',
+      error: 'Quad 必须保持凸四边形，且边不能交叉。',
     });
   });
 
@@ -126,7 +126,7 @@ describe('Quad geometry', () => {
 
     expect(prepareQuadPointUpdate(points, 1, { x: 10, y: 10 })).toMatchObject({
       success: false,
-      error: 'A Quad must contain four distinct points.',
+      error: 'Quad 必须包含四个不同的点。',
     });
   });
 

@@ -28,7 +28,7 @@ describe('JSON file service', () => {
     });
     await expect(unsuccessful.save({ path: 'sample.json', str: '{}' })).resolves.toEqual({
       success: false,
-      error: 'write denied',
+      error: '保存 JSON 文件失败。',
     });
 
     const rejected = createJsonFileService({
@@ -38,7 +38,7 @@ describe('JSON file service', () => {
     });
     await expect(rejected.save({ path: 'sample.json', str: '{}' })).resolves.toEqual({
       success: false,
-      error: 'IPC unavailable',
+      error: '保存 JSON 文件失败。',
     });
   });
 });

@@ -52,7 +52,7 @@ export function getHistoryTimeline(history) {
 export function getHistoryTransition(history, targetPosition) {
   const { entries, currentPosition } = getHistoryTimeline(history);
   if (!Number.isInteger(targetPosition) || targetPosition < 0 || targetPosition > entries.length) {
-    return { success: false, error: 'Invalid history target position.' };
+    return { success: false, error: '历史目标位置无效。' };
   }
 
   if (targetPosition === currentPosition) {

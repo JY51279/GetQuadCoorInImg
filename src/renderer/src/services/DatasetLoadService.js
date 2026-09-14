@@ -1,4 +1,5 @@
 import { prepareJsonProcess } from '../state/DatasetState.js';
+import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
 
 export const DATASET_LOAD_STATUS = Object.freeze({
   READY: 'ready',
@@ -17,28 +18,28 @@ export async function prepareDatasetLoad(
 ) {
   if (response?.canceled) return { status: DATASET_LOAD_STATUS.CANCELED, error: '' };
   if (!response?.success) {
-    return failed(`Failed to read JSON file: ${response?.error || 'Unknown JSON loading error.'}`);
+    return failed(toUserErrorMessage(response?.error, USER_MESSAGES.JSON_READ_FAILED));
   }
 
   try {
     const jsonData = { ...response.jsonInfo, path: response.jsonInfo.path.replace(/[\\/]/g, '/') };
     let preparedJson = prepareJsonProcess(jsonData);
-    if (!preparedJson.success) return failed(`Failed to load JSON: ${preparedJson.error}`);
+    if (!preparedJson.success) return failed(`加载 JSON 失败：${preparedJson.error}`);
 
     if (preparedJson.requiresLossyRepair) {
       const confirmed = confirmLossyRepair(
-        `${preparedJson.lossyRepairSummary}\n\nThese changes can discard original data. Continue? ` +
-          'A temporary backup will be retained for 7 days and then deleted automatically.',
+        `${preparedJson.lossyRepairSummary}\n\n这些修改会丢弃部分原始数据，是否继续？` +
+          '继续后会创建临时备份，备份保留 7 天并自动删除。',
       );
       if (!confirmed) {
         return {
           status: DATASET_LOAD_STATUS.CANCELED,
-          error: 'Dataset loading was canceled before any lossy repair was applied.',
+          error: '已取消加载，原始数据未执行任何有损修复。',
         };
       }
 
       preparedJson = prepareJsonProcess(jsonData, { allowLossyRepairs: true });
-      if (!preparedJson.success) return failed(`Failed to repair JSON: ${preparedJson.error}`);
+      if (!preparedJson.success) return failed(`修复 JSON 失败：${preparedJson.error}`);
     }
 
     const resolvedPathResult = await resolveImagePaths({
@@ -47,7 +48,7 @@ export async function prepareDatasetLoad(
     });
     if (!isCurrent()) return { status: DATASET_LOAD_STATUS.STALE };
     if (!resolvedPathResult.success) {
-      return failed(`Failed to resolve JSON image paths: ${resolvedPathResult.error}`);
+      return failed(toUserErrorMessage(resolvedPathResult.error, USER_MESSAGES.IMAGE_PATH_RESOLUTION_FAILED));
     }
     preparedJson.imagePaths = resolvedPathResult.imagePaths.map(imagePath => imagePath.replace(/[\\/]/g, '/'));
 
@@ -55,12 +56,12 @@ export async function prepareDatasetLoad(
       const saved = await saveJsonFile(preparedJson.fileInfo, {
         backupOriginal: preparedJson.lossyRepairsApplied,
       });
-      if (!saved) return failed();
+      if (!saved) return failed('保存规范化后的 JSON 文件失败。');
       if (!isCurrent()) return { status: DATASET_LOAD_STATUS.STALE };
     }
 
     return { status: DATASET_LOAD_STATUS.READY, preparedJson, jsonData };
   } catch (error) {
-    return failed(`Failed to process JSON file: ${error.message}`);
+    return failed(toUserErrorMessage(error, '处理 JSON 文件失败。'));
   }
 }

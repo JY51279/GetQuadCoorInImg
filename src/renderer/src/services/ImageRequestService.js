@@ -1,5 +1,6 @@
 import { normalizeCoordinateScale } from '../utils/AnnotationCoordinates.js';
 import { loadRendererImage } from '../utils/RendererImageLoader.js';
+import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
 
 export const IMAGE_REQUEST_SOURCE = Object.freeze({
   MANUAL: 'manual',
@@ -85,7 +86,7 @@ export function createImageRequestService({
     return {
       status: IMAGE_REQUEST_STATUS.FAILED,
       request,
-      error: error || 'Unknown image loading error.',
+      error: toUserErrorMessage(error, USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR),
       path: normalizePath(path || request?.path),
     };
   }
@@ -108,13 +109,13 @@ export function createImageRequestService({
         y: imageInfo.coordinateScaleY,
       });
       if (coordinateScale === null) {
-        throw new Error('The prepared image coordinate scale must contain two positive finite values.');
+        throw new Error('处理后的图片坐标缩放比例必须包含两个有限正数。');
       }
 
       const image = await loadImage(imageInfo.url);
       if (!isCurrentRequest(request.requestId, isOperationCurrent)) return stale();
       if (image.naturalWidth !== imageInfo.displayWidth || image.naturalHeight !== imageInfo.displayHeight) {
-        throw new Error('The prepared image dimensions do not match the loaded image.');
+        throw new Error('处理后的图片尺寸与实际加载尺寸不一致。');
       }
 
       return {

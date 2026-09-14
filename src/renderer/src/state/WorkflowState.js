@@ -27,8 +27,23 @@ const ALLOWED_START_PHASES = Object.freeze({
   [WORKFLOW_OPERATION.SAVE]: new Set([WORKFLOW_PHASE.DATASET_READY, WORKFLOW_PHASE.READY]),
 });
 
+const OPERATION_LABELS = Object.freeze({
+  [WORKFLOW_OPERATION.LOAD_DATASET]: '加载图集',
+  [WORKFLOW_OPERATION.LOAD_IMAGE]: '加载图片',
+  [WORKFLOW_OPERATION.SAVE]: '保存数据',
+});
+
+const PHASE_LABELS = Object.freeze({
+  [WORKFLOW_PHASE.EMPTY]: '未加载图集',
+  [WORKFLOW_PHASE.DATASET_READY]: '图集已加载',
+  [WORKFLOW_PHASE.READY]: '可编辑',
+  [WORKFLOW_PHASE.LOADING_DATASET]: '正在加载图集',
+  [WORKFLOW_PHASE.LOADING_IMAGE]: '正在加载图片',
+  [WORKFLOW_PHASE.SAVING]: '正在保存数据',
+});
+
 export function createWorkflowState(phase = WORKFLOW_PHASE.EMPTY) {
-  if (!STABLE_PHASES.has(phase)) throw new Error(`Invalid initial workflow phase: ${phase}`);
+  if (!STABLE_PHASES.has(phase)) throw new Error(`初始工作流状态无效：${phase}`);
   return {
     phase,
     operationId: 0,
@@ -58,9 +73,9 @@ export function canChangeQuadSelection(state) {
 }
 
 function startOperation(state, type, context = {}) {
-  if (!state || !ALLOWED_START_PHASES[type]) return failure(state, 'Unknown workflow operation.');
+  if (!state || !ALLOWED_START_PHASES[type]) return failure(state, '工作流操作无效。');
   if (!canStartOperation(state, type)) {
-    return failure(state, `Cannot start ${type} while workflow is ${state.phase}.`);
+    return failure(state, `${PHASE_LABELS[state?.phase] ?? '当前'}状态下不能开始${OPERATION_LABELS[type]}。`);
   }
 
   const operationId = state.operationId + 1;
@@ -110,9 +125,9 @@ export function operationReturnsTo(state, operationId, phase) {
 }
 
 export function completeOperation(state, operationId, nextPhase = null) {
-  if (!isCurrentOperation(state, operationId)) return failure(state, 'The workflow operation is no longer current.');
+  if (!isCurrentOperation(state, operationId)) return failure(state, '该工作流操作已失效。');
   const completedPhase = nextPhase ?? state.operation.returnPhase;
-  if (!STABLE_PHASES.has(completedPhase)) return failure(state, `Invalid completion phase: ${completedPhase}.`);
+  if (!STABLE_PHASES.has(completedPhase)) return failure(state, `工作流结束状态无效：${completedPhase}。`);
   return success({ ...state, phase: completedPhase, operation: null });
 }
 
@@ -122,7 +137,7 @@ export function failOperation(state, operationId, fallbackPhase = null) {
 
 export function commitDataset(state, operationId) {
   if (!isCurrentOperation(state, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) {
-    return failure(state, 'The dataset load operation is no longer current.');
+    return failure(state, '图集加载操作已失效。');
   }
   return success({
     ...state,

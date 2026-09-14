@@ -61,7 +61,7 @@ describe('Main-process image file reader', () => {
     expect(Math.round(9999 * coordinateScale)).toBe(3999);
     expect(Math.round(3999 / coordinateScale)).toBe(9999);
     expect(calculateCoordinateScale(1, 1)).toBe(1);
-    expect(() => calculateCoordinateScale(2, 1)).toThrow('Cannot preserve editable coordinates');
+    expect(() => calculateCoordinateScale(2, 1)).toThrow('仅剩一个端点时无法保留可编辑坐标。');
   });
 
   it('keeps every non-degenerate source axis at least two pixels wide', () => {
@@ -69,7 +69,7 @@ describe('Main-process image file reader', () => {
     expect(calculateDisplaySize(1, 10000)).toEqual({ width: 1, height: 4096 });
     expect(calculateDisplaySize(100, 2, { maxPixels: 100, maxDimension: 100 })).toEqual({ width: 50, height: 2 });
     expect(() => calculateDisplaySize(4, 2, { maxPixels: 2, maxDimension: 4 })).toThrow(
-      'Image display limits are too small to preserve editable coordinates.',
+      '图片显示尺寸限制过小，无法保留可编辑坐标。',
     );
   });
 
@@ -123,7 +123,7 @@ describe('Main-process image file reader', () => {
     const imagePath = path.join(directory, 'image.txt');
     await fs.writeFile(imagePath, 'not an image');
 
-    await expect(prepareImageFile(imagePath)).rejects.toThrow('Unsupported image format');
+    await expect(prepareImageFile(imagePath)).rejects.toThrow('不支持该图片格式。');
   });
 
   it('rejects oversized encoded files before decoding them', async () => {
@@ -133,7 +133,7 @@ describe('Main-process image file reader', () => {
     await file.truncate(MAX_INPUT_FILE_BYTES + 1);
     await file.close();
 
-    await expect(prepareImageFile(imagePath)).rejects.toThrow('64 MB input limit');
+    await expect(prepareImageFile(imagePath)).rejects.toThrow('图片文件超过 64 MB 输入限制。');
   });
 
   it('converts TIFF data to a cached PNG', async () => {

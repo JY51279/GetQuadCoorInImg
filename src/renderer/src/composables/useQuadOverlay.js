@@ -124,7 +124,7 @@ export function useQuadOverlay({
 
   function toggleShownQuad(index) {
     if (!Number.isInteger(index) || index < 0 || index >= quads.length) {
-      outputMessage('newIndex out of range.');
+      outputMessage('Quad 显示序号超出范围。');
       return;
     }
     const shownIndex = shownQuadIndices.indexOf(index);
@@ -134,7 +134,7 @@ export function useQuadOverlay({
 
   function addShownQuad(index) {
     if (!Number.isInteger(index) || index < 0 || index >= quads.length) {
-      outputMessage('newIndex out of range.');
+      outputMessage('Quad 显示序号超出范围。');
       return;
     }
     if (!shownQuadIndices.includes(index)) {

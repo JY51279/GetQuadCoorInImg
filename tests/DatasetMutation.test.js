@@ -74,7 +74,7 @@ describe('Dataset mutations', () => {
 
     expect(result).toEqual({
       success: false,
-      error: 'Failed to map the selected points to valid dataset coordinates.',
+      error: '无法将所选点换算为有效的数据集坐标。',
     });
     expect(result.historyEntry).toBeUndefined();
     expect(getJsonFileInfo().str).toBe(before);
@@ -135,13 +135,13 @@ describe('Dataset mutations', () => {
 
     const result = updateQuadPointWithHistory(0, 1, { x: 0, y: 0 });
 
-    expect(result).toMatchObject({ success: false, error: 'A Quad must contain four distinct points.' });
+    expect(result).toMatchObject({ success: false, error: 'Quad 必须包含四个不同的点。' });
     expect(getJsonFileInfo().str).toBe(before);
 
     const concaveResult = updateQuadPointWithHistory(0, 1, { x: 3, y: 7 });
     expect(concaveResult).toMatchObject({
       success: false,
-      error: 'A Quad must remain convex and cannot contain crossing edges.',
+      error: 'Quad 必须保持凸四边形，且边不能交叉。',
     });
     expect(getJsonFileInfo().str).toBe(before);
   });
@@ -201,7 +201,7 @@ describe('Dataset mutations', () => {
     const invalidResult = updateJsonWithHistory(KEYS.JSON_ADD, 1, -1, [{ x: 20, y: 20 }]);
     expect(invalidResult).toEqual({
       success: false,
-      error: 'At least two selected points are required to create a Quad.',
+      error: '创建 Quad 至少需要选择两个点。',
     });
     expect(invalidResult.historyEntry).toBeUndefined();
     expect(getJsonFileInfo().str).toBe(beforeInvalidAdd);
@@ -217,7 +217,7 @@ describe('Dataset mutations', () => {
     ]);
     expect(degenerateRectangle).toMatchObject({
       success: false,
-      error: 'A Quad must contain four distinct points.',
+      error: 'Quad 必须包含四个不同的点。',
     });
 
     const concaveModify = updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [
@@ -228,7 +228,7 @@ describe('Dataset mutations', () => {
     ]);
     expect(concaveModify).toMatchObject({
       success: false,
-      error: 'A Quad must remain convex and cannot contain crossing edges.',
+      error: 'Quad 必须保持凸四边形，且边不能交叉。',
     });
 
     expect(degenerateRectangle.historyEntry).toBeUndefined();

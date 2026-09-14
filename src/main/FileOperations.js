@@ -46,7 +46,7 @@ function scheduleBackupCleanup(backupPath) {
 
 async function createLossyRepairBackup(filePath) {
   if (!lossyRepairBackupDirectory) {
-    throw new Error('Lossy repair backup storage is not initialized.');
+    throw new Error('有损修复备份目录尚未初始化。');
   }
 
   await cleanupExpiredLossyRepairBackups();
@@ -65,10 +65,10 @@ async function createLossyRepairBackup(filePath) {
 
 export async function saveJsonFileAtomically(data) {
   if (!data || typeof data.path !== 'string' || data.path.length === 0) {
-    throw new Error('Invalid JSON file path.');
+    throw new Error('JSON 文件路径无效。');
   }
   if (typeof data.str !== 'string') {
-    throw new Error('Invalid JSON content.');
+    throw new Error('JSON 内容无效。');
   }
 
   JSON.parse(data.str);

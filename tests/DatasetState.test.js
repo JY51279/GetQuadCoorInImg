@@ -42,7 +42,7 @@ describe('Dataset state operations', () => {
 
     expect(resetPicJson('C:/images/missing.png')).toEqual({
       success: false,
-      error: 'No JSON data found for image path:\nC:/images/missing.png',
+      error: '找不到与以下图片路径匹配的 JSON 数据：\nC:/images/missing.png',
     });
     expect(getCurrentJsonImageIndex()).toBe(-1);
   });
@@ -79,7 +79,7 @@ describe('Dataset state operations', () => {
       index: 0,
       path: 'C:/images/one.png',
     });
-    expect(getJsonImageTarget(2)).toEqual({ success: false, error: 'Invalid JSON image index.' });
+    expect(getJsonImageTarget(2)).toEqual({ success: false, error: 'JSON 图片序号无效。' });
   });
 
   it('starts a replacement dataset from its first image instead of the previous high index', () => {

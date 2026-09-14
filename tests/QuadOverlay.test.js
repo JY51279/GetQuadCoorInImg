@@ -93,6 +93,6 @@ describe('Quad overlay', () => {
     overlay.toggleShownQuad(2);
 
     expect([...overlay.shownQuadIndices]).toEqual([]);
-    expect(outputMessage).toHaveBeenCalledWith('newIndex out of range.');
+    expect(outputMessage).toHaveBeenCalledWith('Quad 显示序号超出范围。');
   });
 });

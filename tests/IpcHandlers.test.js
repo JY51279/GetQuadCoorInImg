@@ -99,7 +99,7 @@ describe('Main-process IPC handlers', () => {
     expect(event.reply).toHaveBeenCalledWith('choose-json-file-response', {
       success: false,
       requestId: 43,
-      error: 'read failed',
+      error: '读取 JSON 文件失败。',
     });
   });
 
@@ -112,7 +112,7 @@ describe('Main-process IPC handlers', () => {
     expect(event.reply).toHaveBeenCalledWith('choose-json-file-response', {
       success: false,
       requestId: 44,
-      error: 'dialog failed',
+      error: '打开 JSON 文件选择窗口失败。',
     });
   });
 
@@ -161,7 +161,7 @@ describe('Main-process IPC handlers', () => {
     await expect(handlePrepareImage(null, { requestId: 54, imagePath: '' })).resolves.toEqual({
       success: false,
       requestId: 54,
-      error: 'Invalid image path.',
+      error: '图片路径无效。',
       path: '',
     });
     expect(imageReaderMocks.prepareImageFile).not.toHaveBeenCalled();
@@ -181,7 +181,7 @@ describe('Main-process IPC handlers', () => {
     });
     expect(handleResolveJsonImagePaths(null, { imagePaths: [] })).toEqual({
       success: false,
-      error: 'Invalid image path resolution request.',
+      error: '图片路径解析请求无效。',
     });
   });
 
@@ -196,7 +196,7 @@ describe('Main-process IPC handlers', () => {
     fileOperationMocks.saveJsonFileAtomically.mockRejectedValue(new Error('disk full'));
     await expect(handleSaveJsonFile(null, { path: 'sample.json', str: '{}' })).resolves.toEqual({
       success: false,
-      error: 'disk full',
+      error: '保存 JSON 文件失败。',
     });
   });
 

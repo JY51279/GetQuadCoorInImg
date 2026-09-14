@@ -1,4 +1,5 @@
 import { rollbackDatasetMutation } from '../state/DatasetState.js';
+import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
 import {
   WORKFLOW_OPERATION,
   WORKFLOW_PHASE,
@@ -75,7 +76,7 @@ export function useDatasetSaveTransaction({
         rollbackFailed = true;
         completionPhase = WORKFLOW_PHASE.DATASET_READY;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
-          error: `JSON operation failed: ${error.message}`,
+          error: toUserErrorMessage(error, 'JSON 操作失败。'),
           rollbackFailed,
         });
       }
@@ -83,7 +84,7 @@ export function useDatasetSaveTransaction({
         rollbackFailed = mutationResult?.rollbackFailed === true;
         if (rollbackFailed) completionPhase = WORKFLOW_PHASE.DATASET_READY;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
-          error: mutationResult?.error || 'JSON operation failed.',
+          error: mutationResult?.error || 'JSON 操作失败。',
           rollbackFailed,
         });
       }
@@ -91,7 +92,7 @@ export function useDatasetSaveTransaction({
         rollbackFailed = true;
         completionPhase = WORKFLOW_PHASE.DATASET_READY;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
-          error: 'JSON operation returned an invalid mutation result.',
+          error: 'JSON 操作返回了无效的变更结果。',
           rollbackFailed,
         });
       }
@@ -103,7 +104,7 @@ export function useDatasetSaveTransaction({
         rollbackFailed = true;
         completionPhase = WORKFLOW_PHASE.DATASET_READY;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
-          error: 'JSON operation changed data without returning a rollback receipt.',
+          error: 'JSON 操作修改了数据，但没有返回可用于回滚的变更记录。',
           rollbackFailed,
         });
       }
@@ -114,26 +115,30 @@ export function useDatasetSaveTransaction({
       } catch (error) {
         if (!canApplySaveResult(workflowState.value, operationId, getCurrentImageIndex())) {
           return createResult(SAVE_TRANSACTION_STATUS.STALE, {
-            error: 'Ignored a stale save failure because the dataset or image context changed.',
+            error: '图集或图片已切换，已忽略过期的保存失败结果。',
             changed: true,
           });
         }
         restoreMutationState(mutationResult.receipt);
         return createResult(SAVE_TRANSACTION_STATUS.SAVE_FAILED, {
-          error: `Failed to save JSON: ${error.message}`,
+          error: toUserErrorMessage(error, USER_MESSAGES.JSON_SAVE_FAILED),
           rollbackFailed,
           changed: true,
         });
       }
       if (!canApplySaveResult(workflowState.value, operationId, getCurrentImageIndex())) {
         return createResult(SAVE_TRANSACTION_STATUS.STALE, {
-          error: 'Ignored a stale save result because the dataset or image context changed.',
+          error: '图集或图片已切换，已忽略过期的保存结果。',
           changed: true,
         });
       }
       if (!saved) {
         restoreMutationState(mutationResult.receipt);
-        return createResult(SAVE_TRANSACTION_STATUS.SAVE_FAILED, { rollbackFailed, changed: true });
+        return createResult(SAVE_TRANSACTION_STATUS.SAVE_FAILED, {
+          error: USER_MESSAGES.JSON_SAVE_FAILED,
+          rollbackFailed,
+          changed: true,
+        });
       }
       if (!finishOperation()) {
         return createResult(SAVE_TRANSACTION_STATUS.COMPLETION_FAILED, { changed: true });

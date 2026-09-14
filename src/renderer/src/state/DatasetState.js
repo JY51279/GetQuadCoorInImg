@@ -16,6 +16,7 @@ import {
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { prepareQuad, prepareQuadPointUpdate } from '../utils/QuadGeometry.js';
 import { HISTORY_DIRECTION } from './UndoRedoHistory.js';
+import { toUserErrorMessage } from '../../../shared/UserMessages.js';
 
 const ROOT_KEY = 'Picture';
 const IMAGE_SOURCE_KEY = 'Image Source';
@@ -51,7 +52,7 @@ export function areImagePathsEquivalent(leftPath, rightPath) {
 export function prepareJsonProcess(jsonData, { allowLossyRepairs = false } = {}) {
   try {
     if (!jsonData || typeof jsonData.str !== 'string' || typeof jsonData.path !== 'string') {
-      return { success: false, error: 'Invalid JSON file information.' };
+      return { success: false, error: 'JSON 文件信息无效。' };
     }
 
     const parsedJson = transStr2Json(jsonData.str);
@@ -86,7 +87,7 @@ export function prepareJsonProcess(jsonData, { allowLossyRepairs = false } = {})
       lossyRepairsApplied: allowLossyRepairs && normalizedResult.lossyIssues.length > 0,
     };
   } catch (err) {
-    return { success: false, error: err.message };
+    return { success: false, error: toUserErrorMessage(err, '解析 JSON 数据失败。') };
   }
 }
 
@@ -126,8 +127,8 @@ export function resetPicJson(imgFilePath, requestedImgIndex = null) {
     return {
       success: false,
       error: imgFilePath
-        ? `No JSON data found for image path:\n${imgFilePath}`
-        : 'No JSON data found for the current image.',
+        ? `找不到与以下图片路径匹配的 JSON 数据：\n${imgFilePath}`
+        : '找不到与当前图片匹配的 JSON 数据。',
     };
   }
 
@@ -136,7 +137,7 @@ export function resetPicJson(imgFilePath, requestedImgIndex = null) {
     if (!Object.prototype.hasOwnProperty.call(currentPicture, datasetState.productSchema.targetKey)) {
       datasetState.currentImageIndex = -1;
       clearCurrentAnnotationState();
-      return { success: false, error: 'The selected product type does not match the dataset type.' };
+      return { success: false, error: '所选产品类型与数据集类型不匹配。' };
     }
     datasetState.currentImageIndex = resolvedImageIndex;
     datasetState.currentItems = currentPicture[datasetState.productSchema.targetKey];
@@ -145,7 +146,7 @@ export function resetPicJson(imgFilePath, requestedImgIndex = null) {
     datasetState.currentImageIndex = -1;
     clearCurrentAnnotationState();
     console.error('An error occurred while accessing the JSON array:', err);
-    return { success: false, error: 'Failed to access the matching JSON image item.' };
+    return { success: false, error: '无法访问匹配的 JSON 图片项。' };
   }
 }
 
@@ -201,19 +202,19 @@ function prepareDatasetQuad(realDots, coordinateScale, baseItem = null) {
   // 根据显示图相对原图的横纵缩放比例换算坐标，但不要修改工作图片中的原始点
   const jsonDots = realDots.map(dot => imagePointToDatasetPoint(dot, coordinateScale));
   if (jsonDots.some(dot => dot === null)) {
-    return { success: false, error: 'Failed to map the selected points to valid dataset coordinates.' };
+    return { success: false, error: '无法将所选点换算为有效的数据集坐标。' };
   }
 
   // 判断是否为一个元素，并仅修改与当前点最近的点
   if (jsonDots.length === 1) {
     if (!baseItem) {
-      return { success: false, error: 'At least two selected points are required to create a Quad.' };
+      return { success: false, error: '创建 Quad 至少需要选择两个点。' };
     }
     const newPoint = jsonDots[0];
     const currentPoints = parsePointString2Array(baseItem[datasetState.productSchema.ItemKey], POINT_SEPARATOR);
     const closestIndex = getNearestOrFarthestPointIndex(currentPoints, newPoint);
     if (closestIndex === -1) {
-      return { success: false, error: 'Failed to find the nearest Quad point.' };
+      return { success: false, error: '无法找到最近的 Quad 顶点。' };
     }
     return prepareQuadPointUpdate(currentPoints, closestIndex, newPoint, baseItem['Barcode Type'] ?? '');
   }
@@ -261,7 +262,7 @@ function createDatasetMutationReceipt(entries, direction) {
 
 function runJsonMutationWithHistory(action, itemIndex, mutate) {
   if (datasetState.currentImageIndex < 0) {
-    return { success: false, error: 'No JSON image is currently active.' };
+    return { success: false, error: '当前没有激活的 JSON 图片。' };
   }
 
   const beforeItem =
@@ -310,7 +311,7 @@ export function updateJsonWithHistory(action = KEYS.JSON_MODIFY, coordinateScale
 function updateQuadPoint(activeQuadIndex, pointIndex, nextPoint) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
-      return 'Failed to find jsonItem.';
+      return '找不到对应的 JSON 标注项。';
     }
 
     const targetItem = datasetState.currentItems[activeQuadIndex];
@@ -325,7 +326,7 @@ function updateQuadPoint(activeQuadIndex, pointIndex, nextPoint) {
 
     targetItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedPoints.points);
     return KEYS.OPERATE_SUCCESS;
-  }, 'Failed to update the dragged Quad point.');
+  }, '更新拖动后的 Quad 顶点失败。');
 }
 
 export function updateQuadPointWithHistory(activeQuadIndex = -1, pointIndex = -1, nextPoint = null) {
@@ -338,7 +339,7 @@ export function applyJsonHistoryEntry(historyEntry, direction) {
   const isUndo = direction === 'undo';
   const isRedo = direction === 'redo';
   if (!historyEntry || (!isUndo && !isRedo)) {
-    return { success: false, error: 'Invalid JSON history operation.' };
+    return { success: false, error: 'JSON 历史操作无效。' };
   }
 
   const { imageIndex, itemIndex, beforeItem, afterItem } = historyEntry;
@@ -346,7 +347,7 @@ export function applyJsonHistoryEntry(historyEntry, direction) {
   const picture = Array.isArray(pictures) ? pictures[imageIndex] : null;
   const items = picture?.[datasetState.productSchema.targetKey];
   if (!Number.isInteger(itemIndex) || itemIndex < 0 || !Array.isArray(items)) {
-    return { success: false, error: 'The JSON history no longer matches the current dataset.' };
+    return { success: false, error: 'JSON 历史记录已与当前数据集不一致。' };
   }
 
   const expectedItem = isUndo ? afterItem : beforeItem;
@@ -355,19 +356,19 @@ export function applyJsonHistoryEntry(historyEntry, direction) {
 
   if (targetItem === null) {
     if (itemIndex >= items.length || !jsonValuesEqual(items[itemIndex], expectedItem)) {
-      return { success: false, error: 'The JSON item to remove no longer matches its history.' };
+      return { success: false, error: '待删除的 JSON 标注项已与历史记录不一致。' };
     }
     items.splice(itemIndex, 1);
     mutationType = 'delete';
   } else if (expectedItem === null) {
     if (itemIndex > items.length) {
-      return { success: false, error: 'The JSON insertion position no longer matches its history.' };
+      return { success: false, error: 'JSON 插入位置已与历史记录不一致。' };
     }
     items.splice(itemIndex, 0, cloneDeep(targetItem));
     mutationType = 'insert';
   } else {
     if (itemIndex >= items.length || !jsonValuesEqual(items[itemIndex], expectedItem)) {
-      return { success: false, error: 'The JSON item to replace no longer matches its history.' };
+      return { success: false, error: '待替换的 JSON 标注项已与历史记录不一致。' };
     }
     items.splice(itemIndex, 1, cloneDeep(targetItem));
     mutationType = 'replace';
@@ -387,7 +388,7 @@ export function applyJsonHistoryEntry(historyEntry, direction) {
 
 export function rollbackDatasetMutation(receipt) {
   if (!receipt || !Array.isArray(receipt.entries) || !isHistoryDirection(receipt.direction)) {
-    return { success: false, error: 'Invalid dataset mutation receipt.' };
+    return { success: false, error: '数据集变更记录无效。' };
   }
 
   const rollbackDirection =
@@ -398,7 +399,7 @@ export function rollbackDatasetMutation(receipt) {
     if (!mutationResult.success) {
       return {
         success: false,
-        error: `Failed to roll back a dataset mutation: ${mutationResult.error}`,
+        error: `回滚数据集变更失败：${mutationResult.error}`,
         mutationResults,
       };
     }
@@ -410,7 +411,7 @@ export function rollbackDatasetMutation(receipt) {
 
 export function applyJsonHistoryEntriesWithReceipt(historyEntries, direction) {
   if (!Array.isArray(historyEntries) || !isHistoryDirection(direction)) {
-    return { success: false, error: 'Invalid JSON history transition.', rollbackFailed: false };
+    return { success: false, error: 'JSON 历史跳转无效。', rollbackFailed: false };
   }
   if (historyEntries.length === 0) {
     return { success: true, changed: false, receipt: null, mutationResults: [] };
@@ -444,24 +445,24 @@ export function applyJsonHistoryEntriesWithReceipt(historyEntries, direction) {
 function modifyJsonContent(coordinateScale, activeQuadIndex, selectedDots) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
-      return 'Failed to find jsonItem.';
+      return '找不到对应的 JSON 标注项。';
     }
     const targetItem = datasetState.currentItems[activeQuadIndex];
     const preparedQuad = prepareDatasetQuad(selectedDots, coordinateScale, targetItem);
     if (!preparedQuad.success) return preparedQuad.error;
     targetItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedQuad.points);
     return KEYS.OPERATE_SUCCESS;
-  }, 'Failed to modify jsonItem.');
+  }, '修改 JSON 标注项失败。');
 }
 
 function deleteJsonContent(activeQuadIndex) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
-      return 'Failed to find jsonItem.';
+      return '找不到对应的 JSON 标注项。';
     }
     datasetState.currentItems.splice(activeQuadIndex, 1);
     return KEYS.OPERATE_SUCCESS;
-  }, 'Failed to delete jsonItem.');
+  }, '删除 JSON 标注项失败。');
 }
 
 function addJsonContent(coordinateScale, selectedDots) {
@@ -475,7 +476,7 @@ function addJsonContent(coordinateScale, selectedDots) {
 
     datasetState.currentItems.push(newItem);
     return KEYS.OPERATE_SUCCESS;
-  }, 'Failed to add jsonItem.');
+  }, '新增 JSON 标注项失败。');
 }
 
 function createDefaultJsonItem() {
@@ -503,10 +504,10 @@ function operateJsonContent(callback, errorMessage) {
 
 function createJsonImageTarget(index) {
   if (!Array.isArray(datasetState.dataset[ROOT_KEY]) || datasetState.dataset[ROOT_KEY].length === 0) {
-    return { success: false, error: 'No image data is available in the loaded JSON dataset.' };
+    return { success: false, error: '当前 JSON 数据集中没有可用的图片数据。' };
   }
   if (!Number.isInteger(index) || index < 0 || index >= datasetState.dataset[ROOT_KEY].length) {
-    return { success: false, error: 'Invalid JSON image index.' };
+    return { success: false, error: 'JSON 图片序号无效。' };
   }
 
   return { success: true, index, path: datasetState.imagePaths[index] };
@@ -518,12 +519,12 @@ export function getJsonImageTarget(index) {
 
 export function getAdjacentJsonImageTarget(direction, baseIndex = datasetState.currentImageIndex) {
   if (!Array.isArray(datasetState.dataset[ROOT_KEY]) || datasetState.dataset[ROOT_KEY].length === 0) {
-    return { success: false, error: 'No image data is available in the loaded JSON dataset.' };
+    return { success: false, error: '当前 JSON 数据集中没有可用的图片数据。' };
   }
 
   const totalImages = datasetState.dataset[ROOT_KEY].length;
   if (!Number.isInteger(baseIndex) || baseIndex < -1 || baseIndex >= totalImages) {
-    return { success: false, error: 'Invalid JSON image index.' };
+    return { success: false, error: 'JSON 图片序号无效。' };
   }
   if (direction === KEYS.NEXT) {
     return createJsonImageTarget((baseIndex + 1) % totalImages);
@@ -532,7 +533,7 @@ export function getAdjacentJsonImageTarget(direction, baseIndex = datasetState.c
     const previousIndex = baseIndex < 0 ? totalImages - 1 : (baseIndex - 1 + totalImages) % totalImages;
     return createJsonImageTarget(previousIndex);
   }
-  return { success: false, error: 'Invalid JSON image navigation direction.' };
+  return { success: false, error: 'JSON 图片导航方向无效。' };
 }
 
 export function resetJsonNoValue() {

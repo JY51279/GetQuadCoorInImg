@@ -80,19 +80,19 @@ export function isPointInQuad(point, quadPoints) {
 function validateCanonicalQuad(points) {
   const uniquePoints = new Set(points.map(point => `${point.x},${point.y}`));
   if (uniquePoints.size !== 4) {
-    return { success: false, error: 'A Quad must contain four distinct points.' };
+    return { success: false, error: 'Quad 必须包含四个不同的点。' };
   }
 
   let turnDirection = 0;
   for (let index = 0; index < points.length; index++) {
     const cross = getTurnCrossProduct(points[index], points[(index + 1) % 4], points[(index + 2) % 4]);
     if (cross === 0) {
-      return { success: false, error: 'A Quad cannot contain three collinear points.' };
+      return { success: false, error: 'Quad 不能包含三个共线点。' };
     }
 
     const currentDirection = Math.sign(cross);
     if (turnDirection !== 0 && currentDirection !== turnDirection) {
-      return { success: false, error: 'A Quad must remain convex and cannot contain crossing edges.' };
+      return { success: false, error: 'Quad 必须保持凸四边形，且边不能交叉。' };
     }
     turnDirection = currentDirection;
   }
@@ -102,10 +102,10 @@ function validateCanonicalQuad(points) {
 
 export function prepareQuad(points, barcodeType = '') {
   if (!Array.isArray(points) || points.length < 2 || points.length > 4) {
-    return { success: false, error: 'A Quad requires two, three, or four input points.' };
+    return { success: false, error: '创建 Quad 需要输入两个、三个或四个点。' };
   }
   if (!points.every(isSafeIntegerPoint)) {
-    return { success: false, error: 'A Quad must contain valid integer points.' };
+    return { success: false, error: 'Quad 必须包含有效的整数坐标点。' };
   }
 
   const normalizedPoints = points.map(point => ({ ...point }));
@@ -121,10 +121,10 @@ export function prepareQuad(points, barcodeType = '') {
   }
 
   if (!normalizedPoints.every(isSafeIntegerPoint)) {
-    return { success: false, error: 'The completed Quad coordinates exceed the safe integer range.' };
+    return { success: false, error: '补全后的 Quad 坐标超出安全整数范围。' };
   }
   if (!sortQuadPointsClockwise(normalizedPoints, barcodeType)) {
-    return { success: false, error: 'Failed to normalize the Quad point order.' };
+    return { success: false, error: '无法规范化 Quad 顶点顺序。' };
   }
 
   const validationResult = validateCanonicalQuad(normalizedPoints);
@@ -134,13 +134,13 @@ export function prepareQuad(points, barcodeType = '') {
 
 export function prepareQuadPointUpdate(points, pointIndex, nextPoint, barcodeType = '') {
   if (!Array.isArray(points) || points.length !== 4 || !points.every(isSafeIntegerPoint)) {
-    return { success: false, error: 'The current Quad does not contain four valid integer points.' };
+    return { success: false, error: '当前 Quad 不包含四个有效的整数坐标点。' };
   }
   if (!Number.isInteger(pointIndex) || pointIndex < 0 || pointIndex >= points.length) {
-    return { success: false, error: 'The Quad point index is invalid.' };
+    return { success: false, error: 'Quad 顶点序号无效。' };
   }
   if (!isSafeIntegerPoint(nextPoint)) {
-    return { success: false, error: 'The Quad point coordinates are invalid.' };
+    return { success: false, error: 'Quad 顶点坐标无效。' };
   }
 
   const normalizedPoints = points.map(point => ({ ...point }));

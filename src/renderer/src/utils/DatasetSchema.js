@@ -93,7 +93,7 @@ export function detectProductType(pictures) {
   if (matchedMainProducts.length > 1) {
     return {
       success: false,
-      error: `Dataset contains conflicting product fields: ${matchedMainProducts.join(', ')}.`,
+      error: `数据集中包含相互冲突的产品字段：${matchedMainProducts.join('、')}。`,
     };
   }
   if (matchedMainProducts.length === 1) {
@@ -107,7 +107,7 @@ export function detectProductType(pictures) {
   if (matchedItemProducts.length > 1) {
     return {
       success: false,
-      error: `Dataset contains conflicting product fields: ${matchedItemProducts.join(', ')}.`,
+      error: `数据集中包含相互冲突的产品字段：${matchedItemProducts.join('、')}。`,
     };
   }
   if (matchedItemProducts.length === 1) {
@@ -116,7 +116,7 @@ export function detectProductType(pictures) {
 
   return {
     success: false,
-    error: 'Unable to determine the product type: no DBR, DDN, or DLR signature fields were found.',
+    error: '无法确定产品类型：未找到 DBR、DDN 或 DLR 的特征字段。',
   };
 }
 
@@ -165,10 +165,10 @@ function createLossyIssue(type, path, message) {
 
 export function analyzeDataset(rawDataset) {
   if (!isObject(rawDataset)) {
-    return fail('JSON root must be an object.');
+    return fail('JSON 根节点必须是对象。');
   }
   if (!hasOwn(rawDataset, ROOT_KEY) || !Array.isArray(rawDataset[ROOT_KEY])) {
-    return fail('Picture must exist and be an array.');
+    return fail('必须存在 Picture 字段，且其值必须是数组。');
   }
 
   const productResult = detectProductType(rawDataset[ROOT_KEY]);
@@ -181,31 +181,25 @@ export function analyzeDataset(rawDataset) {
     const picture = rawDataset[ROOT_KEY][pictureIndex];
     const picturePath = `${ROOT_KEY}[${pictureIndex}]`;
     if (!isObject(picture)) {
-      lossyIssues.push(createLossyIssue('remove-picture', picturePath, 'remove this item because it is not an object'));
+      lossyIssues.push(createLossyIssue('remove-picture', picturePath, '该项不是对象，将被删除'));
       continue;
     }
 
     const imageSource = picture[IMAGE_SOURCE_KEY];
     if (typeof imageSource !== 'string' || imageSource.trim() === '') {
-      lossyIssues.push(
-        createLossyIssue(
-          'remove-picture',
-          picturePath,
-          `remove this item because ${IMAGE_SOURCE_KEY} is missing or empty`,
-        ),
-      );
+      lossyIssues.push(createLossyIssue('remove-picture', picturePath, `${IMAGE_SOURCE_KEY} 缺失或为空，该项将被删除`));
       continue;
     }
 
     if (hasOwn(picture, schema.targetKey) && !Array.isArray(picture[schema.targetKey])) {
-      return fail(`${schema.targetKey} must be an array at ${picturePath}.`);
+      return fail(`${picturePath} 中的 ${schema.targetKey} 必须是数组。`);
     }
 
     const items = picture[schema.targetKey] ?? [];
     for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
       const item = items[itemIndex];
       if (!isObject(item)) {
-        return fail(`${schema.targetKey}[${itemIndex}] must be an object at ${picturePath}.`);
+        return fail(`${picturePath} 中的 ${schema.targetKey}[${itemIndex}] 必须是对象。`);
       }
 
       if (!normalizeLocation(item[schema.ItemKey]).valid) {
@@ -213,7 +207,7 @@ export function analyzeDataset(rawDataset) {
           createLossyIssue(
             'reset-location',
             `${picturePath}.${schema.targetKey}[${itemIndex}].${schema.ItemKey}`,
-            `replace the invalid or missing coordinate value with ${DEFAULT_LOCATION}`,
+            `无效或缺失的坐标将替换为 ${DEFAULT_LOCATION}`,
           ),
         );
       }
@@ -263,14 +257,14 @@ export function normalizeDataset(rawDataset, { allowLossyRepairs = false } = {})
       picture[schema.targetKey] = [];
       repairs.fieldsAdded++;
     } else if (!Array.isArray(picture[schema.targetKey])) {
-      return fail(`${schema.targetKey} must be an array at Picture[${pictureIndex}].`);
+      return fail(`Picture[${pictureIndex}] 中的 ${schema.targetKey} 必须是数组。`);
     }
 
     const items = picture[schema.targetKey];
     for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
       const item = items[itemIndex];
       if (!isObject(item)) {
-        return fail(`${schema.targetKey}[${itemIndex}] must be an object at Picture[${pictureIndex}].`);
+        return fail(`Picture[${pictureIndex}] 中的 ${schema.targetKey}[${itemIndex}] 必须是对象。`);
       }
 
       const locationResult = normalizeLocation(item[schema.ItemKey]);
@@ -330,21 +324,21 @@ export function formatLossyRepairSummary(lossyIssues, detailLimit = 8) {
   if (!Array.isArray(lossyIssues) || lossyIssues.length === 0) return '';
 
   const visibleIssues = lossyIssues.slice(0, detailLimit);
-  const lines = visibleIssues.map(issue => `- ${issue.path}: ${issue.message}.`);
+  const lines = visibleIssues.map(issue => `- ${issue.path}：${issue.message}。`);
   if (lossyIssues.length > visibleIssues.length) {
-    lines.push(`- ...and ${lossyIssues.length - visibleIssues.length} more lossy repair(s).`);
+    lines.push(`- 另有 ${lossyIssues.length - visibleIssues.length} 项有损修复未列出。`);
   }
-  return `The dataset requires ${lossyIssues.length} lossy repair(s):\n${lines.join('\n')}`;
+  return `数据集需要执行 ${lossyIssues.length} 项有损修复：\n${lines.join('\n')}`;
 }
 
 export function formatRepairSummary(repairs) {
   const parts = [];
-  if (repairs.removedPictures) parts.push(`removed ${repairs.removedPictures} invalid image item(s)`);
-  if (repairs.fieldsAdded) parts.push(`added ${repairs.fieldsAdded} missing field(s)`);
-  if (repairs.arraysWrapped) parts.push(`wrapped ${repairs.arraysWrapped} value(s) in arrays`);
-  if (repairs.locationsReset) parts.push(`reset ${repairs.locationsReset} invalid location(s)`);
-  if (repairs.locationsNormalized) parts.push(`normalized ${repairs.locationsNormalized} location(s)`);
-  if (repairs.countsUpdated) parts.push(`updated ${repairs.countsUpdated} count value(s)`);
-  if (repairs.numbersUpdated) parts.push(`renumbered ${repairs.numbersUpdated} image item(s)`);
-  return parts.length > 0 ? `JSON normalized: ${parts.join(', ')}.` : '';
+  if (repairs.removedPictures) parts.push(`删除 ${repairs.removedPictures} 个无效图片项`);
+  if (repairs.fieldsAdded) parts.push(`补充 ${repairs.fieldsAdded} 个缺失字段`);
+  if (repairs.arraysWrapped) parts.push(`将 ${repairs.arraysWrapped} 个值转换为数组`);
+  if (repairs.locationsReset) parts.push(`重置 ${repairs.locationsReset} 个无效坐标`);
+  if (repairs.locationsNormalized) parts.push(`规范化 ${repairs.locationsNormalized} 个坐标`);
+  if (repairs.countsUpdated) parts.push(`更新 ${repairs.countsUpdated} 个数量值`);
+  if (repairs.numbersUpdated) parts.push(`重新编号 ${repairs.numbersUpdated} 个图片项`);
+  return parts.length > 0 ? `JSON 已规范化：${parts.join('，')}。` : '';
 }

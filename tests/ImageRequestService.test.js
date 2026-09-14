@@ -108,14 +108,14 @@ describe('Image request service', () => {
 
     await expect(service.handleResponse(invalidScaleResponse)).resolves.toMatchObject({
       status: IMAGE_REQUEST_STATUS.FAILED,
-      error: 'The prepared image coordinate scale must contain two positive finite values.',
+      error: '处理后的图片坐标缩放比例必须包含两个有限正数。',
     });
     expect(loadImage).not.toHaveBeenCalled();
 
     const sizeRequest = service.beginManualRequest(2);
     await expect(service.handleResponse(createImageResponse(sizeRequest.requestId))).resolves.toMatchObject({
       status: IMAGE_REQUEST_STATUS.FAILED,
-      error: 'The prepared image dimensions do not match the loaded image.',
+      error: '处理后的图片尺寸与实际加载尺寸不一致。',
     });
   });
 
@@ -138,7 +138,7 @@ describe('Image request service', () => {
     await expect(service.execute('prepare-image', { requestId: failedRequest.requestId })).resolves.toMatchObject({
       status: IMAGE_REQUEST_STATUS.FAILED,
       request: failedRequest,
-      error: 'decode failed',
+      error: '图片加载失败，原因未知。',
       path: 'C:/images/missing.png',
     });
   });

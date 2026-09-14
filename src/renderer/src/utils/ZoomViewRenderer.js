@@ -5,7 +5,7 @@ const ZOOM_CENTER_INDEX = 3;
 
 function getZoomContext(canvas) {
   const context = canvas?.getContext('2d');
-  if (context == null) throw new Error('Failed to create the zoom canvas context.');
+  if (context == null) throw new Error('无法创建像素预览画布。');
   return context;
 }
 

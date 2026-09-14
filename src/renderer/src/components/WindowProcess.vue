@@ -386,6 +386,7 @@ import {
   startDatasetLoad,
   startImageLoad,
 } from '../state/WorkflowState.js';
+import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 const { save: saveJsonFileRequest } = createJsonFileService({
@@ -695,24 +696,24 @@ function resetPosition() {
 
 function focusActiveQuad() {
   if (!canFocusQuad.value) {
-    outputMessage('Please activate a Quad before focusing it.');
+    outputMessage('请先激活一个 Quad，再执行聚焦。');
     return;
   }
   const result = imgContainerRef.value?.focusQuad(activeQuadIndex.value);
-  if (!result?.success) outputMessage(result?.error || 'Failed to focus the active Quad.');
+  if (!result?.success) outputMessage(result?.error || '无法聚焦当前 Quad。');
 }
 
 function focusPixelAtMouse() {
   const result = imgContainerRef.value?.focusPixelAtMouse();
-  if (!result?.success) outputMessage(result?.error || 'Failed to focus the pixel under the mouse.');
+  if (!result?.success) outputMessage(result?.error || '无法聚焦鼠标所在像素。');
 }
 
 // JSON Operations
 async function runSaveTransaction(mutate, onCompleted = () => {}) {
   const result = await executeSaveTransaction(mutate);
   if (result.rollbackFailed) {
-    outputMessage('Failed to restore JSON state after the operation error. Please reload the dataset.');
-    clearCurrentAnnotations('JSON state is unavailable. Please reload the dataset.');
+    outputMessage('操作失败后无法恢复 JSON 状态，请重新加载图集。');
+    clearCurrentAnnotations('JSON 状态不可用，请重新加载图集。');
   }
   if (result.error) outputMessage(result.error);
   if (!result.success) return false;
@@ -731,14 +732,14 @@ async function commitQuadPointDrag(payload) {
     pointIndex >= 4
   ) {
     refreshCurrentAnnotations({ redrawOverlay: true });
-    outputMessage('The dragged Quad point no longer matches the active annotation.');
+    outputMessage('拖动的 Quad 顶点已与当前标注不匹配。');
     return;
   }
 
   const datasetPoint = imagePointToDatasetPoint(imagePoint, imageCoordinateScale.value);
   if (datasetPoint === null) {
     refreshCurrentAnnotations({ redrawOverlay: true });
-    outputMessage('Failed to map the dragged point to the dataset coordinates.');
+    outputMessage('无法将拖动后的点换算为数据集坐标。');
     return;
   }
 
@@ -762,7 +763,7 @@ async function commitQuadPointDrag(payload) {
 
 async function performJsonAction(action) {
   if (!canOperate.value) {
-    outputMessage('JSON operation is disabled until the image matches the dataset.');
+    outputMessage('当前图片尚未匹配数据集，不能执行 JSON 操作。');
     return;
   }
 
@@ -770,7 +771,6 @@ async function performJsonAction(action) {
   let historyEntry = null;
   await runSaveTransaction(
     () => {
-      outputMessage('Start operate: ' + action);
       const updateResult = updateJsonWithHistory(
         action,
         imageCoordinateScale.value,
@@ -892,11 +892,11 @@ async function saveJsonFile() {
 async function saveJsonFileInfo(jsonFileInfo, { backupOriginal = false } = {}) {
   const result = await saveJsonFileRequest(jsonFileInfo, { backupOriginal });
   if (!result.success) {
-    outputMessage(`Failed to save JSON: ${result.error}`);
+    outputMessage(result.error || USER_MESSAGES.JSON_SAVE_FAILED);
     return false;
   }
   if (result.backupPath) {
-    outputMessage(`Temporary JSON backup created and scheduled for automatic deletion in 7 days: ${result.backupPath}`);
+    outputMessage(`已创建临时 JSON 备份，将在 7 天后自动删除：${result.backupPath}`);
   }
   return true;
 }
@@ -911,7 +911,7 @@ function refreshImagePositionView() {
 async function initProcessInfo(jsonImageIndex = null) {
   try {
     if (!imageObj.value || imageObj.value.src === '') {
-      outputMessage('initProcessInfo Error.');
+      outputMessage('图片初始化失败。');
       return false;
     } else {
       await nextTick();
@@ -923,8 +923,8 @@ async function initProcessInfo(jsonImageIndex = null) {
       clearCurrentAnnotations(
         resetPictureResult.error ||
           (imgFilePath
-            ? `No JSON data found for image path:\n${imgFilePath}`
-            : 'No JSON data found for the current image.'),
+            ? `找不到与以下图片路径匹配的 JSON 数据：\n${imgFilePath}`
+            : '找不到与当前图片匹配的 JSON 数据。'),
       );
       refreshImagePositionView();
       jumpImageIndex.value = '';
@@ -939,6 +939,8 @@ async function initProcessInfo(jsonImageIndex = null) {
     console.error(`Error name: ${error.name}`);
     console.error(`Error message: ${error.message}`);
     console.error(`Stack trace: ${error.stack}`);
+    outputMessage('初始化图片和标注数据失败。');
+    return false;
   }
 }
 
@@ -982,11 +984,11 @@ function clearCurrentAnnotations(errorMessage = '') {
 // Image request lifecycle
 function chooseImgFile() {
   if (!canLoadImage.value) {
-    outputMessage(workflowBusy.value ? 'Please wait for the current operation to finish.' : 'No dataset is available.');
+    outputMessage(workflowBusy.value ? USER_MESSAGES.WAIT_FOR_CURRENT_OPERATION : USER_MESSAGES.NO_DATASET);
     return;
   }
   if (getJsonImagePosition().total === 0) {
-    outputMessage('Please load a JSON dataset with image items first.');
+    outputMessage('请先加载包含图片项的 JSON 图集。');
     return;
   }
   try {
@@ -1004,13 +1006,13 @@ function chooseImgFile() {
     });
   } catch (error) {
     console.error('Error while sending IPC message open-image-file-dialog:', error);
-    handleImageRequestFailure(error.message);
+    handleImageRequestFailure(toUserErrorMessage(error, USER_MESSAGES.IMAGE_OPEN_FAILED));
   }
 }
 
 function changeImageByArrowKeys(direction) {
   if (!canLoadImage.value) {
-    outputMessage('Please wait for the current operation to finish.');
+    outputMessage(USER_MESSAGES.WAIT_FOR_CURRENT_OPERATION);
     return;
   }
 
@@ -1024,20 +1026,20 @@ function changeImageByArrowKeys(direction) {
 
 function jumpToImageIndex() {
   if (!canLoadImage.value) {
-    outputMessage('Please wait for the current operation to finish.');
+    outputMessage(USER_MESSAGES.WAIT_FOR_CURRENT_OPERATION);
     return;
   }
 
   const inputValue = String(jumpImageIndex.value).trim();
   if (!/^\d+$/.test(inputValue)) {
-    outputMessage('Image index must be an integer starting from 1.');
+    outputMessage('图片序号必须是从 1 开始的整数。');
     return;
   }
 
   const pictureNumber = Number(inputValue);
   const { total } = getJsonImagePosition();
   if (!Number.isSafeInteger(pictureNumber) || pictureNumber < 1 || pictureNumber > total) {
-    outputMessage(`Image index must be between 1 and ${total}.`);
+    outputMessage(`图片序号必须在 1 到 ${total} 之间。`);
     return;
   }
 
@@ -1056,7 +1058,7 @@ function handleJumpToImageIndexKeyDown(event) {
 function sendImageFileRequest(path, requestId) {
   const { jsonFilePath } = getJsonImageDialogContext();
   void requestPreparedImage('prepare-image', { imagePath: path, jsonFilePath, requestId });
-  outputMessage('Get file response...');
+  outputMessage('正在读取图片…');
 }
 
 async function requestPreparedImage(channel, request) {
@@ -1096,8 +1098,8 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
 
 function handleImageRequestFailure(errorMessage, failedPath = '') {
   const failedRequest = getActiveRequest();
-  outputMessage(`Failed to open image${failedPath ? `: ${failedPath}` : ''}.`);
-  outputMessage(errorMessage || 'Unknown image loading error.');
+  outputMessage(`打开图片失败${failedPath ? `：${failedPath}` : '。'}`);
+  outputMessage(errorMessage || USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR);
 
   const canRestorePreviousImage = operationReturnsTo(
     workflowState.value,
@@ -1106,7 +1108,7 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
   );
   const failurePlan = planImageRequestFailure({ canRestorePreviousImage });
   if (failurePlan.action === IMAGE_FAILURE_ACTION.RETRY) {
-    outputMessage(`Skipping unavailable image and trying JSON item ${failurePlan.target.index + 1}.`);
+    outputMessage(`正在跳过不可用图片，并尝试 JSON 中的第 ${failurePlan.target.index + 1} 项。`);
     startDatasetImageRequest(failurePlan.target, failedRequest.direction, failurePlan.previousRequest);
     return;
   }
@@ -1123,7 +1125,7 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
     jumpImageIndex.value = '';
     imageLoadError.value = {
       path: failedPath,
-      message: errorMessage || 'Unknown image loading error.',
+      message: errorMessage || USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR,
     };
     resetDots();
     resetZoomPreview();
@@ -1164,7 +1166,7 @@ async function handleImageRequestResult(result) {
     ),
   );
   resetImageRequestState();
-  outputMessage(isReady ? 'Load Pic Successfully.' : 'Image loaded, but no matching JSON data was found.');
+  outputMessage(isReady ? '图片加载成功。' : '图片已加载，但没有找到匹配的 JSON 数据。');
 }
 
 function resetImageForDatasetChange() {
@@ -1185,7 +1187,7 @@ function resetImageForDatasetChange() {
 
 function chooseJsonFile() {
   if (!canLoadDataset.value) {
-    outputMessage('Please wait for the current operation to finish.');
+    outputMessage(USER_MESSAGES.WAIT_FOR_CURRENT_OPERATION);
     return;
   }
   const started = startDatasetLoad(workflowState.value);
@@ -1197,6 +1199,7 @@ function chooseJsonFile() {
     ipcRenderer.send('open-json-file-dialog', { requestId: started.operationId });
   } catch (error) {
     console.error('Error while sending IPC message open-json-file-dialog:', error);
+    outputMessage(toUserErrorMessage(error, USER_MESSAGES.JSON_OPEN_FAILED));
     applyWorkflowTransition(failOperation(workflowState.value, started.operationId));
   }
 }
@@ -1225,7 +1228,7 @@ async function handleChooseJsonFileResponse(_event, response) {
 
   const { preparedJson, jsonData } = loadResult;
   if (!commitPreparedJsonProcess(preparedJson)) {
-    failDatasetLoad(operationId, 'Failed to load JSON: unable to commit the prepared dataset.');
+    failDatasetLoad(operationId, '加载 JSON 失败：无法提交处理后的数据集。');
     return;
   }
   if (!applyWorkflowTransition(commitDataset(workflowState.value, operationId))) return;
@@ -1237,7 +1240,7 @@ async function handleChooseJsonFileResponse(_event, response) {
   if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
 
   if (preparedJson.data.Picture.length === 0) {
-    outputMessage('JSON loaded successfully, but the dataset contains no valid image items.');
+    outputMessage('JSON 已加载，但数据集中没有有效的图片项。');
     return;
   }
 
