@@ -15,6 +15,7 @@ import {
 } from '../utils/DatasetSchema.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { prepareQuad, prepareQuadPointUpdate } from '../utils/QuadGeometry.js';
+import { HISTORY_DIRECTION } from './UndoRedoHistory.js';
 
 const ROOT_KEY = 'Picture';
 const IMAGE_SOURCE_KEY = 'Image Source';
@@ -196,31 +197,6 @@ export function getJsonFileInfo() {
   };
 }
 
-export function createDatasetMutationSnapshot() {
-  return transJson2Str(datasetState.dataset);
-}
-
-export function restoreDatasetMutationSnapshot(snapshot) {
-  try {
-    const restoredDataset = transStr2Json(snapshot);
-    if (!restoredDataset || !Array.isArray(restoredDataset[ROOT_KEY])) return false;
-
-    const currentPicture = restoredDataset[ROOT_KEY][datasetState.currentImageIndex];
-    if (
-      datasetState.currentImageIndex >= 0 &&
-      (!currentPicture || !Array.isArray(currentPicture[datasetState.productSchema.targetKey]))
-    ) {
-      return false;
-    }
-
-    datasetState.dataset = restoredDataset;
-    datasetState.currentItems = currentPicture?.[datasetState.productSchema.targetKey] ?? [];
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function prepareDatasetQuad(realDots, coordinateScale, baseItem = null) {
   // 根据显示图相对原图的横纵缩放比例换算坐标，但不要修改工作图片中的原始点
   const jsonDots = realDots.map(dot => imagePointToDatasetPoint(dot, coordinateScale));
@@ -279,6 +255,15 @@ function jsonValuesEqual(leftValue, rightValue) {
   return transJson2Str(leftValue) === transJson2Str(rightValue);
 }
 
+function isHistoryDirection(direction) {
+  return direction === HISTORY_DIRECTION.UNDO || direction === HISTORY_DIRECTION.REDO;
+}
+
+function createDatasetMutationReceipt(entries, direction) {
+  if (!Array.isArray(entries) || entries.length === 0 || !isHistoryDirection(direction)) return null;
+  return Object.freeze({ entries: Object.freeze([...entries]), direction });
+}
+
 function runJsonMutationWithHistory(action, itemIndex, mutate) {
   if (datasetState.currentImageIndex < 0) {
     return { success: false, error: 'No JSON image is currently active.' };
@@ -302,18 +287,21 @@ function runJsonMutationWithHistory(action, itemIndex, mutate) {
       ? cloneDeep(datasetState.currentItems[itemIndex])
       : null;
   const changed = !jsonValuesEqual(beforeItem, afterItem);
+  const historyEntry = changed
+    ? {
+        action,
+        imageIndex: datasetState.currentImageIndex,
+        itemIndex,
+        beforeItem,
+        afterItem,
+      }
+    : null;
 
   return {
     success: true,
-    historyEntry: changed
-      ? {
-          action,
-          imageIndex: datasetState.currentImageIndex,
-          itemIndex,
-          beforeItem,
-          afterItem,
-        }
-      : null,
+    changed,
+    historyEntry,
+    receipt: createDatasetMutationReceipt(historyEntry ? [historyEntry] : [], HISTORY_DIRECTION.REDO),
   };
 }
 
@@ -399,6 +387,62 @@ export function applyJsonHistoryEntry(historyEntry, direction) {
     itemIndex,
     mutationType,
     activeQuadIndex: mutationType === 'delete' ? Math.min(itemIndex, items.length - 1) : itemIndex,
+  };
+}
+
+export function rollbackDatasetMutation(receipt) {
+  if (!receipt || !Array.isArray(receipt.entries) || !isHistoryDirection(receipt.direction)) {
+    return { success: false, error: 'Invalid dataset mutation receipt.' };
+  }
+
+  const rollbackDirection =
+    receipt.direction === HISTORY_DIRECTION.UNDO ? HISTORY_DIRECTION.REDO : HISTORY_DIRECTION.UNDO;
+  const mutationResults = [];
+  for (const historyEntry of receipt.entries.toReversed()) {
+    const mutationResult = applyJsonHistoryEntry(historyEntry, rollbackDirection);
+    if (!mutationResult.success) {
+      return {
+        success: false,
+        error: `Failed to roll back a dataset mutation: ${mutationResult.error}`,
+        mutationResults,
+      };
+    }
+    mutationResults.push(mutationResult);
+  }
+
+  return { success: true, mutationResults };
+}
+
+export function applyJsonHistoryEntriesWithReceipt(historyEntries, direction) {
+  if (!Array.isArray(historyEntries) || !isHistoryDirection(direction)) {
+    return { success: false, error: 'Invalid JSON history transition.', rollbackFailed: false };
+  }
+  if (historyEntries.length === 0) {
+    return { success: true, changed: false, receipt: null, mutationResults: [] };
+  }
+
+  const appliedEntries = [];
+  const mutationResults = [];
+  for (const historyEntry of historyEntries) {
+    const mutationResult = applyJsonHistoryEntry(historyEntry, direction);
+    if (!mutationResult.success) {
+      const receipt = createDatasetMutationReceipt(appliedEntries, direction);
+      const rollbackResult = receipt ? rollbackDatasetMutation(receipt) : { success: true };
+      return {
+        success: false,
+        error: mutationResult.error,
+        rollbackFailed: !rollbackResult.success,
+      };
+    }
+    appliedEntries.push(historyEntry);
+    mutationResults.push(mutationResult);
+  }
+
+  return {
+    success: true,
+    changed: true,
+    receipt: createDatasetMutationReceipt(appliedEntries, direction),
+    mutationResults,
   };
 }
 

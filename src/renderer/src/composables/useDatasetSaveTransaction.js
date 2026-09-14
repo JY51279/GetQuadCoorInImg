@@ -1,4 +1,4 @@
-import { createDatasetMutationSnapshot, restoreDatasetMutationSnapshot } from '../state/DatasetState.js';
+import { rollbackDatasetMutation } from '../state/DatasetState.js';
 import {
   WORKFLOW_OPERATION,
   WORKFLOW_PHASE,
@@ -10,6 +10,7 @@ import {
 
 export const SAVE_TRANSACTION_STATUS = Object.freeze({
   SAVED: 'saved',
+  UNCHANGED: 'unchanged',
   START_FAILED: 'start-failed',
   MUTATION_FAILED: 'mutation-failed',
   SAVE_FAILED: 'save-failed',
@@ -17,16 +18,16 @@ export const SAVE_TRANSACTION_STATUS = Object.freeze({
   COMPLETION_FAILED: 'completion-failed',
 });
 
-function createResult(status, { error = '', rollbackFailed = false } = {}) {
-  return { success: status === SAVE_TRANSACTION_STATUS.SAVED, status, error, rollbackFailed };
+function createResult(status, { error = '', rollbackFailed = false, changed = false } = {}) {
+  const success = status === SAVE_TRANSACTION_STATUS.SAVED || status === SAVE_TRANSACTION_STATUS.UNCHANGED;
+  return { success, status, error, rollbackFailed, changed };
 }
 
 export function useDatasetSaveTransaction({
   workflowState,
   getCurrentImageIndex,
   saveJsonFile,
-  createSnapshot = createDatasetMutationSnapshot,
-  restoreSnapshot = restoreDatasetMutationSnapshot,
+  rollbackMutation = rollbackDatasetMutation,
 } = {}) {
   function applyWorkflowTransition(result) {
     if (!result.success) return false;
@@ -42,7 +43,6 @@ export function useDatasetSaveTransaction({
     }
 
     const operationId = started.operationId;
-    let datasetSnapshot;
     let completionPhase = null;
     let operationCompleted = false;
     let rollbackFailed = false;
@@ -55,11 +55,12 @@ export function useDatasetSaveTransaction({
       return operationCompleted;
     }
 
-    function restoreMutationState() {
+    function restoreMutationState(receipt) {
       try {
-        if (restoreSnapshot(datasetSnapshot)) return true;
+        const rollbackResult = rollbackMutation(receipt);
+        if (rollbackResult === true || rollbackResult?.success === true) return true;
       } catch {
-        // A failed restore is reported through the structured transaction result.
+        // A failed rollback is reported through the structured transaction result.
       }
       rollbackFailed = true;
       completionPhase = WORKFLOW_PHASE.DATASET_READY;
@@ -67,44 +68,77 @@ export function useDatasetSaveTransaction({
     }
 
     try {
+      let mutationResult;
       try {
-        datasetSnapshot = createSnapshot();
+        mutationResult = mutate();
       } catch (error) {
-        return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
-          error: `JSON operation failed: ${error.message}`,
-        });
-      }
-
-      let mutationError;
-      try {
-        mutationError = mutate();
-      } catch (error) {
-        restoreMutationState();
+        rollbackFailed = true;
+        completionPhase = WORKFLOW_PHASE.DATASET_READY;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
           error: `JSON operation failed: ${error.message}`,
           rollbackFailed,
         });
       }
-      if (mutationError !== null) {
-        restoreMutationState();
+      if (!mutationResult || mutationResult.success !== true) {
+        rollbackFailed = mutationResult?.rollbackFailed === true;
+        if (rollbackFailed) completionPhase = WORKFLOW_PHASE.DATASET_READY;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
-          error: mutationError,
+          error: mutationResult?.error || 'JSON operation failed.',
+          rollbackFailed,
+        });
+      }
+      if (typeof mutationResult.changed !== 'boolean') {
+        rollbackFailed = true;
+        completionPhase = WORKFLOW_PHASE.DATASET_READY;
+        return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
+          error: 'JSON operation returned an invalid mutation result.',
+          rollbackFailed,
+        });
+      }
+      if (!mutationResult.changed) {
+        if (!finishOperation()) return createResult(SAVE_TRANSACTION_STATUS.COMPLETION_FAILED);
+        return createResult(SAVE_TRANSACTION_STATUS.UNCHANGED);
+      }
+      if (!mutationResult.receipt) {
+        rollbackFailed = true;
+        completionPhase = WORKFLOW_PHASE.DATASET_READY;
+        return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
+          error: 'JSON operation changed data without returning a rollback receipt.',
           rollbackFailed,
         });
       }
 
-      const saved = await saveJsonFile();
+      let saved;
+      try {
+        saved = await saveJsonFile();
+      } catch (error) {
+        if (!canApplySaveResult(workflowState.value, operationId, getCurrentImageIndex())) {
+          return createResult(SAVE_TRANSACTION_STATUS.STALE, {
+            error: 'Ignored a stale save failure because the dataset or image context changed.',
+            changed: true,
+          });
+        }
+        restoreMutationState(mutationResult.receipt);
+        return createResult(SAVE_TRANSACTION_STATUS.SAVE_FAILED, {
+          error: `Failed to save JSON: ${error.message}`,
+          rollbackFailed,
+          changed: true,
+        });
+      }
       if (!canApplySaveResult(workflowState.value, operationId, getCurrentImageIndex())) {
         return createResult(SAVE_TRANSACTION_STATUS.STALE, {
           error: 'Ignored a stale save result because the dataset or image context changed.',
+          changed: true,
         });
       }
       if (!saved) {
-        restoreMutationState();
-        return createResult(SAVE_TRANSACTION_STATUS.SAVE_FAILED, { rollbackFailed });
+        restoreMutationState(mutationResult.receipt);
+        return createResult(SAVE_TRANSACTION_STATUS.SAVE_FAILED, { rollbackFailed, changed: true });
       }
-      if (!finishOperation()) return createResult(SAVE_TRANSACTION_STATUS.COMPLETION_FAILED);
-      return createResult(SAVE_TRANSACTION_STATUS.SAVED);
+      if (!finishOperation()) {
+        return createResult(SAVE_TRANSACTION_STATUS.COMPLETION_FAILED, { changed: true });
+      }
+      return createResult(SAVE_TRANSACTION_STATUS.SAVED, { changed: true });
     } finally {
       if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) finishOperation();
     }

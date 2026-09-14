@@ -8,8 +8,8 @@ import {
 import {
   areImagePathsEquivalent,
   applyJsonHistoryEntry,
+  applyJsonHistoryEntriesWithReceipt,
   commitPreparedJsonProcess,
-  createDatasetMutationSnapshot,
   getAdjacentJsonImageTarget,
   getCurrentAnnotationView,
   getCurrentJsonImageIndex,
@@ -18,7 +18,7 @@ import {
   getJsonImagePosition,
   prepareJsonProcess,
   resetPicJson,
-  restoreDatasetMutationSnapshot,
+  rollbackDatasetMutation,
   updateJson,
   updateQuadPointWithHistory,
   updateJsonWithHistory,
@@ -474,6 +474,21 @@ describe('Dataset state operations', () => {
     expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 9, y: 1 });
   });
 
+  it('reports a successful no-op without creating a receipt', () => {
+    loadDbrDataset();
+    const before = getJsonFileInfo().str;
+
+    const updateResult = updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 0, y: 0 }]);
+
+    expect(updateResult).toMatchObject({
+      success: true,
+      changed: false,
+      historyEntry: null,
+      receipt: null,
+    });
+    expect(getJsonFileInfo().str).toBe(before);
+  });
+
   it('undoes and redoes annotation insertion and deletion while synchronizing counts', () => {
     loadDbrDataset();
 
@@ -521,35 +536,43 @@ describe('Dataset state operations', () => {
     ]).historyEntry;
     const modifyEntry = updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }]).historyEntry;
 
-    for (const entry of [modifyEntry, addEntry]) {
-      expect(applyJsonHistoryEntry(entry, 'undo').success).toBe(true);
-    }
+    const transitionResult = applyJsonHistoryEntriesWithReceipt([modifyEntry, addEntry], 'undo');
+    expect(transitionResult).toMatchObject({ success: true, changed: true });
+    expect(transitionResult.mutationResults).toHaveLength(2);
     expect(getCurrentAnnotationView().quads).toHaveLength(1);
     expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 10, y: 0 });
 
-    for (const entry of [addEntry, modifyEntry]) {
-      expect(applyJsonHistoryEntry(entry, 'redo').success).toBe(true);
-    }
+    expect(rollbackDatasetMutation(transitionResult.receipt).success).toBe(true);
     expect(getCurrentAnnotationView().quads).toHaveLength(2);
     expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 9, y: 1 });
   });
 
-  it('restores the data before a mutation when persistence fails', () => {
+  it('rolls back a compact mutation receipt when persistence fails', () => {
     loadDbrDataset();
-    const snapshot = createDatasetMutationSnapshot();
+    const mutationResult = updateJsonWithHistory(KEYS.JSON_ADD, 1, -1, [
+      { x: 20, y: 20 },
+      { x: 30, y: 30 },
+    ]);
 
-    expect(
-      updateJson(KEYS.JSON_ADD, 1, -1, [
-        { x: 20, y: 20 },
-        { x: 30, y: 30 },
-      ]),
-    ).toBe(KEYS.OPERATE_SUCCESS);
+    expect(mutationResult).toMatchObject({ success: true, changed: true });
     expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Count']).toBe(2);
-    expect(restoreDatasetMutationSnapshot(snapshot)).toBe(true);
+    expect(rollbackDatasetMutation(mutationResult.receipt).success).toBe(true);
 
     const restoredDataset = JSON.parse(getJsonFileInfo().str);
     expect(restoredDataset.Picture[0]['Barcode Count']).toBe(1);
     expect(restoredDataset.Picture[0]['Barcode Info']).toHaveLength(1);
+  });
+
+  it('restores completed history steps when a multi-entry transition fails partway through', () => {
+    loadDbrDataset();
+    const modifyEntry = updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }]).historyEntry;
+    const changedDataset = getJsonFileInfo().str;
+    const invalidEntry = { ...modifyEntry, itemIndex: 99 };
+
+    const transitionResult = applyJsonHistoryEntriesWithReceipt([modifyEntry, invalidEntry], 'undo');
+
+    expect(transitionResult).toMatchObject({ success: false, rollbackFailed: false });
+    expect(getJsonFileInfo().str).toBe(changedDataset);
   });
 
   it('does not replace committed state when preparation fails', () => {

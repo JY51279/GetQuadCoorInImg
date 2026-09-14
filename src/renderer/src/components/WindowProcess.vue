@@ -344,7 +344,7 @@ import {
   getCurrentJsonImageIndex,
   getJsonImageDialogContext,
   getJsonImageTarget,
-  applyJsonHistoryEntry,
+  applyJsonHistoryEntriesWithReceipt,
   updateQuadPointWithHistory,
   updateJsonWithHistory,
   getJsonImagePosition,
@@ -708,7 +708,7 @@ function focusPixelAtMouse() {
 }
 
 // JSON Operations
-async function runSaveTransaction(mutate, onSaved = () => {}) {
+async function runSaveTransaction(mutate, onCompleted = () => {}) {
   const result = await executeSaveTransaction(mutate);
   if (result.rollbackFailed) {
     outputMessage('Failed to restore JSON state after the operation error. Please reload the dataset.');
@@ -717,7 +717,7 @@ async function runSaveTransaction(mutate, onSaved = () => {}) {
   if (result.error) outputMessage(result.error);
   if (!result.success) return false;
 
-  onSaved();
+  onCompleted(result);
   return true;
 }
 
@@ -747,7 +747,7 @@ async function commitQuadPointDrag(payload) {
     () => {
       const updateResult = updateQuadPointWithHistory(quadIndex, pointIndex, datasetPoint);
       historyEntry = updateResult.historyEntry ?? null;
-      return updateResult.success ? null : updateResult.error;
+      return updateResult;
     },
     () => {
       if (historyEntry) recordCurrentJsonHistory(historyEntry);
@@ -778,7 +778,7 @@ async function performJsonAction(action) {
         selectedDots,
       );
       historyEntry = updateResult.historyEntry ?? null;
-      return updateResult.success ? null : updateResult.error;
+      return updateResult;
     },
     () => {
       if (historyEntry) recordCurrentJsonHistory(historyEntry);
@@ -809,12 +809,9 @@ async function moveJsonHistoryTo(targetPosition, { announceTarget = false } = {}
   const mutationResults = [];
   await runSaveTransaction(
     () => {
-      for (const historyEntry of transition.entries) {
-        const mutationResult = applyJsonHistoryEntry(historyEntry, transition.direction);
-        if (!mutationResult.success) return mutationResult.error;
-        mutationResults.push(mutationResult);
-      }
-      return null;
+      const transitionResult = applyJsonHistoryEntriesWithReceipt(transition.entries, transition.direction);
+      mutationResults.push(...(transitionResult.mutationResults ?? []));
+      return transitionResult;
     },
     () => {
       if (!commitHistoryEntries(history, transition.direction, transition.entries)) {
