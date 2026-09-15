@@ -381,8 +381,9 @@ import {
 import { KEYS } from '../utils/BasicFuncs.js';
 import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
-import { getAdjacentListSelectionIndex, handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
+import { handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
+import { getAdjacentQuadIndex, normalizeQuadIndex } from '../state/QuadSelection.js';
 import {
   QUAD_INTERACTION_MODE,
   getQuadInteractionCapabilities,
@@ -547,7 +548,7 @@ function applyWorkflowTransition(result) {
 
 function selectQuadIndex(newIndex) {
   if (!canChangeQuadSelection(workflowState.value)) return;
-  const normalizedIndex = Number.isInteger(newIndex) && newIndex >= 0 && newIndex < quadTotal.value ? newIndex : -1;
+  const normalizedIndex = normalizeQuadIndex(newIndex, quadTotal.value);
   if (isQuadSelectionLocked.value && normalizedIndex !== quadSelectionLockIndex.value) return;
 
   activeQuadIndex.value = normalizedIndex;
@@ -760,8 +761,13 @@ function handleKeyDown(e) {
 // Child component commands
 function changeJsonItemSelection(direction) {
   if (!canOperate.value) return;
-  const nextIndex = getAdjacentListSelectionIndex(activeQuadIndex.value, quadTotal.value, direction);
-  if (nextIndex !== -1) selectQuadIndex(nextIndex);
+  selectQuadIndex(
+    getAdjacentQuadIndex({
+      activeIndex: activeQuadIndex.value,
+      quadCount: quadTotal.value,
+      direction,
+    }),
+  );
 }
 
 function resetPosition() {
