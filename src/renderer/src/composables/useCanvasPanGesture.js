@@ -6,6 +6,7 @@ export function useCanvasPanGesture({
   canStart = () => true,
   canContinue = () => true,
   onGestureStart = () => {},
+  onDragStart = () => {},
   onDrag = () => {},
   onGestureEnd = () => {},
 } = {}) {
@@ -64,6 +65,7 @@ export function useCanvasPanGesture({
       previousY = state.startY;
       captureElement = event.currentTarget ?? null;
       captureElement?.setPointerCapture?.(event.pointerId);
+      onDragStart({ event });
     }
 
     onDrag({

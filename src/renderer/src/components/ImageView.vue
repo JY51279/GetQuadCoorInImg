@@ -178,6 +178,7 @@ const emits = defineEmits([
   'quad-translation-start',
   'quad-translation-cancel',
   'commit-quad-translation',
+  'manual-viewport-interaction',
 ]);
 
 const props = defineProps({
@@ -368,6 +369,7 @@ const {
   canStart: () => props.canInteract && !quadPointDrag.active && !quadTranslation.active,
   canContinue: () => props.canInteract && !quadPointDrag.active && !quadTranslation.active,
   onGestureStart: beginPanGesture,
+  onDragStart: notifyManualViewportInteraction,
   onDrag: ({ previousX, previousY, currentX, currentY }) => {
     updateOffsetMoved(previousX, previousY, currentX, currentY);
   },
@@ -390,6 +392,10 @@ defineExpose({
 
 function outputMessage(message) {
   emits('output-message', message);
+}
+
+function notifyManualViewportInteraction() {
+  emits('manual-viewport-interaction');
 }
 
 function getLocalPoint(clientX, clientY) {
@@ -708,6 +714,7 @@ function updateOffsetMoved(oldX, oldY, newX, newY) {
 }
 
 function applyUserScale(newScale, { anchorAtPointer = false } = {}) {
+  notifyManualViewportInteraction();
   const result = updateScale(newScale, {
     anchorPoint: anchorAtPointer ? mouseCoord : null,
     hasImage: imageSrc !== '',

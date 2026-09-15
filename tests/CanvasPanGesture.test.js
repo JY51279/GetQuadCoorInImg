@@ -16,15 +16,17 @@ function createPointerEvent(pointerId, clientX, clientY, currentTarget, button =
 
 describe('Canvas pan gesture', () => {
   it('keeps small cumulative movement classified as a click', () => {
+    const onDragStart = vi.fn();
     const onDrag = vi.fn();
     const onGestureEnd = vi.fn();
-    const gesture = useCanvasPanGesture({ onDrag, onGestureEnd });
+    const gesture = useCanvasPanGesture({ onDragStart, onDrag, onGestureEnd });
     const target = createCaptureElement();
 
     expect(gesture.start(createPointerEvent(1, 100, 100, target))).toBe(true);
     expect(gesture.move(createPointerEvent(1, 104, 100, target))).toBe(false);
     expect(gesture.finish(createPointerEvent(1, 103, 102, target))).toBe(true);
 
+    expect(onDragStart).not.toHaveBeenCalled();
     expect(onDrag).not.toHaveBeenCalled();
     expect(onGestureEnd).toHaveBeenCalledWith({ dragged: false, canceled: false });
     expect(gesture.state).toMatchObject({ active: false, dragging: false, pointerId: null });
@@ -32,9 +34,10 @@ describe('Canvas pan gesture', () => {
   });
 
   it('captures and reports the full movement when the drag threshold is crossed', () => {
+    const onDragStart = vi.fn();
     const onDrag = vi.fn();
     const onGestureEnd = vi.fn();
-    const gesture = useCanvasPanGesture({ onDrag, onGestureEnd });
+    const gesture = useCanvasPanGesture({ onDragStart, onDrag, onGestureEnd });
     const target = createCaptureElement();
 
     gesture.start(createPointerEvent(7, 10, 10, target));
@@ -42,6 +45,7 @@ describe('Canvas pan gesture', () => {
     expect(gesture.move(createPointerEvent(7, 20, 15, target))).toBe(true);
     expect(gesture.finish(createPointerEvent(7, 22, 15, target))).toBe(true);
 
+    expect(onDragStart).toHaveBeenCalledOnce();
     expect(onDrag.mock.calls.map(([movement]) => movement)).toMatchObject([
       { previousX: 10, previousY: 10, currentX: 14, currentY: 11, startedDragging: true },
       { previousX: 14, previousY: 11, currentX: 20, currentY: 15, startedDragging: false },

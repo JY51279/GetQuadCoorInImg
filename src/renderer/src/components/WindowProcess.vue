@@ -89,6 +89,7 @@
         @quad-translation-start="lockQuadSelectionForTranslation"
         @quad-translation-cancel="unlockQuadSelectionForTranslation"
         @commit-quad-translation="commitQuadTranslation"
+        @manual-viewport-interaction="exitQuadFocusModeForManualInteraction"
       ></ImageView>
 
       <aside class="inspector-shell">
@@ -132,8 +133,14 @@
               </div>
               <div class="panel-header-actions">
                 <span class="panel-counter">{{ quadTotal }} 个</span>
-                <button class="action-button primary" :disabled="!canFocusQuad" @click="focusActiveQuad">
-                  聚焦 Quad <kbd>F</kbd>
+                <button
+                  class="action-button"
+                  :class="{ primary: isQuadFocusModeEnabled }"
+                  :disabled="!canInteractWithImage"
+                  :aria-pressed="isQuadFocusModeEnabled"
+                  @click="enterQuadFocusMode"
+                >
+                  {{ isQuadFocusModeEnabled ? '重新聚焦 Quad' : '进入聚焦模式' }} <kbd>F</kbd>
                 </button>
               </div>
             </header>
@@ -322,6 +329,8 @@
         <span class="status-divider"></span>
         <span>Quad 模式：{{ isDirectQuadEditingEnabled ? 'Tab 直接编辑' : '默认' }}</span>
         <span class="status-divider"></span>
+        <span>Quad 聚焦：{{ isQuadFocusModeEnabled ? '开' : '关' }}</span>
+        <span class="status-divider"></span>
         <span>{{ isDirectQuadEditingEnabled ? '手柄：拖动 Quad 或顶点' : '选点：更新激活 Quad' }}</span>
         <span class="status-divider"></span>
         <span>Quad {{ activeQuadLabel }}</span>
@@ -384,6 +393,13 @@ import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import { getAdjacentQuadIndex, normalizeQuadIndex } from '../state/QuadSelection.js';
+import {
+  VIEWPORT_MODE,
+  VIEWPORT_MODE_EVENT,
+  isQuadFocusMode,
+  resolveFocusModeQuadIndex,
+  transitionViewportMode,
+} from '../state/QuadFocusMode.js';
 import {
   QUAD_INTERACTION_MODE,
   getQuadInteractionCapabilities,
@@ -454,6 +470,8 @@ let zoomSourceOrigin = null;
 const quadInteractionMode = ref(QUAD_INTERACTION_MODE.DEFAULT);
 const quadInteractionCapabilities = computed(() => getQuadInteractionCapabilities(quadInteractionMode.value));
 const isDirectQuadEditingEnabled = computed(() => isDirectQuadEditingMode(quadInteractionMode.value));
+const viewportMode = ref(VIEWPORT_MODE.FREE);
+const isQuadFocusModeEnabled = computed(() => isQuadFocusMode(viewportMode.value));
 const { pixelRatio: rawDisplayPixelRatio } = useDevicePixelRatio();
 const displayPixelRatio = computed(() => normalizeDevicePixelRatio(rawDisplayPixelRatio.value));
 
@@ -539,6 +557,7 @@ const {
 
 let removeChooseJsonFileResponseListener = null;
 let zoomCanvasPixelRatio = null;
+let activeQuadFocusScheduled = false;
 
 function applyWorkflowTransition(result) {
   if (!result.success) return false;
@@ -546,12 +565,14 @@ function applyWorkflowTransition(result) {
   return true;
 }
 
-function selectQuadIndex(newIndex) {
+function selectQuadIndex(newIndex, { forceFocus = false } = {}) {
   if (!canChangeQuadSelection(workflowState.value)) return;
   const normalizedIndex = normalizeQuadIndex(newIndex, quadTotal.value);
   if (isQuadSelectionLocked.value && normalizedIndex !== quadSelectionLockIndex.value) return;
 
+  const selectionChanged = activeQuadIndex.value !== normalizedIndex;
   activeQuadIndex.value = normalizedIndex;
+  if (selectionChanged || forceFocus) scheduleActiveQuadFocus();
 }
 
 function resetQuadSelection() {
@@ -649,7 +670,7 @@ const keyActions = {
     default: () => resetPosition(),
   },
   f: {
-    default: () => focusActiveQuad(),
+    default: () => enterQuadFocusMode(),
   },
   e: {
     ctrl: () => copyPreviousQuadLocation(),
@@ -703,7 +724,7 @@ const shortcutHelpGroups = Object.freeze([
       { keys: ['S', '↓'], separator: '/', label: '下一个 Quad' },
       { keys: ['A', '←'], separator: '/', label: '上一张图片' },
       { keys: ['D', '→'], separator: '/', label: '下一张图片' },
-      { keys: ['F'], label: '聚焦当前 Quad' },
+      { keys: ['F'], label: '进入 Quad 聚焦模式' },
       { keys: ['Z'], label: '聚焦鼠标所在像素' },
       { keys: ['R'], label: '重置图片位置' },
       { keys: ['Ctrl', 'O'], label: '打开图集 JSON' },
@@ -771,19 +792,52 @@ function changeJsonItemSelection(direction) {
 }
 
 function resetPosition() {
-  if (canInteractWithImage.value) imgContainerRef.value?.resetPosition();
+  if (!canInteractWithImage.value) return;
+  exitQuadFocusModeForManualInteraction();
+  imgContainerRef.value?.resetPosition();
 }
 
-function focusActiveQuad() {
-  if (!canFocusQuad.value) {
-    outputMessage('请先激活一个 Quad，再执行聚焦。');
+function scheduleActiveQuadFocus() {
+  if (activeQuadFocusScheduled || !isQuadFocusModeEnabled.value || !canFocusQuad.value) return;
+  activeQuadFocusScheduled = true;
+  void nextTick(() => {
+    activeQuadFocusScheduled = false;
+    if (!isQuadFocusModeEnabled.value || !canFocusQuad.value) return;
+
+    const result = imgContainerRef.value?.focusQuad(activeQuadIndex.value);
+    if (!result?.success) outputMessage(result?.error || '无法聚焦当前 Quad。');
+  });
+}
+
+function synchronizeQuadFocusSelection({ forceFocus = false } = {}) {
+  if (!isQuadFocusModeEnabled.value) return;
+  selectQuadIndex(
+    resolveFocusModeQuadIndex({
+      activeIndex: activeQuadIndex.value,
+      quadCount: quadTotal.value,
+    }),
+    { forceFocus },
+  );
+}
+
+function enterQuadFocusMode() {
+  if (!canInteractWithImage.value) {
+    outputMessage('请先加载一张可用图片。');
     return;
   }
-  const result = imgContainerRef.value?.focusQuad(activeQuadIndex.value);
-  if (!result?.success) outputMessage(result?.error || '无法聚焦当前 Quad。');
+
+  const modeChanged = !isQuadFocusModeEnabled.value;
+  viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.ENTER_QUAD_FOCUS);
+  synchronizeQuadFocusSelection({ forceFocus: true });
+  if (modeChanged) outputMessage('已进入 Quad 聚焦模式。');
+}
+
+function exitQuadFocusModeForManualInteraction() {
+  viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.MANUAL_INTERACTION);
 }
 
 function focusPixelAtMouse() {
+  exitQuadFocusModeForManualInteraction();
   const result = imgContainerRef.value?.focusPixelAtMouse();
   if (!result?.success) outputMessage(result?.error || '无法聚焦鼠标所在像素。');
 }
@@ -1321,7 +1375,7 @@ async function handleImageRequestResult(result) {
   imageLoadError.value = null;
   const requestedJsonImageIndex = request.source === IMAGE_REQUEST_SOURCE.DATASET ? request.targetImageIndex : null;
   const isReady = await initProcessInfo(requestedJsonImageIndex);
-  applyWorkflowTransition(
+  const imageOperationCompleted = applyWorkflowTransition(
     completeOperation(
       workflowState.value,
       request.operationId,
@@ -1329,10 +1383,12 @@ async function handleImageRequestResult(result) {
     ),
   );
   resetImageRequestState();
+  if (imageOperationCompleted && isReady) synchronizeQuadFocusSelection({ forceFocus: true });
   outputMessage(isReady ? '图片加载成功。' : '图片已加载，但没有找到匹配的 JSON 数据。');
 }
 
 function resetImageForDatasetChange() {
+  viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.DATASET_CHANGED);
   clearJsonHistory();
   imageObj.value = null;
   imgFileName.value = '';
