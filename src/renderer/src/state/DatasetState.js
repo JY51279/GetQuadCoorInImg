@@ -335,6 +335,70 @@ export function updateQuadPointWithHistory(activeQuadIndex = -1, pointIndex = -1
   );
 }
 
+function normalizeImageSize(imageSize) {
+  const width = imageSize?.width;
+  const height = imageSize?.height;
+  if (!Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0) return null;
+  return { width, height };
+}
+
+function replaceQuadLocation(activeQuadIndex, points, imageSize) {
+  return operateJsonContent(() => {
+    if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
+      return '找不到对应的 JSON 标注项。';
+    }
+
+    const normalizedImageSize = normalizeImageSize(imageSize);
+    if (normalizedImageSize === null) return '当前图片的原始尺寸无效。';
+
+    const targetItem = datasetState.currentItems[activeQuadIndex];
+    const preparedQuad = prepareQuad(points, targetItem['Barcode Type'] ?? '');
+    if (!preparedQuad.success) return preparedQuad.error;
+    if (
+      preparedQuad.points.some(
+        point =>
+          point.x < 0 || point.x >= normalizedImageSize.width || point.y < 0 || point.y >= normalizedImageSize.height,
+      )
+    ) {
+      return 'Quad 坐标超出当前图片边界。';
+    }
+
+    targetItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedQuad.points);
+    return KEYS.OPERATE_SUCCESS;
+  }, '替换 Quad 坐标失败。');
+}
+
+export function replaceQuadLocationWithHistory(activeQuadIndex = -1, points = [], imageSize = null) {
+  return runJsonMutationWithHistory(KEYS.JSON_MODIFY, activeQuadIndex, () =>
+    replaceQuadLocation(activeQuadIndex, points, imageSize),
+  );
+}
+
+export function copyPreviousQuadLocationWithHistory(activeQuadIndex = -1, imageSize = null) {
+  if (datasetState.currentImageIndex <= 0) {
+    return { success: false, error: '当前图片没有上一张图片可供沿用坐标。' };
+  }
+  if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
+    return { success: false, error: '当前没有激活有效的 Quad。' };
+  }
+
+  const previousPicture = datasetState.dataset[ROOT_KEY]?.[datasetState.currentImageIndex - 1];
+  const previousItems = previousPicture?.[datasetState.productSchema.targetKey];
+  if (!Array.isArray(previousItems) || activeQuadIndex >= previousItems.length) {
+    return { success: false, error: '上一张图片中没有同下标的 Quad。' };
+  }
+
+  const sourceLocation = previousItems[activeQuadIndex]?.[datasetState.productSchema.ItemKey];
+  if (typeof sourceLocation !== 'string') {
+    return { success: false, error: '上一张图片对应 Quad 的坐标无效。' };
+  }
+
+  const sourcePoints = parsePointString2Array(sourceLocation, POINT_SEPARATOR);
+  return runJsonMutationWithHistory(KEYS.JSON_COPY_PREVIOUS_LOCATION, activeQuadIndex, () =>
+    replaceQuadLocation(activeQuadIndex, sourcePoints, imageSize),
+  );
+}
+
 export function applyJsonHistoryEntry(historyEntry, direction) {
   const isUndo = direction === 'undo';
   const isRedo = direction === 'redo';

@@ -50,6 +50,16 @@ describe('keyboard shortcuts', () => {
     expect(repeatedEvent.preventDefault).toHaveBeenCalledOnce();
   });
 
+  it('resolves Ctrl+E as a dedicated control shortcut', () => {
+    const copyPreviousLocation = vi.fn();
+    const actions = { e: { ctrl: copyPreviousLocation } };
+    const event = createKeyEvent({ key: 'E', ctrlKey: true });
+
+    expect(handleShortcutKeyDown(event, actions)).toBe(true);
+    expect(copyPreviousLocation).toHaveBeenCalledOnce();
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+  });
+
   it('leaves editable targets and unsupported shortcuts untouched', () => {
     const action = vi.fn();
     const actions = { w: { default: action } };

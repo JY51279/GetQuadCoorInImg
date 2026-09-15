@@ -11,6 +11,7 @@ function createEntry(action, itemIndex, imageIndex) {
 describe('JSON history view state', () => {
   it('reports action labels used by history rows and notifications', () => {
     expect(getJsonActionLabel(KEYS.JSON_MODIFY)).toBe('更新 Quad');
+    expect(getJsonActionLabel(KEYS.JSON_COPY_PREVIOUS_LOCATION)).toBe('沿用上一图坐标');
     expect(getJsonActionLabel(KEYS.JSON_ADD)).toBe('新增 Quad');
     expect(getJsonActionLabel(KEYS.JSON_DELETE)).toBe('删除 Quad');
     expect(getJsonActionLabel('unknown')).toBe('JSON 操作');

@@ -188,6 +188,14 @@
             </div>
 
             <div class="annotation-actions">
+              <button
+                class="action-button copy-location-button"
+                :disabled="!canCopyPreviousQuadLocation"
+                title="将上一张图片中同下标 Quad 的坐标复制到当前 Quad（Ctrl+E）"
+                @click="copyPreviousQuadLocation"
+              >
+                沿用上图坐标
+              </button>
               <button class="action-button primary" :disabled="!canOperate" @click="modifyJsonItem">
                 更新 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>S</kbd></span>
               </button>
@@ -339,6 +347,7 @@ import { usePointSelectionHistory } from '../composables/usePointSelectionHistor
 import { useToastNotifications } from '../composables/useToastNotifications.js';
 import {
   commitPreparedJsonProcess,
+  copyPreviousQuadLocationWithHistory,
   getAdjacentJsonImageTarget,
   getCurrentAnnotationView,
   getCurrentJsonImageIndex,
@@ -427,6 +436,7 @@ const jsonFileName = ref(null);
 const loadedProductType = ref('');
 let imgFilePath = '';
 const imageCoordinateScale = ref({ x: 1, y: 1 });
+const currentImageOriginalSize = ref(null);
 let zoomSourceOrigin = null;
 const isHoverQuadActivationEnabled = ref(false);
 
@@ -456,6 +466,14 @@ const isImageLoading = computed(() => isOperationActive(workflowState.value, WOR
 const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(imageObj.value?.src));
 const canFocusQuad = computed(
   () => canInteractWithImage.value && activeQuadIndex.value >= 0 && activeQuadIndex.value < quadTotal.value,
+);
+const canCopyPreviousQuadLocation = computed(
+  () =>
+    canOperate.value &&
+    activeQuadIndex.value >= 0 &&
+    activeQuadIndex.value < quadTotal.value &&
+    imagePositionView.value.currentIndex > 0 &&
+    currentImageOriginalSize.value !== null,
 );
 const activeQuadLabel = computed(() =>
   activeQuadIndex.value >= 0 ? `${activeQuadIndex.value + 1} / ${quadTotal.value}` : `— / ${quadTotal.value}`,
@@ -585,6 +603,9 @@ const keyActions = {
   f: {
     default: () => focusActiveQuad(),
   },
+  e: {
+    ctrl: () => copyPreviousQuadLocation(),
+  },
   z: {
     default: () => focusPixelAtMouse(),
     ctrl: () => undoPointEdit(),
@@ -646,6 +667,7 @@ const shortcutHelpGroups = Object.freeze([
     items: [
       { keys: ['1', '2', '3', '4'], separator: '/', label: '移除对应点位' },
       { keys: ['Ctrl', 'S'], label: '更新当前 Quad' },
+      { keys: ['Ctrl', 'E'], label: '沿用上图同下标 Quad 坐标' },
       { keys: ['Ctrl', 'A'], label: '新增 Quad' },
       { keys: ['Ctrl', 'D'], label: '删除当前 Quad' },
       { keys: ['C'], label: '清空待提交的 P1–P4' },
@@ -885,6 +907,44 @@ function modifyJsonItem() {
   performJsonAction(KEYS.JSON_MODIFY);
 }
 
+async function copyPreviousQuadLocation() {
+  const quadIndex = activeQuadIndex.value;
+  if (!canOperate.value) {
+    outputMessage('当前图片尚未匹配数据集，不能沿用上一图坐标。');
+    return;
+  }
+  if (imagePositionView.value.currentIndex <= 0) {
+    outputMessage('当前图片没有上一张图片可供沿用坐标。');
+    return;
+  }
+  if (quadIndex < 0 || quadIndex >= quadTotal.value) {
+    outputMessage('请先激活一个 Quad。');
+    return;
+  }
+
+  let historyEntry = null;
+  const saved = await runSaveTransaction(
+    () => {
+      const updateResult = copyPreviousQuadLocationWithHistory(quadIndex, currentImageOriginalSize.value);
+      historyEntry = updateResult.historyEntry ?? null;
+      return updateResult;
+    },
+    result => {
+      if (historyEntry) recordCurrentJsonHistory(historyEntry);
+      refreshCurrentAnnotations({ redrawOverlay: true });
+      selectQuadIndex(quadIndex);
+      resetDots();
+      outputMessage(
+        result.changed
+          ? `已沿用上一张图片中 Quad ${quadIndex + 1} 的坐标。`
+          : `当前 Quad ${quadIndex + 1} 已与上一张图片坐标相同。`,
+      );
+    },
+  );
+
+  if (!saved && canOperate.value) refreshCurrentAnnotations({ redrawOverlay: true });
+}
+
 async function saveJsonFile() {
   return saveJsonFileInfo(getJsonFileInfo());
 }
@@ -1121,6 +1181,7 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
     imageObj.value = null;
     imgFileName.value = '';
     imgFilePath = '';
+    currentImageOriginalSize.value = null;
     refreshImagePositionView();
     jumpImageIndex.value = '';
     imageLoadError.value = {
@@ -1153,6 +1214,10 @@ async function handleImageRequestResult(result) {
   resetZoomPreview();
   imageObj.value = image;
   imageCoordinateScale.value = coordinateScale;
+  currentImageOriginalSize.value = {
+    width: imageInfo.originalWidth,
+    height: imageInfo.originalHeight,
+  };
   imgFileName.value = imageInfo.fileName;
   imgFilePath = imageInfo.path;
   imageLoadError.value = null;
@@ -1175,6 +1240,7 @@ function resetImageForDatasetChange() {
   imgFileName.value = '';
   imgFilePath = '';
   imageCoordinateScale.value = { x: 1, y: 1 };
+  currentImageOriginalSize.value = null;
   imageLoadError.value = null;
   resetImageRequestState();
   refreshImagePositionView();
@@ -1754,10 +1820,6 @@ function toggleHoverQuadActivation() {
 
 .annotation-actions {
   grid-template-columns: 1fr 1fr;
-}
-
-.annotation-actions .primary {
-  grid-column: 1 / -1;
 }
 
 .action-button {

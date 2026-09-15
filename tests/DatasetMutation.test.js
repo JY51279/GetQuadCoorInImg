@@ -3,10 +3,12 @@ import {
   applyJsonHistoryEntriesWithReceipt,
   applyJsonHistoryEntry,
   commitPreparedJsonProcess,
+  copyPreviousQuadLocationWithHistory,
   getCurrentAnnotationView,
   getJsonFileInfo,
   prepareJsonProcess,
   resetPicJson,
+  replaceQuadLocationWithHistory,
   rollbackDatasetMutation,
   updateJson,
   updateJsonWithHistory,
@@ -20,11 +22,11 @@ function loadDbrDataset(location = '0 0 10 0 10 10 0 10', barcodeType = '') {
   loadProductDataset('DBR', location, barcodeType);
 }
 
-function loadProductDataset(productType, location = '0 0 10 0 10 10 0 10', barcodeType = '') {
+function loadProductDataset(productType, location = '0 0 10 0 10 10 0 10', barcodeType = '', nextLocation = location) {
   const data = {
     Picture: [
       createPicture(productType, 'C:/images/one.png', location),
-      createPicture(productType, 'C:/images/two.png', location),
+      createPicture(productType, 'C:/images/two.png', nextLocation),
     ],
   };
   if (productType === 'DBR') {
@@ -115,6 +117,106 @@ describe('Dataset mutations', () => {
         { x: 20, y: 20 },
         { x: 10, y: 20 },
       ]),
+    );
+  });
+
+  it.each(['DBR', 'DDN', 'DLR'])('copies only the previous image location for %s and supports undo', productType => {
+    const previousLocation = '5 5 15 5 15 15 5 15';
+    const currentLocation = '20 20 30 20 30 30 20 30';
+    loadProductDataset(productType, previousLocation, '', currentLocation);
+    expect(resetPicJson('C:/images/two.png', 1).success).toBe(true);
+    const schema = PRODUCT_SCHEMAS[productType];
+    const beforeItem = JSON.parse(getJsonFileInfo().str).Picture[1][schema.targetKey][0];
+
+    const result = copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 });
+
+    expect(result).toMatchObject({
+      success: true,
+      changed: true,
+      historyEntry: {
+        action: KEYS.JSON_COPY_PREVIOUS_LOCATION,
+        imageIndex: 1,
+        itemIndex: 0,
+      },
+    });
+    const copiedItem = JSON.parse(getJsonFileInfo().str).Picture[1][schema.targetKey][0];
+    expect(copiedItem[schema.ItemKey]).toBe(previousLocation);
+    expect({ ...copiedItem, [schema.ItemKey]: beforeItem[schema.ItemKey] }).toEqual(beforeItem);
+
+    expect(applyJsonHistoryEntry(result.historyEntry, 'undo').success).toBe(true);
+    expect(JSON.parse(getJsonFileInfo().str).Picture[1][schema.targetKey][0][schema.ItemKey]).toBe(currentLocation);
+  });
+
+  it('reports a no-op when the previous and current Quad locations are equal', () => {
+    loadDbrDataset();
+    expect(resetPicJson('C:/images/two.png', 1).success).toBe(true);
+
+    const result = copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 });
+
+    expect(result).toMatchObject({ success: true, changed: false, historyEntry: null, receipt: null });
+  });
+
+  it('normalizes the previous Loc with the shared Quad modification rules', () => {
+    const previousLocation = '15 15 5 15 5 5 15 5';
+    loadProductDataset('DBR', previousLocation, '', '20 20 30 20 30 30 20 30');
+    expect(resetPicJson('C:/images/two.png', 1).success).toBe(true);
+
+    const result = copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 });
+
+    expect(result.success).toBe(true);
+    expect(JSON.parse(getJsonFileInfo().str).Picture[1]['Barcode Info'][0]['Barcode Location']).toBe(
+      '5 5 15 5 15 15 5 15',
+    );
+  });
+
+  it('rejects copying without a previous image or a matching Quad index', () => {
+    loadDbrDataset();
+    expect(copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 })).toEqual({
+      success: false,
+      error: '当前图片没有上一张图片可供沿用坐标。',
+    });
+
+    expect(resetPicJson('C:/images/two.png', 1).success).toBe(true);
+    expect(
+      updateJsonWithHistory(KEYS.JSON_ADD, 1, -1, [
+        { x: 20, y: 20 },
+        { x: 30, y: 30 },
+      ]).success,
+    ).toBe(true);
+    expect(copyPreviousQuadLocationWithHistory(1, { width: 100, height: 100 })).toEqual({
+      success: false,
+      error: '上一张图片中没有同下标的 Quad。',
+    });
+  });
+
+  it('rejects previous locations outside the current image without changing data', () => {
+    loadProductDataset('DBR', '90 90 110 90 110 110 90 110', '', '20 20 30 20 30 30 20 30');
+    expect(resetPicJson('C:/images/two.png', 1).success).toBe(true);
+    const before = getJsonFileInfo().str;
+
+    const result = copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 });
+
+    expect(result).toEqual({ success: false, error: 'Quad 坐标超出当前图片边界。' });
+    expect(getJsonFileInfo().str).toBe(before);
+  });
+
+  it('uses the shared full-location mutation path for validated replacements', () => {
+    loadDbrDataset('10 10 20 10 20 20 10 20');
+
+    const result = replaceQuadLocationWithHistory(
+      0,
+      [
+        { x: 15, y: 15 },
+        { x: 25, y: 15 },
+        { x: 25, y: 25 },
+        { x: 15, y: 25 },
+      ],
+      { width: 100, height: 100 },
+    );
+
+    expect(result).toMatchObject({ success: true, changed: true });
+    expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Info'][0]['Barcode Location']).toBe(
+      '15 15 25 15 25 25 15 25',
     );
   });
 
