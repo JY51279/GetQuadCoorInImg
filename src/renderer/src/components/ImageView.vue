@@ -73,15 +73,38 @@
         <span class="dot-label">P{{ index + 1 }}</span>
       </div>
       <button
+        v-for="handle in draggableActiveQuadEdgeHandles"
+        :key="`${activeQuadIndex}-edge-${handle.edgeIndex}`"
+        type="button"
+        class="quad-edge-handle"
+        :class="{
+          dragging: isQuadTranslationTargetActive(QUAD_TRANSLATION_TARGET.EDGE, handle.edgeIndex),
+        }"
+        :style="{
+          top: `${handle.y}px`,
+          left: `${handle.x}px`,
+          '--quad-edge-angle': `${handle.angle}deg`,
+        }"
+        :disabled="!canEdit"
+        :aria-label="`拖动当前 Quad 的 P${handle.startPointIndex + 1}–P${handle.endPointIndex + 1} 边`"
+        title="拖动以平移当前 Quad 的这条边"
+        @pointerdown.stop.prevent="startQuadEdgeTranslation($event, handle.edgeIndex)"
+        @pointermove.stop.prevent="moveQuadTranslation"
+        @pointerup.stop.prevent="finishQuadTranslation"
+        @pointercancel.stop.prevent="cancelQuadTranslation('pointer-cancel')"
+        @lostpointercapture="handleQuadTranslationLostPointerCapture"
+        @click.stop.prevent
+      ></button>
+      <button
         v-if="draggableActiveQuadCenterHandle"
         type="button"
         class="quad-translate-handle"
-        :class="{ dragging: quadTranslation.active }"
+        :class="{ dragging: isQuadTranslationTargetActive(QUAD_TRANSLATION_TARGET.WHOLE) }"
         :style="{ top: `${draggableActiveQuadCenterHandle.y}px`, left: `${draggableActiveQuadCenterHandle.x}px` }"
         :disabled="!canEdit"
         aria-label="拖动当前 Quad 整体平移"
         title="拖动以整体平移当前 Quad"
-        @pointerdown.stop.prevent="startQuadTranslation($event, activeQuadIndex)"
+        @pointerdown.stop.prevent="startWholeQuadTranslation"
         @pointermove.stop.prevent="moveQuadTranslation"
         @pointerup.stop.prevent="finishQuadTranslation"
         @pointercancel.stop.prevent="cancelQuadTranslation('pointer-cancel')"
@@ -160,6 +183,7 @@ import { useImageViewport } from '../composables/useImageViewport.js';
 import { isValidQuadPoints, useQuadOverlay } from '../composables/useQuadOverlay.js';
 import { useQuadTranslationGesture } from '../composables/useQuadTranslationGesture.js';
 import { getCanvasBackingLength, normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
+import { QUAD_TRANSLATION_TARGET } from '../utils/QuadGeometry.js';
 import {
   calculatePixelFocusTransform,
   calculateQuadFocusTransform,
@@ -215,6 +239,7 @@ const props = defineProps({
       hoverActivation: false,
       pointDrag: false,
       wholeQuadDrag: false,
+      edgeDrag: false,
     }),
   },
   displayPixelRatio: {
@@ -298,6 +323,7 @@ let quadPointCaptureElement = null;
 const {
   shownQuadIndices: showQuadIndex,
   activePointHandles: activeQuadPointHandles,
+  activeEdgeHandles: activeQuadEdgeHandles,
   activeCenterHandle: activeQuadCenterHandle,
   hoveredIndicesText: indices2Show,
   getQuadCount,
@@ -328,19 +354,32 @@ const {
 const draggableActiveQuadPointHandles = computed(() =>
   props.quadInteractionCapabilities.pointDrag ? activeQuadPointHandles.value : [],
 );
+const draggableActiveQuadEdgeHandles = computed(() =>
+  props.quadInteractionCapabilities.edgeDrag ? activeQuadEdgeHandles.value : [],
+);
 const draggableActiveQuadCenterHandle = computed(() =>
   props.quadInteractionCapabilities.wholeQuadDrag ? activeQuadCenterHandle.value : null,
 );
+const QUAD_TRANSLATION_CAPABILITY = Object.freeze({
+  [QUAD_TRANSLATION_TARGET.WHOLE]: 'wholeQuadDrag',
+  [QUAD_TRANSLATION_TARGET.EDGE]: 'edgeDrag',
+});
+
+function isQuadTranslationTargetEnabled(target) {
+  const capability = QUAD_TRANSLATION_CAPABILITY[target?.type];
+  return capability !== undefined && props.quadInteractionCapabilities[capability] === true;
+}
+
 const {
   state: quadTranslation,
-  start: startQuadTranslation,
+  start: beginQuadTranslation,
   move: moveQuadTranslation,
   finish: finishQuadTranslation,
   cancel: cancelQuadTranslation,
   handleLostPointerCapture: handleQuadTranslationLostPointerCapture,
 } = useQuadTranslationGesture({
-  canStart: () =>
-    props.canEdit && props.canInteract && props.quadInteractionCapabilities.wholeQuadDrag && !quadPointDrag.active,
+  canStart: target =>
+    props.canEdit && props.canInteract && isQuadTranslationTargetEnabled(target) && !quadPointDrag.active,
   getQuad,
   getImageSize: () => ({ width: initImgWidth.value, height: initImgHeight.value }),
   getPointerImagePoint: getDraggedImagePoint,
@@ -356,6 +395,20 @@ const {
     emits('quad-translation-cancel', payload);
   },
 });
+
+function startWholeQuadTranslation(event) {
+  beginQuadTranslation(event, props.activeQuadIndex, { type: QUAD_TRANSLATION_TARGET.WHOLE });
+}
+
+function startQuadEdgeTranslation(event, edgeIndex) {
+  beginQuadTranslation(event, props.activeQuadIndex, { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex });
+}
+
+function isQuadTranslationTargetActive(type, edgeIndex = undefined) {
+  return (
+    quadTranslation.active && quadTranslation.target?.type === type && quadTranslation.target?.edgeIndex === edgeIndex
+  );
+}
 const {
   state: canvasPointerGesture,
   start: startCanvasPointerGesture,
@@ -765,9 +818,11 @@ watch(
 );
 
 watch(
-  () => props.quadInteractionCapabilities.wholeQuadDrag,
-  enabled => {
-    if (!enabled) cancelQuadTranslation('interaction-mode-changed');
+  () => [props.quadInteractionCapabilities.wholeQuadDrag, props.quadInteractionCapabilities.edgeDrag],
+  () => {
+    if (quadTranslation.active && !isQuadTranslationTargetEnabled(quadTranslation.target)) {
+      cancelQuadTranslation('interaction-mode-changed');
+    }
   },
 );
 
@@ -1173,6 +1228,39 @@ function initCanvasSettings() {
 }
 
 .quad-point-handle:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.quad-edge-handle {
+  position: absolute;
+  z-index: 8;
+  width: 24px;
+  height: 10px;
+  padding: 0;
+  transform: translate(-50%, -50%) rotate(var(--quad-edge-angle));
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.45);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.quad-edge-handle:hover,
+.quad-edge-handle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.quad-edge-handle.dragging {
+  z-index: 10;
+  background: #ea580c;
+  cursor: grabbing;
+}
+
+.quad-edge-handle:disabled {
   cursor: default;
   opacity: 0.65;
 }

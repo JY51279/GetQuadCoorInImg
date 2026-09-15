@@ -7,12 +7,14 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   hoverActivation: false,
   pointDrag: false,
   wholeQuadDrag: false,
+  edgeDrag: false,
 });
 
 const DIRECT_EDIT_CAPABILITIES = Object.freeze({
   hoverActivation: true,
   pointDrag: true,
   wholeQuadDrag: true,
+  edgeDrag: true,
 });
 
 const MODE_CAPABILITIES = Object.freeze({

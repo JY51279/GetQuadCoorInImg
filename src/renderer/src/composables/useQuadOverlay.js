@@ -25,6 +25,7 @@ export function useQuadOverlay({
 } = {}) {
   const shownQuadIndices = reactive([]);
   const activePointHandles = ref([]);
+  const activeEdgeHandles = ref([]);
   const activeCenterHandle = ref(null);
   const hoveredIndicesText = ref('');
   const drawnOuterQuads = [];
@@ -76,6 +77,7 @@ export function useQuadOverlay({
     const quad = getQuad(getActiveQuadIndex());
     if (!isValidQuadPoints(quad)) {
       activePointHandles.value = [];
+      activeEdgeHandles.value = [];
       activeCenterHandle.value = null;
       return;
     }
@@ -88,6 +90,18 @@ export function useQuadOverlay({
         pointIndex,
         x: canvasPoint.x + pixelInset + currentScale / 2,
         y: canvasPoint.y + pixelInset + currentScale / 2,
+      };
+    });
+    activeEdgeHandles.value = activePointHandles.value.map((startHandle, edgeIndex) => {
+      const endPointIndex = (edgeIndex + 1) % 4;
+      const endHandle = activePointHandles.value[endPointIndex];
+      return {
+        edgeIndex,
+        startPointIndex: edgeIndex,
+        endPointIndex,
+        x: (startHandle.x + endHandle.x) / 2,
+        y: (startHandle.y + endHandle.y) / 2,
+        angle: (Math.atan2(endHandle.y - startHandle.y, endHandle.x - startHandle.x) * 180) / Math.PI,
       };
     });
     const centerPoint = imageToCanvas(getQuadCenterPoint(quad));
@@ -260,6 +274,7 @@ export function useQuadOverlay({
   function clear() {
     quads = [];
     activePointHandles.value = [];
+    activeEdgeHandles.value = [];
     activeCenterHandle.value = null;
     shownQuadIndices.splice(0, shownQuadIndices.length);
     drawnOuterQuads.splice(0, drawnOuterQuads.length);
@@ -269,6 +284,7 @@ export function useQuadOverlay({
   return {
     shownQuadIndices,
     activePointHandles,
+    activeEdgeHandles,
     activeCenterHandle,
     hoveredIndicesText,
     getQuadCount,

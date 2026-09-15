@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { useQuadTranslationGesture } from '../src/renderer/src/composables/useQuadTranslationGesture.js';
+import { QUAD_TRANSLATION_TARGET } from '../src/renderer/src/utils/QuadGeometry.js';
 
 const QUAD = [
   { x: 2, y: 3 },
@@ -49,7 +50,10 @@ describe('Quad translation gesture', () => {
     expect(gesture.move(createPointerEvent(7, 9, 8))).toBe(true);
     expect(gesture.finish(createPointerEvent(7, 9, 8))).toBe(true);
 
-    expect(callbacks.onStart).toHaveBeenCalledWith({ quadIndex: 0 });
+    expect(callbacks.onStart).toHaveBeenCalledWith({
+      quadIndex: 0,
+      target: { type: QUAD_TRANSLATION_TARGET.WHOLE },
+    });
     expect(callbacks.previewQuad).toHaveBeenCalledWith(0, [
       { x: 6, y: 5 },
       { x: 12, y: 5 },
@@ -58,6 +62,7 @@ describe('Quad translation gesture', () => {
     ]);
     expect(callbacks.onCommit).toHaveBeenCalledWith({
       quadIndex: 0,
+      target: { type: QUAD_TRANSLATION_TARGET.WHOLE },
       imageDelta: { x: 4, y: 2 },
       imagePoints: [
         { x: 6, y: 5 },
@@ -70,6 +75,33 @@ describe('Quad translation gesture', () => {
     expect(gesture.state.active).toBe(false);
   });
 
+  it('previews and commits a shared translation for one edge only', () => {
+    const { gesture, callbacks } = createGesture();
+    const target = { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex: 0 };
+
+    expect(gesture.start(createPointerEvent(10, 5, 6), 0, target)).toBe(true);
+    expect(gesture.move(createPointerEvent(10, 9, 8))).toBe(true);
+    expect(gesture.finish(createPointerEvent(10, 9, 8))).toBe(true);
+
+    expect(callbacks.previewQuad).toHaveBeenCalledWith(0, [
+      { x: 6, y: 5 },
+      { x: 12, y: 5 },
+      { x: 8, y: 9 },
+      { x: 2, y: 9 },
+    ]);
+    expect(callbacks.onCommit).toHaveBeenCalledWith({
+      quadIndex: 0,
+      target,
+      imageDelta: { x: 4, y: 2 },
+      imagePoints: [
+        { x: 6, y: 5 },
+        { x: 12, y: 5 },
+        { x: 8, y: 9 },
+        { x: 2, y: 9 },
+      ],
+    });
+  });
+
   it('restores the original Quad when canceled', () => {
     const { gesture, callbacks } = createGesture();
     gesture.start(createPointerEvent(8, 5, 6), 0);
@@ -78,7 +110,28 @@ describe('Quad translation gesture', () => {
     expect(gesture.cancel()).toBe(true);
 
     expect(callbacks.previewQuad).toHaveBeenLastCalledWith(0, QUAD);
-    expect(callbacks.onCancel).toHaveBeenCalledWith({ quadIndex: 0, reason: 'canceled' });
+    expect(callbacks.onCancel).toHaveBeenCalledWith({
+      quadIndex: 0,
+      target: { type: QUAD_TRANSLATION_TARGET.WHOLE },
+      reason: 'canceled',
+    });
+    expect(callbacks.onCommit).not.toHaveBeenCalled();
+  });
+
+  it('restores an edge preview after pointer capture is lost', () => {
+    const { gesture, callbacks } = createGesture();
+    const target = { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex: 3 };
+    gesture.start(createPointerEvent(11, 5, 6), 0, target);
+    gesture.move(createPointerEvent(11, 7, 8));
+
+    gesture.handleLostPointerCapture({ pointerId: 11 });
+
+    expect(callbacks.previewQuad).toHaveBeenLastCalledWith(0, QUAD);
+    expect(callbacks.onCancel).toHaveBeenLastCalledWith({
+      quadIndex: 0,
+      target,
+      reason: 'lost-pointer-capture',
+    });
     expect(callbacks.onCommit).not.toHaveBeenCalled();
   });
 

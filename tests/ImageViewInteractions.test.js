@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ImageView from '../src/renderer/src/components/ImageView.vue';
+import { QUAD_TRANSLATION_TARGET } from '../src/renderer/src/utils/QuadGeometry.js';
 
 const QUAD = [
   { x: 10, y: 10 },
@@ -15,12 +16,14 @@ const DEFAULT_QUAD_INTERACTION = Object.freeze({
   hoverActivation: false,
   pointDrag: false,
   wholeQuadDrag: false,
+  edgeDrag: false,
 });
 
 const DIRECT_QUAD_INTERACTION = Object.freeze({
   hoverActivation: true,
   pointDrag: true,
   wholeQuadDrag: true,
+  edgeDrag: true,
 });
 
 function createCanvasContext(canvas) {
@@ -122,6 +125,7 @@ describe('ImageView interactions', () => {
     await nextTick();
 
     expect(wrapper.find('.quad-point-handle').exists()).toBe(false);
+    expect(wrapper.find('.quad-edge-handle').exists()).toBe(false);
     expect(wrapper.find('.quad-translate-handle').exists()).toBe(false);
 
     await wrapper.find('canvas.canvas-layer').trigger('click', { clientX: 100, clientY: 100 });
@@ -212,12 +216,15 @@ describe('ImageView interactions', () => {
     await handle.trigger('pointermove', { pointerId: 8, clientX: startX + 20, clientY: startY + 10 });
     await handle.trigger('pointerup', { pointerId: 8, clientX: startX + 20, clientY: startY + 10 });
 
-    expect(wrapper.emitted('quad-translation-start')).toEqual([[{ quadIndex: 0 }]]);
+    expect(wrapper.emitted('quad-translation-start')).toEqual([
+      [{ quadIndex: 0, target: { type: QUAD_TRANSLATION_TARGET.WHOLE } }],
+    ]);
     expect(wrapper.emitted('select-quad-index')).toBeUndefined();
     expect(wrapper.emitted('commit-quad-translation')).toEqual([
       [
         {
           quadIndex: 0,
+          target: { type: QUAD_TRANSLATION_TARGET.WHOLE },
           imageDelta: { x: 10, y: 5 },
           imagePoints: [
             { x: 20, y: 15 },
@@ -228,6 +235,72 @@ describe('ImageView interactions', () => {
         },
       ],
     ]);
+    wrapper.unmount();
+  });
+
+  it('previews and commits a two-dimensional translation for one active Quad edge', async () => {
+    const wrapper = await mountReadyImage({ quadInteractionCapabilities: DIRECT_QUAD_INTERACTION });
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    wrapper.vm.redrawQuadOverlay();
+    await nextTick();
+
+    const handle = wrapper.findAll('.quad-edge-handle')[0];
+    const startX = Number.parseFloat(handle.element.style.left);
+    const startY = Number.parseFloat(handle.element.style.top);
+    await handle.trigger('pointerdown', { button: 0, pointerId: 11, clientX: startX, clientY: startY });
+    await handle.trigger('pointermove', { pointerId: 11, clientX: startX + 20, clientY: startY + 10 });
+    await handle.trigger('pointerup', { pointerId: 11, clientX: startX + 20, clientY: startY + 10 });
+
+    expect(wrapper.emitted('quad-translation-start')).toEqual([
+      [{ quadIndex: 0, target: { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex: 0 } }],
+    ]);
+    expect(wrapper.emitted('commit-quad-translation')).toEqual([
+      [
+        {
+          quadIndex: 0,
+          target: { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex: 0 },
+          imageDelta: { x: 10, y: 5 },
+          imagePoints: [
+            { x: 20, y: 15 },
+            { x: 50, y: 15 },
+            { x: 40, y: 40 },
+            { x: 10, y: 40 },
+          ],
+        },
+      ],
+    ]);
+    wrapper.unmount();
+  });
+
+  it('restores an edge preview when direct editing is turned off', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    wrapper.vm.redrawQuadOverlay();
+    await nextTick();
+
+    let handle = wrapper.findAll('.quad-edge-handle')[0];
+    const startX = Number.parseFloat(handle.element.style.left);
+    const startY = Number.parseFloat(handle.element.style.top);
+    await handle.trigger('pointerdown', { button: 0, pointerId: 12, clientX: startX, clientY: startY });
+    await handle.trigger('pointermove', { pointerId: 12, clientX: startX + 20, clientY: startY + 10 });
+    await wrapper.setProps({ quadInteractionCapabilities: DEFAULT_QUAD_INTERACTION });
+    await nextTick();
+
+    expect(wrapper.find('.quad-edge-handle').exists()).toBe(false);
+    expect(wrapper.emitted('commit-quad-translation')).toBeUndefined();
+    expect(wrapper.emitted('quad-translation-cancel')?.at(-1)).toEqual([
+      {
+        quadIndex: 0,
+        target: { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex: 0 },
+        reason: 'interaction-mode-changed',
+      },
+    ]);
+
+    await wrapper.setProps({ quadInteractionCapabilities: DIRECT_QUAD_INTERACTION });
+    await nextTick();
+    handle = wrapper.findAll('.quad-edge-handle')[0];
+    expect(Number.parseFloat(handle.element.style.left)).toBe(startX);
+    expect(Number.parseFloat(handle.element.style.top)).toBe(startY);
     wrapper.unmount();
   });
 
@@ -249,7 +322,9 @@ describe('ImageView interactions', () => {
     expect(Number.parseFloat(handle.element.style.left)).toBe(startX);
     expect(Number.parseFloat(handle.element.style.top)).toBe(startY);
     expect(wrapper.emitted('commit-quad-translation')).toBeUndefined();
-    expect(wrapper.emitted('quad-translation-cancel')?.at(-1)).toEqual([{ quadIndex: 0, reason: 'escape' }]);
+    expect(wrapper.emitted('quad-translation-cancel')?.at(-1)).toEqual([
+      { quadIndex: 0, target: { type: QUAD_TRANSLATION_TARGET.WHOLE }, reason: 'escape' },
+    ]);
     wrapper.unmount();
   });
 

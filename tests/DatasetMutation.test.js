@@ -10,13 +10,14 @@ import {
   resetPicJson,
   replaceQuadLocationWithHistory,
   rollbackDatasetMutation,
-  translateQuadLocationWithHistory,
+  translateQuadWithHistory,
   updateJson,
   updateJsonWithHistory,
   updateQuadPointWithHistory,
 } from '../src/renderer/src/state/DatasetState.js';
 import { KEYS } from '../src/renderer/src/utils/BasicFuncs.js';
 import { PRODUCT_SCHEMAS } from '../src/renderer/src/utils/DatasetSchema.js';
+import { QUAD_TRANSLATION_TARGET } from '../src/renderer/src/utils/QuadGeometry.js';
 import { createPicture } from './fixtures/DatasetFixtures.js';
 
 function loadDbrDataset(location = '0 0 10 0 10 10 0 10', barcodeType = '') {
@@ -224,7 +225,11 @@ describe('Dataset mutations', () => {
   it('translates all Quad points by one clamped delta and supports undo', () => {
     loadDbrDataset('10 10 20 10 20 20 10 20');
 
-    const result = translateQuadLocationWithHistory(0, { x: 90, y: -20 }, { width: 100, height: 100 });
+    const result = translateQuadWithHistory({
+      quadIndex: 0,
+      delta: { x: 90, y: -20 },
+      imageSize: { width: 100, height: 100 },
+    });
 
     expect(result).toMatchObject({
       success: true,
@@ -251,10 +256,43 @@ describe('Dataset mutations', () => {
     ]);
   });
 
+  it('translates one Quad edge and records one dedicated history entry', () => {
+    loadDbrDataset('10 10 20 10 20 20 10 20');
+
+    const result = translateQuadWithHistory({
+      quadIndex: 0,
+      target: { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex: 0 },
+      delta: { x: 5, y: 3 },
+      imageSize: { width: 100, height: 100 },
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      changed: true,
+      historyEntry: {
+        action: KEYS.JSON_TRANSLATE_QUAD_EDGE,
+        imageIndex: 0,
+        itemIndex: 0,
+      },
+    });
+    expect(getCurrentAnnotationView().quads[0]).toEqual([
+      { x: 15, y: 13 },
+      { x: 25, y: 13 },
+      { x: 20, y: 20 },
+      { x: 10, y: 20 },
+    ]);
+  });
+
   it('does not create history when the requested Quad translation is zero', () => {
     loadDbrDataset();
 
-    expect(translateQuadLocationWithHistory(0, { x: 0, y: 0 }, { width: 100, height: 100 })).toMatchObject({
+    expect(
+      translateQuadWithHistory({
+        quadIndex: 0,
+        delta: { x: 0, y: 0 },
+        imageSize: { width: 100, height: 100 },
+      }),
+    ).toMatchObject({
       success: true,
       changed: false,
       historyEntry: null,

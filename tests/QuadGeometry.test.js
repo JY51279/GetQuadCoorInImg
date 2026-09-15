@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  QUAD_TRANSLATION_TARGET,
   calculateClampedQuadTranslation,
   getQuadCenterPoint,
   isPointInQuad,
@@ -28,6 +29,66 @@ describe('Quad geometry', () => {
       clamped: true,
     });
     expect(points[0]).toEqual({ x: 2, y: 3 });
+  });
+
+  it('translates only the selected edge endpoints by one shared delta', () => {
+    const points = [
+      { x: 2, y: 3 },
+      { x: 8, y: 3 },
+      { x: 8, y: 9 },
+      { x: 2, y: 9 },
+    ];
+
+    expect(
+      calculateClampedQuadTranslation(
+        points,
+        { x: 4, y: 2 },
+        { width: 20, height: 20 },
+        {
+          type: QUAD_TRANSLATION_TARGET.EDGE,
+          edgeIndex: 0,
+        },
+      ),
+    ).toEqual({
+      points: [
+        { x: 6, y: 5 },
+        { x: 12, y: 5 },
+        { x: 8, y: 9 },
+        { x: 2, y: 9 },
+      ],
+      delta: { x: 4, y: 2 },
+      clamped: false,
+    });
+  });
+
+  it('stops edge translation at the last valid convex position', () => {
+    const points = [
+      { x: 2, y: 3 },
+      { x: 8, y: 3 },
+      { x: 8, y: 9 },
+      { x: 2, y: 9 },
+    ];
+
+    expect(
+      calculateClampedQuadTranslation(
+        points,
+        { x: 0, y: 20 },
+        { width: 20, height: 30 },
+        {
+          type: QUAD_TRANSLATION_TARGET.EDGE,
+          edgeIndex: 0,
+        },
+      ),
+    ).toEqual({
+      points: [
+        { x: 2, y: 8 },
+        { x: 8, y: 8 },
+        { x: 8, y: 9 },
+        { x: 2, y: 9 },
+      ],
+      delta: { x: 0, y: 5 },
+      clamped: true,
+    });
   });
 
   it('sorts a Quad from its top-left point in clockwise screen order', () => {

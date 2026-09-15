@@ -396,7 +396,7 @@ import {
   getJsonImagePosition,
   getJsonFileInfo,
   resetPicJson,
-  translateQuadLocationWithHistory,
+  translateQuadWithHistory,
 } from '../state/DatasetState.js';
 import { DATASET_LOAD_STATUS, prepareDatasetLoad } from '../services/DatasetLoadService.js';
 import {
@@ -415,6 +415,7 @@ import {
 import { KEYS } from '../utils/BasicFuncs.js';
 import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
+import { QUAD_TRANSLATION_TARGET } from '../utils/QuadGeometry.js';
 import { handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import { getAdjacentQuadIndex, normalizeQuadIndex } from '../state/QuadSelection.js';
@@ -917,12 +918,21 @@ async function commitQuadPointDrag(payload) {
   if (!saved) refreshCurrentAnnotations({ redrawOverlay: true });
 }
 
+function getQuadTranslationSubject(quadIndex, target) {
+  const subjectFactories = {
+    [QUAD_TRANSLATION_TARGET.WHOLE]: () => `Quad ${quadIndex + 1}`,
+    [QUAD_TRANSLATION_TARGET.EDGE]: () =>
+      `Quad ${quadIndex + 1} 的边 P${target.edgeIndex + 1}–P${((target.edgeIndex + 1) % 4) + 1}`,
+  };
+  return subjectFactories[target?.type]?.() ?? `Quad ${quadIndex + 1}`;
+}
+
 async function commitQuadTranslation(payload) {
-  const { quadIndex, imageDelta } = payload ?? {};
+  const { quadIndex, target, imageDelta } = payload ?? {};
   if (!canOperate.value || quadIndex !== activeQuadIndex.value || quadIndex !== quadSelectionLockIndex.value) {
     unlockQuadSelectionForTranslation();
     refreshCurrentAnnotations({ redrawOverlay: true });
-    outputMessage('整体拖动的 Quad 已与当前标注不匹配。');
+    outputMessage('拖动的 Quad 已与当前标注不匹配。');
     return;
   }
 
@@ -930,15 +940,21 @@ async function commitQuadTranslation(payload) {
   if (datasetDelta === null) {
     unlockQuadSelectionForTranslation({ quadIndex });
     refreshCurrentAnnotations({ redrawOverlay: true });
-    outputMessage('无法将 Quad 的整体位移换算为数据集坐标。');
+    outputMessage('无法将 Quad 位移换算为数据集坐标。');
     return;
   }
 
+  const translationSubject = getQuadTranslationSubject(quadIndex, target);
   let historyEntry = null;
   try {
     const saved = await runSaveTransaction(
       () => {
-        const updateResult = translateQuadLocationWithHistory(quadIndex, datasetDelta, currentImageOriginalSize.value);
+        const updateResult = translateQuadWithHistory({
+          quadIndex,
+          target,
+          delta: datasetDelta,
+          imageSize: currentImageOriginalSize.value,
+        });
         historyEntry = updateResult.historyEntry ?? null;
         return updateResult;
       },
@@ -947,7 +963,7 @@ async function commitQuadTranslation(payload) {
         refreshCurrentAnnotations({ redrawOverlay: true });
         selectQuadIndex(quadIndex);
         resetDots();
-        outputMessage(result.changed ? `已整体平移 Quad ${quadIndex + 1}。` : `Quad ${quadIndex + 1} 的位置未改变。`);
+        outputMessage(result.changed ? `已平移 ${translationSubject}。` : `${translationSubject} 的位置未改变。`);
       },
     );
 

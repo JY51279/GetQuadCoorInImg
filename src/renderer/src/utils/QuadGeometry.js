@@ -14,6 +14,40 @@ function getTurnCrossProduct(point1, point2, point3) {
   return (point2.x - point1.x) * (point3.y - point2.y) - (point2.y - point1.y) * (point3.x - point2.x);
 }
 
+export const QUAD_TRANSLATION_TARGET = Object.freeze({
+  WHOLE: 'whole',
+  EDGE: 'edge',
+});
+
+const WHOLE_QUAD_TRANSLATION_TARGET = Object.freeze({ type: QUAD_TRANSLATION_TARGET.WHOLE });
+
+const TRANSLATION_TARGET_NORMALIZERS = Object.freeze({
+  [QUAD_TRANSLATION_TARGET.WHOLE]: () => ({ ...WHOLE_QUAD_TRANSLATION_TARGET }),
+  [QUAD_TRANSLATION_TARGET.EDGE]: target => {
+    if (!Number.isInteger(target.edgeIndex) || target.edgeIndex < 0 || target.edgeIndex >= 4) return null;
+    return { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex: target.edgeIndex };
+  },
+});
+const TRANSLATED_POINT_INDEX_FACTORIES = Object.freeze({
+  [QUAD_TRANSLATION_TARGET.WHOLE]: () => [0, 1, 2, 3],
+  [QUAD_TRANSLATION_TARGET.EDGE]: target => [target.edgeIndex, (target.edgeIndex + 1) % 4],
+});
+
+export function normalizeQuadTranslationTarget(target = WHOLE_QUAD_TRANSLATION_TARGET) {
+  return TRANSLATION_TARGET_NORMALIZERS[target?.type]?.(target) ?? null;
+}
+
+function getTranslatedPointIndices(target) {
+  return TRANSLATED_POINT_INDEX_FACTORIES[target.type](target);
+}
+
+function translateQuadPoints(points, pointIndices, delta) {
+  const translatedIndices = new Set(pointIndices);
+  return points.map((point, pointIndex) =>
+    translatedIndices.has(pointIndex) ? { x: point.x + delta.x, y: point.y + delta.y } : { ...point },
+  );
+}
+
 function getTopLeftPointIndex(points) {
   let minimumCoordinateSum = Infinity;
   let targetIndex = -1;
@@ -62,7 +96,7 @@ export function getQuadCenterPoint(points) {
   };
 }
 
-export function calculateClampedQuadTranslation(points, requestedDelta, imageSize) {
+export function calculateClampedQuadTranslation(points, requestedDelta, imageSize, target) {
   if (
     !Array.isArray(points) ||
     points.length !== 4 ||
@@ -76,6 +110,9 @@ export function calculateClampedQuadTranslation(points, requestedDelta, imageSiz
     return null;
   }
 
+  const normalizedTarget = normalizeQuadTranslationTarget(target);
+  if (normalizedTarget === null) return null;
+
   const xValues = points.map(point => point.x);
   const yValues = points.map(point => point.y);
   const minimumX = Math.min(...xValues);
@@ -84,12 +121,54 @@ export function calculateClampedQuadTranslation(points, requestedDelta, imageSiz
   const maximumY = Math.max(...yValues);
   if (minimumX < 0 || maximumX >= imageSize.width || minimumY < 0 || maximumY >= imageSize.height) return null;
 
-  const delta = {
-    x: Math.min(imageSize.width - 1 - maximumX, Math.max(-minimumX, requestedDelta.x)),
-    y: Math.min(imageSize.height - 1 - maximumY, Math.max(-minimumY, requestedDelta.y)),
+  const translatedPointIndices = getTranslatedPointIndices(normalizedTarget);
+  const translatedPoints = translatedPointIndices.map(pointIndex => points[pointIndex]);
+  const translatedXValues = translatedPoints.map(point => point.x);
+  const translatedYValues = translatedPoints.map(point => point.y);
+  const translatedMinimumX = Math.min(...translatedXValues);
+  const translatedMaximumX = Math.max(...translatedXValues);
+  const translatedMinimumY = Math.min(...translatedYValues);
+  const translatedMaximumY = Math.max(...translatedYValues);
+
+  const boundaryClampedDelta = {
+    x: Math.min(imageSize.width - 1 - translatedMaximumX, Math.max(-translatedMinimumX, requestedDelta.x)),
+    y: Math.min(imageSize.height - 1 - translatedMaximumY, Math.max(-translatedMinimumY, requestedDelta.y)),
   };
+
+  let delta = boundaryClampedDelta;
+  let translatedQuad = translateQuadPoints(points, translatedPointIndices, delta);
+  if (normalizedTarget.type === QUAD_TRANSLATION_TARGET.EDGE) {
+    if (!validateCanonicalQuad(points).success) return null;
+    const turnDirection = Math.sign(getTurnCrossProduct(points[0], points[1], points[2]));
+    if (!hasCanonicalQuadDirection(translatedQuad, turnDirection)) {
+      let minimumRatio = 0;
+      let maximumRatio = 1;
+      let validDelta = { x: 0, y: 0 };
+      let validPoints = points.map(point => ({ ...point }));
+
+      for (let iteration = 0; iteration < 32; iteration++) {
+        const ratio = (minimumRatio + maximumRatio) / 2;
+        const candidateDelta = {
+          x: Math.round(boundaryClampedDelta.x * ratio),
+          y: Math.round(boundaryClampedDelta.y * ratio),
+        };
+        const candidatePoints = translateQuadPoints(points, translatedPointIndices, candidateDelta);
+        if (hasCanonicalQuadDirection(candidatePoints, turnDirection)) {
+          minimumRatio = ratio;
+          validDelta = candidateDelta;
+          validPoints = candidatePoints;
+        } else {
+          maximumRatio = ratio;
+        }
+      }
+
+      delta = validDelta;
+      translatedQuad = validPoints;
+    }
+  }
+
   return {
-    points: points.map(point => ({ x: point.x + delta.x, y: point.y + delta.y })),
+    points: translatedQuad,
     delta,
     clamped: delta.x !== requestedDelta.x || delta.y !== requestedDelta.y,
   };
@@ -131,6 +210,13 @@ function validateCanonicalQuad(points) {
   }
 
   return { success: true };
+}
+
+function hasCanonicalQuadDirection(points, turnDirection) {
+  return (
+    validateCanonicalQuad(points).success &&
+    Math.sign(getTurnCrossProduct(points[0], points[1], points[2])) === turnDirection
+  );
 }
 
 export function prepareQuad(points, barcodeType = '') {

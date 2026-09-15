@@ -12,6 +12,7 @@ describe('Quad interaction mode', () => {
       hoverActivation: false,
       pointDrag: false,
       wholeQuadDrag: false,
+      edgeDrag: false,
     });
     expect(isDirectQuadEditingMode(QUAD_INTERACTION_MODE.DEFAULT)).toBe(false);
   });
@@ -21,6 +22,7 @@ describe('Quad interaction mode', () => {
       hoverActivation: true,
       pointDrag: true,
       wholeQuadDrag: true,
+      edgeDrag: true,
     });
     expect(isDirectQuadEditingMode(QUAD_INTERACTION_MODE.DIRECT_EDIT)).toBe(true);
   });

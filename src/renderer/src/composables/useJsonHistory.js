@@ -19,6 +19,7 @@ export function getJsonActionLabel(action) {
     [KEYS.JSON_MODIFY]: '更新 Quad',
     [KEYS.JSON_COPY_PREVIOUS_LOCATION]: '沿用上一图坐标',
     [KEYS.JSON_TRANSLATE_QUAD]: '整体平移 Quad',
+    [KEYS.JSON_TRANSLATE_QUAD_EDGE]: '平移 Quad 边',
     [KEYS.JSON_ADD]: '新增 Quad',
     [KEYS.JSON_DELETE]: '删除 Quad',
   };

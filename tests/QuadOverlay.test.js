@@ -67,6 +67,12 @@ describe('Quad overlay', () => {
     overlay.resetQuads([createQuad(1)], 1);
 
     expect(overlay.activeCenterHandle.value).toEqual({ x: 7, y: 7 });
+    expect(overlay.activeEdgeHandles.value).toEqual([
+      { edgeIndex: 0, startPointIndex: 0, endPointIndex: 1, x: 7, y: 3, angle: 0 },
+      { edgeIndex: 1, startPointIndex: 1, endPointIndex: 2, x: 11, y: 7, angle: 90 },
+      { edgeIndex: 2, startPointIndex: 2, endPointIndex: 3, x: 7, y: 11, angle: 180 },
+      { edgeIndex: 3, startPointIndex: 3, endPointIndex: 0, x: 3, y: 7, angle: -90 },
+    ]);
     const translatedPoints = createQuad(4);
     expect(overlay.setQuadPoints(0, translatedPoints)).toBe(true);
     translatedPoints[0].x = 999;

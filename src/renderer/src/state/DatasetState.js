@@ -14,7 +14,13 @@ import {
   normalizeDataset,
 } from '../utils/DatasetSchema.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
-import { calculateClampedQuadTranslation, prepareQuad, prepareQuadPointUpdate } from '../utils/QuadGeometry.js';
+import {
+  QUAD_TRANSLATION_TARGET,
+  calculateClampedQuadTranslation,
+  normalizeQuadTranslationTarget,
+  prepareQuad,
+  prepareQuadPointUpdate,
+} from '../utils/QuadGeometry.js';
 import { HISTORY_DIRECTION } from './UndoRedoHistory.js';
 import { toUserErrorMessage } from '../../../shared/UserMessages.js';
 
@@ -22,6 +28,10 @@ const ROOT_KEY = 'Picture';
 const IMAGE_SOURCE_KEY = 'Image Source';
 const NUMBER_KEY = 'No.';
 const POINT_SEPARATOR = ' ';
+const TRANSLATION_ACTION_BY_TARGET_TYPE = Object.freeze({
+  [QUAD_TRANSLATION_TARGET.WHOLE]: KEYS.JSON_TRANSLATE_QUAD,
+  [QUAD_TRANSLATION_TARGET.EDGE]: KEYS.JSON_TRANSLATE_QUAD_EDGE,
+});
 
 const datasetState = {
   dataset: {},
@@ -374,17 +384,20 @@ export function replaceQuadLocationWithHistory(activeQuadIndex = -1, points = []
   );
 }
 
-export function translateQuadLocationWithHistory(activeQuadIndex = -1, delta = null, imageSize = null) {
-  return runJsonMutationWithHistory(KEYS.JSON_TRANSLATE_QUAD, activeQuadIndex, () => {
-    if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
+export function translateQuadWithHistory({ quadIndex = -1, target, delta = null, imageSize = null } = {}) {
+  const normalizedTarget = normalizeQuadTranslationTarget(target);
+  if (normalizedTarget === null) return { success: false, error: 'Quad 平移目标无效。' };
+
+  return runJsonMutationWithHistory(TRANSLATION_ACTION_BY_TARGET_TYPE[normalizedTarget.type], quadIndex, () => {
+    if (quadIndex < 0 || quadIndex >= datasetState.currentItems.length) {
       return '找不到对应的 JSON 标注项。';
     }
 
-    const targetItem = datasetState.currentItems[activeQuadIndex];
+    const targetItem = datasetState.currentItems[quadIndex];
     const currentPoints = parsePointString2Array(targetItem[datasetState.productSchema.ItemKey], POINT_SEPARATOR);
-    const translation = calculateClampedQuadTranslation(currentPoints, delta, imageSize);
-    if (translation === null) return '无法计算 Quad 的整体平移坐标。';
-    return replaceQuadLocation(activeQuadIndex, translation.points, imageSize);
+    const translation = calculateClampedQuadTranslation(currentPoints, delta, imageSize, normalizedTarget);
+    if (translation === null) return '无法计算 Quad 平移坐标。';
+    return replaceQuadLocation(quadIndex, translation.points, imageSize);
   });
 }
 

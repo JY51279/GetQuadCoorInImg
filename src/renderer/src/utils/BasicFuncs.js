@@ -4,6 +4,7 @@ export const KEYS = {
   JSON_MODIFY: 'Modify JSON content',
   JSON_COPY_PREVIOUS_LOCATION: 'Copy previous Quad location',
   JSON_TRANSLATE_QUAD: 'Translate Quad',
+  JSON_TRANSLATE_QUAD_EDGE: 'Translate Quad edge',
   JSON_DELETE: 'Delete JSON content',
   JSON_ADD: 'Add JSON content',
   OPERATE_SUCCESS: 'Operate Success',
