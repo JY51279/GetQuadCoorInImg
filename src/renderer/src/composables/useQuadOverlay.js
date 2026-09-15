@@ -236,8 +236,8 @@ export function useQuadOverlay({
       .map(({ index }) => index);
     hoveredIndicesText.value = hoveredIndices.map(index => index + 1).join(' ');
 
-    if (commitSelection && hoverActivationEnabled()) {
-      onSelectQuad(hoveredIndices.length === 1 ? hoveredIndices[0] : -1);
+    if (commitSelection && hoverActivationEnabled() && hoveredIndices.length === 1) {
+      onSelectQuad(hoveredIndices[0]);
     }
   }
 

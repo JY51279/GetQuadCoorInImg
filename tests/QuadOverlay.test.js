@@ -85,6 +85,76 @@ describe('Quad overlay', () => {
     expect(onSelectQuad).toHaveBeenCalledWith(0);
   });
 
+  it('switches from the active Quad when the pointer enters one different Quad', () => {
+    const context = createCanvasContext();
+    const onSelectQuad = vi.fn();
+    const overlay = useQuadOverlay({
+      activeQuadIndex: ref(0),
+      scale: ref(1),
+      getContext: () => context,
+      isMouseOver: () => true,
+      mousePoint: { x: 12, y: 2 },
+      hoverActivationEnabled: () => true,
+      onSelectQuad,
+    });
+    overlay.resetQuads([createQuad(1), createQuad(10)], 1);
+    overlay.addShownQuad(0);
+    overlay.addShownQuad(1);
+    overlay.drawOverlay();
+
+    overlay.updateHoveredInfo(true);
+
+    expect(onSelectQuad).toHaveBeenCalledWith(1);
+  });
+
+  it('keeps the active Quad when the pointer moves outside every Quad', () => {
+    const context = createCanvasContext();
+    const mousePoint = { x: 2, y: 2 };
+    const onSelectQuad = vi.fn();
+    const overlay = useQuadOverlay({
+      activeQuadIndex: ref(0),
+      scale: ref(1),
+      getContext: () => context,
+      isMouseOver: () => true,
+      mousePoint,
+      hoverActivationEnabled: () => true,
+      onSelectQuad,
+    });
+    overlay.resetQuads([createQuad(1)], 1);
+    overlay.addShownQuad(0);
+    overlay.drawOverlay();
+
+    mousePoint.x = 100;
+    mousePoint.y = 100;
+    overlay.updateHoveredInfo(true);
+
+    expect(overlay.hoveredIndicesText.value).toBe('');
+    expect(onSelectQuad).not.toHaveBeenCalled();
+  });
+
+  it('keeps the active Quad when multiple overlapping Quads are under the pointer', () => {
+    const context = createCanvasContext();
+    const onSelectQuad = vi.fn();
+    const overlay = useQuadOverlay({
+      activeQuadIndex: ref(0),
+      scale: ref(1),
+      getContext: () => context,
+      isMouseOver: () => true,
+      mousePoint: { x: 2, y: 2 },
+      hoverActivationEnabled: () => true,
+      onSelectQuad,
+    });
+    overlay.resetQuads([createQuad(1), createQuad(1)], 1);
+    overlay.addShownQuad(0);
+    overlay.addShownQuad(1);
+    overlay.drawOverlay();
+
+    overlay.updateHoveredInfo(true);
+
+    expect(overlay.hoveredIndicesText.value).toBe('2 1');
+    expect(onSelectQuad).not.toHaveBeenCalled();
+  });
+
   it('rejects an out-of-range display index without changing visibility', () => {
     const outputMessage = vi.fn();
     const overlay = useQuadOverlay({ activeQuadIndex: ref(-1), scale: ref(1), outputMessage });
