@@ -1,6 +1,6 @@
 <template>
   <div class="workspace-shell">
-    <TransitionGroup name="toast" tag="div" class="toast-container">
+    <TransitionGroup name="toast" tag="div" class="toast-container" aria-live="polite" aria-atomic="false">
       <div v-for="notification in notifications" :key="notification.id" class="toast-message">
         {{ notification.message }}
       </div>
@@ -2192,18 +2192,20 @@ function toggleQuadInteraction() {
 
 .toast-container {
   position: fixed;
-  top: 70px;
-  left: 50%;
+  top: 80px;
+  right: 20px;
   z-index: 10000;
   display: flex;
-  width: min(620px, calc(100vw - 32px));
+  width: min(340px, calc(100vw - 40px));
+  max-height: calc(100vh - 126px);
   flex-direction: column;
   gap: 7px;
-  transform: translateX(-50%);
+  overflow: hidden;
   pointer-events: none;
 }
 
 .toast-message {
+  flex: 0 0 auto;
   padding: 9px 13px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 7px;
@@ -2213,6 +2215,20 @@ function toggleQuadInteraction() {
   line-height: 1.4;
   overflow-wrap: anywhere;
   box-shadow: 0 6px 20px rgba(28, 36, 48, 0.24);
+}
+
+.toast-enter-active,
+.toast-leave-active,
+.toast-move {
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(14px);
 }
 
 @media (max-width: 980px) {
