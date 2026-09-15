@@ -16,15 +16,21 @@
       </div>
 
       <div class="toolbar-group toolbar-files">
-        <button class="toolbar-button primary" :disabled="!canLoadDataset" @click="chooseJsonFile">
-          打开图集 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>O</kbd></span>
+        <button
+          class="toolbar-button primary"
+          title="打开或更换图集（Ctrl+O）"
+          :disabled="!canLoadDataset"
+          @click="chooseJsonFile"
+        >
+          打开图集
         </button>
         <button
           class="toolbar-button"
+          title="手动匹配图片（Ctrl+I）"
           :disabled="imagePositionView.total === 0 || !canLoadImage"
           @click="chooseImgFile"
         >
-          匹配图片 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>I</kbd></span>
+          匹配图片
         </button>
       </div>
 
@@ -35,7 +41,7 @@
           :disabled="imagePositionView.total === 0 || !canLoadImage"
           @click="changeImageByArrowKeys(KEYS.PREVIOUS)"
         >
-          <span aria-hidden="true">‹</span><kbd>A</kbd>
+          <span aria-hidden="true">‹</span>
         </button>
         <label class="image-position-control">
           <span class="sr-only">图片序号</span>
@@ -57,14 +63,15 @@
           :disabled="imagePositionView.total === 0 || !canLoadImage"
           @click="changeImageByArrowKeys(KEYS.NEXT)"
         >
-          <span aria-hidden="true">›</span><kbd>D</kbd>
+          <span aria-hidden="true">›</span>
         </button>
         <button
           class="toolbar-button compact"
+          title="跳转到输入的图片序号（Enter）"
           :disabled="imagePositionView.total === 0 || !canLoadImage"
           @click="jumpToImageIndex"
         >
-          跳转 <kbd>Enter</kbd>
+          跳转
         </button>
       </div>
     </header>
@@ -99,14 +106,13 @@
               :key="page.id"
               class="inspector-tab"
               :class="{ active: activeInspectorPage === page.id }"
-              :title="page.label"
+              :title="`${page.label}（${page.shortcut}）`"
               :aria-label="page.label"
               :aria-pressed="activeInspectorPage === page.id"
               @click="selectInspectorPage(page.id)"
             >
               <span class="inspector-tab-icon" aria-hidden="true">{{ page.icon }}</span>
               <span>{{ page.label }}</span>
-              <small>{{ page.shortcut }}</small>
             </button>
           </div>
           <button
@@ -119,27 +125,23 @@
           >
             <span class="inspector-tab-icon" aria-hidden="true">?</span>
             <span>快捷键</span>
-            <small>F1</small>
           </button>
         </nav>
 
         <div class="inspector-content">
           <section v-show="activeInspectorPage === INSPECTOR_PAGE.ANNOTATION" class="inspector-page annotation-page">
             <header class="panel-header">
-              <div>
-                <span class="eyebrow">当前标注</span>
-                <h2>Quad {{ activeQuadLabel }}</h2>
-              </div>
+              <h2>Quad {{ activeQuadLabel }}</h2>
               <div class="panel-header-actions">
-                <span class="panel-counter">{{ quadTotal }} 个</span>
                 <button
                   class="action-button"
                   :class="{ primary: isQuadFocusModeEnabled }"
+                  :title="isQuadFocusModeEnabled ? '退出 Quad 聚焦模式（F）' : '进入 Quad 聚焦模式（F）'"
                   :disabled="!isQuadFocusModeEnabled && !canInteractWithImage"
                   :aria-pressed="isQuadFocusModeEnabled"
                   @click="toggleQuadFocusMode"
                 >
-                  {{ isQuadFocusModeEnabled ? '退出聚焦模式' : '进入聚焦模式' }} <kbd>F</kbd>
+                  {{ isQuadFocusModeEnabled ? '退出聚焦模式' : '进入聚焦模式' }}
                 </button>
               </div>
             </header>
@@ -164,18 +166,27 @@
                 </ol>
               </div>
               <div class="point-history-actions">
-                <button class="action-button history-button" :disabled="!canUndoPoints" @click="undoPointEdit">
-                  撤回选点 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Z</kbd></span>
+                <button
+                  class="action-button history-button"
+                  title="撤回选点（Ctrl+Z）"
+                  :disabled="!canUndoPoints"
+                  @click="undoPointEdit"
+                >
+                  撤回选点
                 </button>
-                <button class="action-button history-button" :disabled="!canRedoPoints" @click="redoPointEdit">
-                  重做选点 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Y</kbd></span>
+                <button
+                  class="action-button history-button"
+                  title="重做选点（Ctrl+Y）"
+                  :disabled="!canRedoPoints"
+                  @click="redoPointEdit"
+                >
+                  重做选点
                 </button>
               </div>
             </div>
 
             <div class="annotation-list-heading section-heading">
               <span>标注数据</span>
-              <small>{{ isDirectQuadEditingEnabled ? 'Tab 直接编辑模式' : '默认模式' }}</small>
             </div>
             <JsonView
               ref="jsonView"
@@ -187,13 +198,21 @@
             ></JsonView>
 
             <div class="json-history-actions">
-              <button class="action-button history-button" :disabled="!canUndoJson" @click="undoJsonEdit">
+              <button
+                class="action-button history-button"
+                title="撤销 JSON 操作（Ctrl+Shift+Z）"
+                :disabled="!canUndoJson"
+                @click="undoJsonEdit"
+              >
                 撤销 JSON
-                <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Z</kbd></span>
               </button>
-              <button class="action-button history-button" :disabled="!canRedoJson" @click="redoJsonEdit">
+              <button
+                class="action-button history-button"
+                title="重做 JSON 操作（Ctrl+Shift+Y）"
+                :disabled="!canRedoJson"
+                @click="redoJsonEdit"
+              >
                 重做 JSON
-                <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Y</kbd></span>
               </button>
             </div>
 
@@ -204,26 +223,33 @@
                 title="将上一张图片中同下标 Quad 的坐标复制到当前 Quad（Ctrl+E）"
                 @click="copyPreviousQuadLocation"
               >
-                沿用上图坐标 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>E</kbd></span>
+                沿用上图坐标
               </button>
-              <button class="action-button primary" :disabled="!canOperate" @click="modifyJsonItem">
-                更新 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>S</kbd></span>
+              <button
+                class="action-button primary"
+                title="更新当前 Quad（Ctrl+S）"
+                :disabled="!canOperate"
+                @click="modifyJsonItem"
+              >
+                更新
               </button>
-              <button class="action-button" :disabled="!canOperate" @click="addJsonItem">
-                新增 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>A</kbd></span>
+              <button class="action-button" title="新增 Quad（Ctrl+A）" :disabled="!canOperate" @click="addJsonItem">
+                新增
               </button>
-              <button class="action-button danger" :disabled="!canOperate" @click="deleteJsonItem">
-                删除 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>D</kbd></span>
+              <button
+                class="action-button danger"
+                title="删除当前 Quad（Ctrl+D）"
+                :disabled="!canOperate"
+                @click="deleteJsonItem"
+              >
+                删除
               </button>
             </div>
           </section>
 
           <section v-show="activeInspectorPage === INSPECTOR_PAGE.DATASET" class="inspector-page">
             <header class="panel-header">
-              <div>
-                <span class="eyebrow">开始与文件信息</span>
-                <h2>图集与图片</h2>
-              </div>
+              <h2>图集与图片</h2>
             </header>
             <dl class="metadata-list">
               <div>
@@ -239,29 +265,11 @@
                 <dd :title="imgFileName">{{ imgFileName || '未加载' }}</dd>
               </div>
             </dl>
-            <div class="dataset-actions-heading section-heading">
-              <span>文件操作</span>
-            </div>
-            <div class="stacked-actions">
-              <button class="action-button primary" :disabled="!canLoadDataset" @click="chooseJsonFile">
-                打开或更换图集 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>O</kbd></span>
-              </button>
-              <button
-                class="action-button"
-                :disabled="imagePositionView.total === 0 || !canLoadImage"
-                @click="chooseImgFile"
-              >
-                手动匹配图片 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>I</kbd></span>
-              </button>
-            </div>
           </section>
 
           <section v-show="activeInspectorPage === INSPECTOR_PAGE.DISPLAY" class="inspector-page">
             <header class="panel-header">
-              <div>
-                <span class="eyebrow">定位与覆盖层</span>
-                <h2>视图与鼠标操作</h2>
-              </div>
+              <h2>视图与鼠标操作</h2>
             </header>
             <div class="display-card">
               <div>
@@ -270,26 +278,49 @@
                   {{ isDirectQuadEditingEnabled ? '悬停选择 Quad；可拖动 Quad 或顶点' : '观察 Quad；通过选点更新标注' }}
                 </p>
               </div>
-              <button class="action-button" :disabled="!canInteractWithImage" @click="toggleQuadInteraction">
-                {{ isDirectQuadEditingEnabled ? '返回默认模式' : '进入直接编辑' }} <kbd>Tab</kbd>
+              <button
+                class="action-button direct-edit-mode-button"
+                :class="{ active: isDirectQuadEditingEnabled }"
+                :title="isDirectQuadEditingEnabled ? '返回默认观察模式（Tab）' : '进入直接编辑模式（Tab）'"
+                :disabled="!canInteractWithImage"
+                :aria-pressed="isDirectQuadEditingEnabled"
+                @click="toggleQuadInteraction"
+              >
+                {{ isDirectQuadEditingEnabled ? '返回默认模式' : '进入直接编辑' }}
               </button>
             </div>
             <div class="stacked-actions">
-              <button class="action-button" :disabled="!canInteractWithImage" @click="resetPosition">
-                重置图片位置 <kbd>R</kbd>
-              </button>
-              <button class="action-button" :disabled="!canFocusQuad" @click="toggleHighlight2ShowQuads">
-                切换当前 Quad 显示 <kbd>Q</kbd>
+              <button
+                class="action-button"
+                title="重置图片位置（R）"
+                :disabled="!canInteractWithImage"
+                @click="resetPosition"
+              >
+                重置图片位置
               </button>
               <button
                 class="action-button"
+                title="切换当前 Quad 显示（Q）"
+                :disabled="!canFocusQuad"
+                @click="toggleHighlight2ShowQuads"
+              >
+                切换当前 Quad 显示
+              </button>
+              <button
+                class="action-button"
+                title="显示全部 Quad（Ctrl+Shift+Q）"
                 :disabled="!canInteractWithImage || quadTotal === 0"
                 @click="addAll2ShowQuads"
               >
-                显示全部 Quad <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Q</kbd></span>
+                显示全部 Quad
               </button>
-              <button class="action-button" :disabled="!canInteractWithImage" @click="clearShowQuads">
-                隐藏全部 Quad <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>Q</kbd></span>
+              <button
+                class="action-button"
+                title="隐藏全部 Quad（Ctrl+Q）"
+                :disabled="!canInteractWithImage"
+                @click="clearShowQuads"
+              >
+                隐藏全部 Quad
               </button>
             </div>
             <p class="panel-note">放大到像素网格后，深色描边框表示鼠标当前对应的单个像素。</p>
@@ -297,10 +328,7 @@
 
           <section v-show="activeInspectorPage === INSPECTOR_PAGE.HISTORY" class="inspector-page history-page">
             <header class="panel-header">
-              <div>
-                <span class="eyebrow">当前会话</span>
-                <h2>JSON 操作历史</h2>
-              </div>
+              <h2>JSON 操作历史</h2>
             </header>
             <p class="history-page-note">
               点击当前图片的记录可回到对应状态；其他图片只读。每图最多
@@ -322,24 +350,22 @@
       <div class="status-context">
         <span class="status-item"><i :class="['status-dot', workflowState.phase]"></i>{{ workflowStatusText }}</span>
         <span class="status-divider"></span>
-        <span>点击：标点</span>
-        <span class="status-divider"></span>
-        <span>拖动画布：平移图片</span>
-        <span class="status-divider"></span>
-        <span>Quad 模式：{{ isDirectQuadEditingEnabled ? 'Tab 直接编辑' : '默认' }}</span>
-        <span class="status-divider"></span>
-        <span>Quad 聚焦：{{ isQuadFocusModeEnabled ? '开' : '关' }}</span>
-        <span class="status-divider"></span>
-        <span>{{ isDirectQuadEditingEnabled ? '手柄：拖动 Quad 或顶点' : '选点：更新激活 Quad' }}</span>
-        <span class="status-divider"></span>
-        <span>Quad {{ activeQuadLabel }}</span>
-      </div>
-      <div class="shortcut-only-hints">
-        <span class="status-hint shortcut-only-label">仅快捷键</span>
-        <span class="status-hint"><kbd>W</kbd>/<kbd>S</kbd> 选 Quad</span>
-        <span class="status-hint"><kbd>Z</kbd> 聚焦像素</span>
-        <span class="status-hint"><kbd>1–4</kbd> 删除点</span>
-        <span class="status-hint"><kbd>C</kbd> 清空 P1–P4</span>
+        <div class="mode-status-lights" aria-label="当前画布模式">
+          <span
+            class="mode-status-light direct-edit"
+            :class="{ active: isDirectQuadEditingEnabled }"
+            :title="isDirectQuadEditingEnabled ? 'Tab 直接编辑模式已开启' : '当前为默认观察模式'"
+          >
+            <i aria-hidden="true"></i><kbd>Tab</kbd>{{ isDirectQuadEditingEnabled ? '编辑' : '默认' }}
+          </span>
+          <span
+            class="mode-status-light quad-focus"
+            :class="{ active: isQuadFocusModeEnabled }"
+            :title="isQuadFocusModeEnabled ? 'F 自动聚焦模式已开启' : '当前为自由视图'"
+          >
+            <i aria-hidden="true"></i><kbd>F</kbd>{{ isQuadFocusModeEnabled ? '聚焦' : '自由' }}
+          </span>
+        </div>
       </div>
     </footer>
   </div>
@@ -1543,7 +1569,7 @@ function toggleQuadInteraction() {
   --font-size-code: 12px;
   --font-size-key: 10px;
   display: grid;
-  grid-template-rows: 60px minmax(0, 1fr) 46px;
+  grid-template-rows: 60px minmax(0, 1fr) 34px;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -1636,12 +1662,6 @@ function toggleQuadInteraction() {
   justify-content: center;
 }
 
-.button-shortcut {
-  display: inline-flex;
-  gap: 2px;
-  align-items: center;
-}
-
 .toolbar-button:hover:not(:disabled),
 .icon-button:hover:not(:disabled),
 .action-button:hover:not(:disabled) {
@@ -1660,6 +1680,17 @@ function toggleQuadInteraction() {
 .action-button.primary:hover:not(:disabled) {
   border-color: var(--accent-strong);
   background: var(--accent-strong);
+}
+
+.action-button.direct-edit-mode-button.active {
+  border-color: #c25f0d;
+  background: #c25f0d;
+  color: #ffffff;
+}
+
+.action-button.direct-edit-mode-button.active:hover:not(:disabled) {
+  border-color: #a94e08;
+  background: #a94e08;
 }
 
 .toolbar-button:disabled,
@@ -1745,7 +1776,7 @@ function toggleQuadInteraction() {
   display: grid;
   gap: 3px;
   place-items: center;
-  min-height: 64px;
+  min-height: 56px;
   padding: 5px 2px;
   border: 0;
   border-radius: 7px;
@@ -1758,12 +1789,6 @@ function toggleQuadInteraction() {
 .inspector-tab > span:not(.inspector-tab-icon) {
   max-width: 72px;
   line-height: 1.25;
-}
-
-.inspector-tab small {
-  color: currentColor;
-  font: 500 var(--font-size-key) / 1 var(--font-mono);
-  opacity: 0.72;
 }
 
 .inspector-tab:hover {
@@ -1824,26 +1849,10 @@ function toggleQuadInteraction() {
   align-items: center;
 }
 
-.eyebrow {
-  color: var(--accent);
-  font-size: var(--font-size-caption);
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .panel-header h2 {
-  margin: 3px 0 0;
+  margin: 0;
   font-size: 19px;
   line-height: 1.2;
-}
-
-.panel-counter {
-  padding: 5px 8px;
-  border-radius: 99px;
-  background: var(--surface-muted);
-  color: var(--text-secondary);
-  font-size: var(--font-size-caption);
 }
 
 .section-heading {
@@ -2010,15 +2019,10 @@ function toggleQuadInteraction() {
 .metadata-list dd {
   min-width: 0;
   margin: 0;
-  overflow: hidden;
   color: var(--text-primary);
-  font: var(--font-size-code) / 1.3 var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dataset-actions-heading {
-  margin-bottom: 9px;
+  font: var(--font-size-code) / 1.45 var(--font-mono);
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .stacked-actions {
@@ -2065,9 +2069,7 @@ function toggleQuadInteraction() {
 }
 
 .workspace-statusbar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 16px;
+  display: flex;
   align-items: center;
   min-width: 0;
   padding: 0 14px;
@@ -2078,24 +2080,63 @@ function toggleQuadInteraction() {
   white-space: nowrap;
 }
 
-.status-context,
-.shortcut-only-hints {
+.status-context {
   display: flex;
   gap: 9px;
   align-items: center;
-}
-
-.shortcut-only-hints {
-  min-width: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  line-height: 17px;
 }
 
 .status-item {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+.mode-status-lights,
+.mode-status-light {
+  display: inline-flex;
+  align-items: center;
+}
+
+.mode-status-lights {
+  gap: 9px;
+}
+
+.mode-status-light {
+  gap: 4px;
+  color: var(--text-muted);
+  font-weight: 600;
+  transition: color 140ms ease;
+}
+
+.mode-status-light > i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #a8b0bc;
+  box-shadow: 0 0 0 2px rgba(168, 176, 188, 0.14);
+  transition:
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.mode-status-light.direct-edit.active {
+  color: #a94e08;
+}
+
+.mode-status-light.direct-edit.active > i {
+  background: #d97706;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.16);
+}
+
+.mode-status-light.quad-focus.active {
+  color: var(--accent-strong);
+}
+
+.mode-status-light.quad-focus.active > i {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.16);
 }
 
 .status-dot {
@@ -2120,22 +2161,6 @@ function toggleQuadInteraction() {
   width: 1px;
   height: 11px;
   background: var(--border-subtle);
-}
-
-.status-hint {
-  color: var(--text-muted);
-}
-
-.shortcut-only-label {
-  color: var(--accent-strong);
-  font-weight: 700;
-}
-
-.toolbar-button.primary :deep(kbd),
-.action-button.primary :deep(kbd) {
-  border-color: rgba(255, 255, 255, 0.42);
-  background: rgba(255, 255, 255, 0.12);
-  color: white;
 }
 
 :deep(kbd) {
