@@ -116,33 +116,6 @@ describe('ImageView interactions', () => {
     wrapper.unmount();
   });
 
-  it('reports actual canvas drags and user scale attempts as manual viewport interactions', async () => {
-    const wrapper = await mountReadyImage();
-    const container = wrapper.find('.image-container');
-
-    await container.trigger('pointerdown', { button: 0, pointerId: 5, clientX: 50, clientY: 50 });
-    await container.trigger('pointermove', { pointerId: 5, clientX: 53, clientY: 52 });
-    expect(wrapper.emitted('manual-viewport-interaction')).toBeUndefined();
-
-    await container.trigger('pointermove', { pointerId: 5, clientX: 60, clientY: 50 });
-    await container.trigger('pointermove', { pointerId: 5, clientX: 70, clientY: 50 });
-    await container.trigger('pointerup', { pointerId: 5, clientX: 70, clientY: 50 });
-    expect(wrapper.emitted('manual-viewport-interaction')).toHaveLength(1);
-
-    container.element.dispatchEvent(
-      new WheelEvent('wheel', {
-        bubbles: true,
-        cancelable: true,
-        clientX: 100,
-        clientY: 100,
-        deltaY: -100,
-      }),
-    );
-    await nextTick();
-    expect(wrapper.emitted('manual-viewport-interaction')).toHaveLength(2);
-    wrapper.unmount();
-  });
-
   it('keeps point selection available but hides direct Quad controls in default mode', async () => {
     const wrapper = await mountReadyImage({ quadInteractionCapabilities: DEFAULT_QUAD_INTERACTION });
     wrapper.vm.resetQuadsArray([QUAD], 1);

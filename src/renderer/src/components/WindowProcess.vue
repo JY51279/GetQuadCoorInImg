@@ -89,7 +89,6 @@
         @quad-translation-start="lockQuadSelectionForTranslation"
         @quad-translation-cancel="unlockQuadSelectionForTranslation"
         @commit-quad-translation="commitQuadTranslation"
-        @manual-viewport-interaction="exitQuadFocusModeForManualInteraction"
       ></ImageView>
 
       <aside class="inspector-shell">
@@ -136,11 +135,11 @@
                 <button
                   class="action-button"
                   :class="{ primary: isQuadFocusModeEnabled }"
-                  :disabled="!canInteractWithImage"
+                  :disabled="!isQuadFocusModeEnabled && !canInteractWithImage"
                   :aria-pressed="isQuadFocusModeEnabled"
-                  @click="enterQuadFocusMode"
+                  @click="toggleQuadFocusMode"
                 >
-                  {{ isQuadFocusModeEnabled ? '重新聚焦 Quad' : '进入聚焦模式' }} <kbd>F</kbd>
+                  {{ isQuadFocusModeEnabled ? '退出聚焦模式' : '进入聚焦模式' }} <kbd>F</kbd>
                 </button>
               </div>
             </header>
@@ -670,7 +669,7 @@ const keyActions = {
     default: () => resetPosition(),
   },
   f: {
-    default: () => enterQuadFocusMode(),
+    default: () => toggleQuadFocusMode(),
   },
   e: {
     ctrl: () => copyPreviousQuadLocation(),
@@ -724,7 +723,7 @@ const shortcutHelpGroups = Object.freeze([
       { keys: ['S', '↓'], separator: '/', label: '下一个 Quad' },
       { keys: ['A', '←'], separator: '/', label: '上一张图片' },
       { keys: ['D', '→'], separator: '/', label: '下一张图片' },
-      { keys: ['F'], label: '进入 Quad 聚焦模式' },
+      { keys: ['F'], label: '开关 Quad 聚焦模式' },
       { keys: ['Z'], label: '聚焦鼠标所在像素' },
       { keys: ['R'], label: '重置图片位置' },
       { keys: ['Ctrl', 'O'], label: '打开图集 JSON' },
@@ -793,7 +792,6 @@ function changeJsonItemSelection(direction) {
 
 function resetPosition() {
   if (!canInteractWithImage.value) return;
-  exitQuadFocusModeForManualInteraction();
   imgContainerRef.value?.resetPosition();
 }
 
@@ -820,24 +818,22 @@ function synchronizeQuadFocusSelection({ forceFocus = false } = {}) {
   );
 }
 
-function enterQuadFocusMode() {
-  if (!canInteractWithImage.value) {
+function toggleQuadFocusMode() {
+  if (!isQuadFocusModeEnabled.value && !canInteractWithImage.value) {
     outputMessage('请先加载一张可用图片。');
     return;
   }
 
-  const modeChanged = !isQuadFocusModeEnabled.value;
-  viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.ENTER_QUAD_FOCUS);
-  synchronizeQuadFocusSelection({ forceFocus: true });
-  if (modeChanged) outputMessage('已进入 Quad 聚焦模式。');
-}
-
-function exitQuadFocusModeForManualInteraction() {
-  viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.MANUAL_INTERACTION);
+  viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.TOGGLE_QUAD_FOCUS);
+  if (isQuadFocusModeEnabled.value) {
+    synchronizeQuadFocusSelection({ forceFocus: true });
+    outputMessage('已进入 Quad 聚焦模式。');
+  } else {
+    outputMessage('已退出 Quad 聚焦模式。');
+  }
 }
 
 function focusPixelAtMouse() {
-  exitQuadFocusModeForManualInteraction();
   const result = imgContainerRef.value?.focusPixelAtMouse();
   if (!result?.success) outputMessage(result?.error || '无法聚焦鼠标所在像素。');
 }

@@ -8,14 +8,11 @@ import {
 } from '../src/renderer/src/state/QuadFocusMode.js';
 
 describe('Quad focus mode', () => {
-  it('enters focus mode idempotently and exits for manual interaction or a new dataset', () => {
-    expect(transitionViewportMode(VIEWPORT_MODE.FREE, VIEWPORT_MODE_EVENT.ENTER_QUAD_FOCUS)).toBe(
+  it('toggles focus mode explicitly and resets it for a new dataset', () => {
+    expect(transitionViewportMode(VIEWPORT_MODE.FREE, VIEWPORT_MODE_EVENT.TOGGLE_QUAD_FOCUS)).toBe(
       VIEWPORT_MODE.FOCUS_QUAD,
     );
-    expect(transitionViewportMode(VIEWPORT_MODE.FOCUS_QUAD, VIEWPORT_MODE_EVENT.ENTER_QUAD_FOCUS)).toBe(
-      VIEWPORT_MODE.FOCUS_QUAD,
-    );
-    expect(transitionViewportMode(VIEWPORT_MODE.FOCUS_QUAD, VIEWPORT_MODE_EVENT.MANUAL_INTERACTION)).toBe(
+    expect(transitionViewportMode(VIEWPORT_MODE.FOCUS_QUAD, VIEWPORT_MODE_EVENT.TOGGLE_QUAD_FOCUS)).toBe(
       VIEWPORT_MODE.FREE,
     );
     expect(transitionViewportMode(VIEWPORT_MODE.FOCUS_QUAD, VIEWPORT_MODE_EVENT.DATASET_CHANGED)).toBe(
