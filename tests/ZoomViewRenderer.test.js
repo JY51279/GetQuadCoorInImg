@@ -10,9 +10,10 @@ describe('Zoom preview renderer', () => {
       beginPath: vi.fn(),
       moveTo: vi.fn(),
       lineTo: vi.fn(),
+      setTransform: vi.fn(),
       stroke: vi.fn(),
     };
-    return { context, canvas: { getContext: () => context } };
+    return { context, canvas: { getContext: () => context, style: {} } };
   }
 
   it('disables smoothing and draws only points inside the 6 by 6 source area', () => {
@@ -28,11 +29,22 @@ describe('Zoom preview renderer', () => {
     ]);
 
     expect(context.imageSmoothingEnabled).toBe(false);
+    expect(canvas).toMatchObject({ width: 120, height: 120, style: { width: '120px', height: '120px' } });
+    expect(context.setTransform).toHaveBeenCalledWith(1, 0, 0, 1, 0, 0);
     expect(context.drawImage).toHaveBeenCalledWith(image, 10, 20, 6, 6, 0, 0, 120, 120);
     expect(context.fillRect.mock.calls).toEqual([
       [20, 40, 20, 20],
       [100, 100, 20, 20],
     ]);
     expect(context.strokeRect).toHaveBeenCalledWith(60, 60, 20, 20);
+  });
+
+  it('uses a high-DPI backing store without changing logical drawing coordinates', () => {
+    const { context, canvas } = createCanvasContext();
+
+    expect(configureZoomCanvas(canvas, 1.5)).toBe(1.5);
+
+    expect(canvas).toMatchObject({ width: 180, height: 180, style: { width: '120px', height: '120px' } });
+    expect(context.setTransform).toHaveBeenCalledWith(1.5, 0, 0, 1.5, 0, 0);
   });
 });

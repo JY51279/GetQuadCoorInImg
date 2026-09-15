@@ -1,3 +1,5 @@
+import { getCanvasBackingLength, normalizeDevicePixelRatio } from './CanvasDisplay.js';
+
 const ZOOM_SOURCE_SIZE = 6;
 const ZOOM_CANVAS_SIZE = 120;
 const ZOOM_CELL_SIZE = ZOOM_CANVAS_SIZE / ZOOM_SOURCE_SIZE;
@@ -9,12 +11,22 @@ function getZoomContext(canvas) {
   return context;
 }
 
-export function configureZoomCanvas(canvas) {
+export function configureZoomCanvas(canvas, pixelRatio = 1) {
+  const normalizedPixelRatio = normalizeDevicePixelRatio(pixelRatio);
+  const backingSize = getCanvasBackingLength(ZOOM_CANVAS_SIZE, normalizedPixelRatio);
+  canvas.width = backingSize;
+  canvas.height = backingSize;
+  if (canvas.style) {
+    canvas.style.width = `${ZOOM_CANVAS_SIZE}px`;
+    canvas.style.height = `${ZOOM_CANVAS_SIZE}px`;
+  }
   const context = getZoomContext(canvas);
+  context.setTransform?.(normalizedPixelRatio, 0, 0, normalizedPixelRatio, 0, 0);
   context.imageSmoothingEnabled = false;
   context.mozImageSmoothingEnabled = false;
   context.webkitImageSmoothingEnabled = false;
   context.msImageSmoothingEnabled = false;
+  return normalizedPixelRatio;
 }
 
 function drawDot(context, point, origin) {

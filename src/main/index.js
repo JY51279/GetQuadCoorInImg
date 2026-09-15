@@ -33,6 +33,8 @@ function createWindow() {
       sandbox: false,
     },
   });
+  mainWindow.webContents.setZoomMode('isolated');
+  mainWindow.webContents.setZoomFactor(1);
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show();

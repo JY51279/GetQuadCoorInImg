@@ -80,6 +80,7 @@
         :selected-dots="selectedDots"
         :image-load-error="imageLoadError"
         :hover-quad-activation-enabled="isHoverQuadActivationEnabled"
+        :display-pixel-ratio="displayPixelRatio"
         @update-zoom-view="updateZoomView"
         @output-message="outputMessage"
         @update-selected-dots="updateSelectedDots"
@@ -197,7 +198,7 @@
                 title="将上一张图片中同下标 Quad 的坐标复制到当前 Quad（Ctrl+E）"
                 @click="copyPreviousQuadLocation"
               >
-                沿用上图坐标
+                沿用上图坐标 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>E</kbd></span>
               </button>
               <button class="action-button primary" :disabled="!canOperate" @click="modifyJsonItem">
                 更新 <span class="button-shortcut"><kbd>Ctrl</kbd><kbd>S</kbd></span>
@@ -342,6 +343,7 @@
 
 <script setup>
 import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { useDevicePixelRatio } from '@vueuse/core';
 import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
 import Help from './Help.vue';
@@ -381,6 +383,7 @@ import {
   getHistoryTransition,
 } from '../state/UndoRedoHistory.js';
 import { KEYS } from '../utils/BasicFuncs.js';
+import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { getAdjacentListSelectionIndex, handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
@@ -446,6 +449,8 @@ const imageCoordinateScale = ref({ x: 1, y: 1 });
 const currentImageOriginalSize = ref(null);
 let zoomSourceOrigin = null;
 const isHoverQuadActivationEnabled = ref(false);
+const { pixelRatio: rawDisplayPixelRatio } = useDevicePixelRatio();
+const displayPixelRatio = computed(() => normalizeDevicePixelRatio(rawDisplayPixelRatio.value));
 
 // Operation and image request state
 const workflowState = ref(createWorkflowState());
@@ -528,6 +533,7 @@ const {
 });
 
 let removeChooseJsonFileResponseListener = null;
+let zoomCanvasPixelRatio = null;
 
 function applyWorkflowTransition(result) {
   if (!result.success) return false;
@@ -576,7 +582,7 @@ function selectInspectorPage(pageId) {
 }
 
 onMounted(() => {
-  configureZoomCanvas(zoomView.value);
+  syncZoomCanvasPixelRatio();
   window.addEventListener('keydown', handleKeyDown);
   removeChooseJsonFileResponseListener = ipcRenderer.on('choose-json-file-response', handleChooseJsonFileResponse);
 });
@@ -587,6 +593,16 @@ onUnmounted(() => {
   removeChooseJsonFileResponseListener = null;
   clearNotifications();
 });
+
+function syncZoomCanvasPixelRatio() {
+  const nextPixelRatio = displayPixelRatio.value;
+  if (nextPixelRatio === zoomCanvasPixelRatio) return;
+
+  zoomCanvasPixelRatio = configureZoomCanvas(zoomView.value, nextPixelRatio);
+  updateZoomView();
+}
+
+watch(displayPixelRatio, syncZoomCanvasPixelRatio);
 
 // Keyboard shortcuts
 const keyActions = {

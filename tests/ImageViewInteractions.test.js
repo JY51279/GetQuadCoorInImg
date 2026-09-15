@@ -26,6 +26,7 @@ function createCanvasContext(canvas) {
     restore: vi.fn(),
     save: vi.fn(),
     setLineDash: vi.fn(),
+    setTransform: vi.fn(),
     stroke: vi.fn(),
     strokeRect: vi.fn(),
   };
@@ -99,6 +100,23 @@ describe('ImageView interactions', () => {
     await canvas.trigger('click', { clientX: 100, clientY: 100 });
 
     expect(wrapper.emitted('update-selected-dots').at(-1)).toEqual([[{ x: 50, y: 50 }]]);
+    wrapper.unmount();
+  });
+
+  it('uses device pixels for canvas backing stores while preserving CSS coordinates', async () => {
+    const wrapper = await mountReadyImage({ displayPixelRatio: 1 });
+    await wrapper.setProps({ displayPixelRatio: 1.5 });
+    await nextTick();
+    const canvases = wrapper.findAll('canvas.canvas-layer');
+
+    expect(canvases).toHaveLength(2);
+    for (const canvas of canvases) {
+      expect(canvas.element.width).toBe(300);
+      expect(canvas.element.height).toBe(300);
+      expect(canvas.element.style.width).toBe('200px');
+      expect(canvas.element.style.height).toBe('200px');
+      expect(canvas.element.getContext('2d').setTransform).toHaveBeenCalledWith(1.5, 0, 0, 1.5, 0, 0);
+    }
     wrapper.unmount();
   });
 

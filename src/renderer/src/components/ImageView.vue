@@ -15,16 +15,18 @@
       <canvas
         ref="canvas"
         class="canvas-layer"
-        :width="viewportWidth"
-        :height="viewportHeight"
+        :width="canvasBackingWidth"
+        :height="canvasBackingHeight"
+        :style="{ width: `${viewportWidth}px`, height: `${viewportHeight}px` }"
         @click="toggleDot"
         @mousemove="updateZoomView"
       ></canvas>
       <canvas
         ref="canvasForShowQuads"
         class="canvas-layer quad-layer"
-        :width="viewportWidth"
-        :height="viewportHeight"
+        :width="canvasBackingWidth"
+        :height="canvasBackingHeight"
+        :style="{ width: `${viewportWidth}px`, height: `${viewportHeight}px` }"
       ></canvas>
 
       <div v-if="isLoading" class="loading-overlay">正在加载图片…</div>
@@ -157,6 +159,7 @@ import { useCanvasPanGesture } from '../composables/useCanvasPanGesture.js';
 import { useImageViewport } from '../composables/useImageViewport.js';
 import { isValidQuadPoints, useQuadOverlay } from '../composables/useQuadOverlay.js';
 import { useQuadTranslationGesture } from '../composables/useQuadTranslationGesture.js';
+import { getCanvasBackingLength, normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import {
   calculatePixelFocusTransform,
   calculateQuadFocusTransform,
@@ -210,6 +213,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  displayPixelRatio: {
+    type: Number,
+    default: 1,
+  },
 });
 
 // Canvas and viewport state
@@ -252,6 +259,9 @@ const {
 } = useImageViewport({ gridLimit, scaleRange, snapDistance: autoAdaptBorderDis });
 const scaleSliderPosition = computed(() => scaleToSliderPosition(scale.value));
 const scaleDisplayValue = computed(() => Number(scale.value.toFixed(scale.value < 10 ? 2 : 1)));
+const canvasPixelRatio = computed(() => normalizeDevicePixelRatio(props.displayPixelRatio));
+const canvasBackingWidth = computed(() => getCanvasBackingLength(viewportWidth.value, canvasPixelRatio.value));
+const canvasBackingHeight = computed(() => getCanvasBackingLength(viewportHeight.value, canvasPixelRatio.value));
 const scaleTicks = Object.freeze(
   [0.1, 1, 10, 60].map(value => ({
     value,
@@ -734,6 +744,10 @@ watch(
   { deep: true },
 );
 
+watch(canvasPixelRatio, () => {
+  void updateViewSize();
+});
+
 function toggleDot(e) {
   if (!props.canEdit || imageSrc === '' || canvasPointerGesture.dragging) {
     return;
@@ -865,6 +879,7 @@ async function initImgInfo() {
     }
     ctx.value = canvas.value.getContext('2d');
     ctxQuad.value = canvasForShowQuads.value.getContext('2d');
+    initCanvasSettings();
     fitImageToViewport();
     drawViewPortNow();
     await nextTick();
@@ -988,15 +1003,19 @@ async function updateViewSize() {
 }
 
 function initCanvasSettings() {
-  if (canvas.value === null) return;
-  if (ctx.value === null) {
-    ctx.value = canvas.value.getContext('2d');
+  if (canvas.value !== null && ctx.value === null) ctx.value = canvas.value.getContext('2d');
+  if (canvasForShowQuads.value !== null && ctxQuad.value === null) {
+    ctxQuad.value = canvasForShowQuads.value.getContext('2d');
   }
 
-  ctx.value.imageSmoothingEnabled = false;
-  ctx.value.mozImageSmoothingEnabled = false;
-  ctx.value.webkitImageSmoothingEnabled = false;
-  ctx.value.msImageSmoothingEnabled = false;
+  for (const context of [ctx.value, ctxQuad.value]) {
+    if (context === null) continue;
+    context.setTransform?.(canvasPixelRatio.value, 0, 0, canvasPixelRatio.value, 0, 0);
+    context.imageSmoothingEnabled = false;
+    context.mozImageSmoothingEnabled = false;
+    context.webkitImageSmoothingEnabled = false;
+    context.msImageSmoothingEnabled = false;
+  }
 }
 </script>
 
