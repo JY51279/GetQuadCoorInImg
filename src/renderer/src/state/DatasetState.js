@@ -14,7 +14,7 @@ import {
   normalizeDataset,
 } from '../utils/DatasetSchema.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
-import { prepareQuad, prepareQuadPointUpdate } from '../utils/QuadGeometry.js';
+import { calculateClampedQuadTranslation, prepareQuad, prepareQuadPointUpdate } from '../utils/QuadGeometry.js';
 import { HISTORY_DIRECTION } from './UndoRedoHistory.js';
 import { toUserErrorMessage } from '../../../shared/UserMessages.js';
 
@@ -372,6 +372,20 @@ export function replaceQuadLocationWithHistory(activeQuadIndex = -1, points = []
   return runJsonMutationWithHistory(KEYS.JSON_MODIFY, activeQuadIndex, () =>
     replaceQuadLocation(activeQuadIndex, points, imageSize),
   );
+}
+
+export function translateQuadLocationWithHistory(activeQuadIndex = -1, delta = null, imageSize = null) {
+  return runJsonMutationWithHistory(KEYS.JSON_TRANSLATE_QUAD, activeQuadIndex, () => {
+    if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
+      return '找不到对应的 JSON 标注项。';
+    }
+
+    const targetItem = datasetState.currentItems[activeQuadIndex];
+    const currentPoints = parsePointString2Array(targetItem[datasetState.productSchema.ItemKey], POINT_SEPARATOR);
+    const translation = calculateClampedQuadTranslation(currentPoints, delta, imageSize);
+    if (translation === null) return '无法计算 Quad 的整体平移坐标。';
+    return replaceQuadLocation(activeQuadIndex, translation.points, imageSize);
+  });
 }
 
 export function copyPreviousQuadLocationWithHistory(activeQuadIndex = -1, imageSize = null) {

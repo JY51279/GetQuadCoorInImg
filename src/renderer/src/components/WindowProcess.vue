@@ -85,6 +85,9 @@
         @update-selected-dots="updateSelectedDots"
         @select-quad-index="selectQuadIndex"
         @commit-quad-point-drag="commitQuadPointDrag"
+        @quad-translation-start="lockQuadSelectionForTranslation"
+        @quad-translation-cancel="unlockQuadSelectionForTranslation"
+        @commit-quad-translation="commitQuadTranslation"
       ></ImageView>
 
       <aside class="inspector-shell">
@@ -318,7 +321,9 @@
         <span class="status-divider"></span>
         <span>点击：标点</span>
         <span class="status-divider"></span>
-        <span>拖动：平移</span>
+        <span>拖动画布：平移图片</span>
+        <span class="status-divider"></span>
+        <span>中心手柄：平移 Quad</span>
         <span class="status-divider"></span>
         <span>悬停联动：{{ isHoverQuadActivationEnabled ? '开' : '关' }}</span>
         <span class="status-divider"></span>
@@ -359,6 +364,7 @@ import {
   getJsonImagePosition,
   getJsonFileInfo,
   resetPicJson,
+  translateQuadLocationWithHistory,
 } from '../state/DatasetState.js';
 import { DATASET_LOAD_STATUS, prepareDatasetLoad } from '../services/DatasetLoadService.js';
 import {
@@ -426,6 +432,7 @@ let previousInspectorPage = INSPECTOR_PAGE.DATASET;
 
 // Dataset and current image state
 const activeQuadIndex = ref(-1);
+const quadSelectionLockIndex = ref(-1);
 const annotationView = ref({ formattedItems: [], quads: [], errorMessage: '' });
 const quadTotal = computed(() => annotationView.value.formattedItems.length);
 const imagePositionView = ref({ currentIndex: -1, total: 0 });
@@ -467,6 +474,7 @@ const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(ima
 const canFocusQuad = computed(
   () => canInteractWithImage.value && activeQuadIndex.value >= 0 && activeQuadIndex.value < quadTotal.value,
 );
+const isQuadSelectionLocked = computed(() => quadSelectionLockIndex.value >= 0);
 const canCopyPreviousQuadLocation = computed(
   () =>
     canOperate.value &&
@@ -530,12 +538,31 @@ function applyWorkflowTransition(result) {
 function selectQuadIndex(newIndex) {
   if (!canChangeQuadSelection(workflowState.value)) return;
   const normalizedIndex = Number.isInteger(newIndex) && newIndex >= 0 && newIndex < quadTotal.value ? newIndex : -1;
+  if (isQuadSelectionLocked.value && normalizedIndex !== quadSelectionLockIndex.value) return;
 
   activeQuadIndex.value = normalizedIndex;
 }
 
 function resetQuadSelection() {
+  if (isQuadSelectionLocked.value) imgContainerRef.value?.cancelQuadTranslation?.('selection-reset');
+  quadSelectionLockIndex.value = -1;
   activeQuadIndex.value = -1;
+}
+
+function lockQuadSelectionForTranslation(payload) {
+  const quadIndex = payload?.quadIndex;
+  if (!canOperate.value || quadIndex !== activeQuadIndex.value) {
+    imgContainerRef.value?.cancelQuadTranslation?.('selection-mismatch');
+    return;
+  }
+  quadSelectionLockIndex.value = quadIndex;
+}
+
+function unlockQuadSelectionForTranslation(payload = null) {
+  const quadIndex = payload?.quadIndex;
+  if (quadIndex === undefined || quadIndex === quadSelectionLockIndex.value) {
+    quadSelectionLockIndex.value = -1;
+  }
 }
 
 function selectInspectorPage(pageId) {
@@ -690,6 +717,11 @@ const shortcutHelpGroups = Object.freeze([
 ]);
 
 function handleKeyDown(e) {
+  if (e.defaultPrevented && e.key === 'Escape') return;
+  if (isQuadSelectionLocked.value) {
+    if (e.key !== 'Escape') e.preventDefault();
+    return;
+  }
   if (e.key === 'F1') {
     e.preventDefault();
     if (!e.repeat) selectInspectorPage(INSPECTOR_PAGE.HELP);
@@ -781,6 +813,46 @@ async function commitQuadPointDrag(payload) {
   );
 
   if (!saved) refreshCurrentAnnotations({ redrawOverlay: true });
+}
+
+async function commitQuadTranslation(payload) {
+  const { quadIndex, imageDelta } = payload ?? {};
+  if (!canOperate.value || quadIndex !== activeQuadIndex.value || quadIndex !== quadSelectionLockIndex.value) {
+    unlockQuadSelectionForTranslation();
+    refreshCurrentAnnotations({ redrawOverlay: true });
+    outputMessage('整体拖动的 Quad 已与当前标注不匹配。');
+    return;
+  }
+
+  const datasetDelta = imagePointToDatasetPoint(imageDelta, imageCoordinateScale.value);
+  if (datasetDelta === null) {
+    unlockQuadSelectionForTranslation({ quadIndex });
+    refreshCurrentAnnotations({ redrawOverlay: true });
+    outputMessage('无法将 Quad 的整体位移换算为数据集坐标。');
+    return;
+  }
+
+  let historyEntry = null;
+  try {
+    const saved = await runSaveTransaction(
+      () => {
+        const updateResult = translateQuadLocationWithHistory(quadIndex, datasetDelta, currentImageOriginalSize.value);
+        historyEntry = updateResult.historyEntry ?? null;
+        return updateResult;
+      },
+      result => {
+        if (historyEntry) recordCurrentJsonHistory(historyEntry);
+        refreshCurrentAnnotations({ redrawOverlay: true });
+        selectQuadIndex(quadIndex);
+        resetDots();
+        outputMessage(result.changed ? `已整体平移 Quad ${quadIndex + 1}。` : `Quad ${quadIndex + 1} 的位置未改变。`);
+      },
+    );
+
+    if (!saved && canOperate.value) refreshCurrentAnnotations({ redrawOverlay: true });
+  } finally {
+    unlockQuadSelectionForTranslation({ quadIndex });
+  }
 }
 
 async function performJsonAction(action) {

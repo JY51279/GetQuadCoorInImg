@@ -1,7 +1,7 @@
 import { reactive, ref, unref } from 'vue';
 import { datasetPointToImagePoint } from '../utils/AnnotationCoordinates.js';
 import { getOuterInnerQuads, drawPath } from '../utils/ImageProcess.js';
-import { isPointInQuad } from '../utils/QuadGeometry.js';
+import { getQuadCenterPoint, isPointInQuad } from '../utils/QuadGeometry.js';
 
 export function isValidQuadPoints(quadPoints) {
   return (
@@ -25,6 +25,7 @@ export function useQuadOverlay({
 } = {}) {
   const shownQuadIndices = reactive([]);
   const activePointHandles = ref([]);
+  const activeCenterHandle = ref(null);
   const hoveredIndicesText = ref('');
   const drawnOuterQuads = [];
   let quads = [];
@@ -62,10 +63,20 @@ export function useQuadOverlay({
     return true;
   }
 
+  function setQuadPoints(quadIndex, points) {
+    const quad = getQuad(quadIndex);
+    if (!isValidQuadPoints(quad) || !Array.isArray(points) || points.length !== 4 || !isValidQuadPoints(points)) {
+      return false;
+    }
+    quads[quadIndex] = points.map(point => ({ x: point.x, y: point.y }));
+    return true;
+  }
+
   function updateActivePointHandles() {
     const quad = getQuad(getActiveQuadIndex());
     if (!isValidQuadPoints(quad)) {
       activePointHandles.value = [];
+      activeCenterHandle.value = null;
       return;
     }
 
@@ -79,6 +90,11 @@ export function useQuadOverlay({
         y: canvasPoint.y + pixelInset + currentScale / 2,
       };
     });
+    const centerPoint = imageToCanvas(getQuadCenterPoint(quad));
+    activeCenterHandle.value = {
+      x: centerPoint.x + pixelInset + currentScale / 2,
+      y: centerPoint.y + pixelInset + currentScale / 2,
+    };
   }
 
   function resetQuads(
@@ -244,6 +260,7 @@ export function useQuadOverlay({
   function clear() {
     quads = [];
     activePointHandles.value = [];
+    activeCenterHandle.value = null;
     shownQuadIndices.splice(0, shownQuadIndices.length);
     drawnOuterQuads.splice(0, drawnOuterQuads.length);
     hoveredIndicesText.value = '';
@@ -252,10 +269,12 @@ export function useQuadOverlay({
   return {
     shownQuadIndices,
     activePointHandles,
+    activeCenterHandle,
     hoveredIndicesText,
     getQuadCount,
     getQuad,
     setQuadPoint,
+    setQuadPoints,
     resetQuads,
     toggleShownQuad,
     addShownQuad,

@@ -10,6 +10,7 @@ import {
   resetPicJson,
   replaceQuadLocationWithHistory,
   rollbackDatasetMutation,
+  translateQuadLocationWithHistory,
   updateJson,
   updateJsonWithHistory,
   updateQuadPointWithHistory,
@@ -218,6 +219,47 @@ describe('Dataset mutations', () => {
     expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Info'][0]['Barcode Location']).toBe(
       '15 15 25 15 25 25 15 25',
     );
+  });
+
+  it('translates all Quad points by one clamped delta and supports undo', () => {
+    loadDbrDataset('10 10 20 10 20 20 10 20');
+
+    const result = translateQuadLocationWithHistory(0, { x: 90, y: -20 }, { width: 100, height: 100 });
+
+    expect(result).toMatchObject({
+      success: true,
+      changed: true,
+      historyEntry: {
+        action: KEYS.JSON_TRANSLATE_QUAD,
+        imageIndex: 0,
+        itemIndex: 0,
+      },
+    });
+    expect(getCurrentAnnotationView().quads[0]).toEqual([
+      { x: 89, y: 0 },
+      { x: 99, y: 0 },
+      { x: 99, y: 10 },
+      { x: 89, y: 10 },
+    ]);
+
+    expect(applyJsonHistoryEntry(result.historyEntry, 'undo').success).toBe(true);
+    expect(getCurrentAnnotationView().quads[0]).toEqual([
+      { x: 10, y: 10 },
+      { x: 20, y: 10 },
+      { x: 20, y: 20 },
+      { x: 10, y: 20 },
+    ]);
+  });
+
+  it('does not create history when the requested Quad translation is zero', () => {
+    loadDbrDataset();
+
+    expect(translateQuadLocationWithHistory(0, { x: 0, y: 0 }, { width: 100, height: 100 })).toMatchObject({
+      success: true,
+      changed: false,
+      historyEntry: null,
+      receipt: null,
+    });
   });
 
   it('preserves every untouched dataset coordinate during a direct point update', () => {

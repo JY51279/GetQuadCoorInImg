@@ -71,6 +71,24 @@
         <span class="dot-label">P{{ index + 1 }}</span>
       </div>
       <button
+        v-if="activeQuadCenterHandle"
+        type="button"
+        class="quad-translate-handle"
+        :class="{ dragging: quadTranslation.active }"
+        :style="{ top: `${activeQuadCenterHandle.y}px`, left: `${activeQuadCenterHandle.x}px` }"
+        :disabled="!canEdit"
+        aria-label="拖动当前 Quad 整体平移"
+        title="拖动以整体平移当前 Quad"
+        @pointerdown.stop.prevent="startQuadTranslation($event, activeQuadIndex)"
+        @pointermove.stop.prevent="moveQuadTranslation"
+        @pointerup.stop.prevent="finishQuadTranslation"
+        @pointercancel.stop.prevent="cancelQuadTranslation('pointer-cancel')"
+        @lostpointercapture="handleQuadTranslationLostPointerCapture"
+        @click.stop.prevent
+      >
+        <span aria-hidden="true">✥</span>
+      </button>
+      <button
         v-for="handle in activeQuadPointHandles"
         :key="`${activeQuadIndex}-${handle.pointIndex}`"
         type="button"
@@ -138,6 +156,7 @@ import { useMouse, useResizeObserver } from '@vueuse/core';
 import { useCanvasPanGesture } from '../composables/useCanvasPanGesture.js';
 import { useImageViewport } from '../composables/useImageViewport.js';
 import { isValidQuadPoints, useQuadOverlay } from '../composables/useQuadOverlay.js';
+import { useQuadTranslationGesture } from '../composables/useQuadTranslationGesture.js';
 import {
   calculatePixelFocusTransform,
   calculateQuadFocusTransform,
@@ -153,6 +172,9 @@ const emits = defineEmits([
   'update-selected-dots',
   'select-quad-index',
   'commit-quad-point-drag',
+  'quad-translation-start',
+  'quad-translation-cancel',
+  'commit-quad-translation',
 ]);
 
 const props = defineProps({
@@ -262,10 +284,12 @@ let quadPointCaptureElement = null;
 const {
   shownQuadIndices: showQuadIndex,
   activePointHandles: activeQuadPointHandles,
+  activeCenterHandle: activeQuadCenterHandle,
   hoveredIndicesText: indices2Show,
   getQuadCount,
   getQuad,
   setQuadPoint,
+  setQuadPoints,
   resetQuads: resetQuadOverlayData,
   toggleShownQuad: toggleShowQuadIndex,
   addShownQuad: addShowQuadIndex,
@@ -288,6 +312,30 @@ const {
   onSelectQuad: index => emits('select-quad-index', index),
 });
 const {
+  state: quadTranslation,
+  start: startQuadTranslation,
+  move: moveQuadTranslation,
+  finish: finishQuadTranslation,
+  cancel: cancelQuadTranslation,
+  handleLostPointerCapture: handleQuadTranslationLostPointerCapture,
+} = useQuadTranslationGesture({
+  canStart: () => props.canEdit && props.canInteract && !quadPointDrag.active,
+  getQuad,
+  getImageSize: () => ({ width: initImgWidth.value, height: initImgHeight.value }),
+  getPointerImagePoint: getDraggedImagePoint,
+  previewQuad: (quadIndex, points) => {
+    if (!setQuadPoints(quadIndex, points)) return false;
+    drawCanvasForShowQuads();
+    return true;
+  },
+  onStart: payload => emits('quad-translation-start', payload),
+  onCommit: payload => emits('commit-quad-translation', payload),
+  onCancel: payload => {
+    drawCanvasForShowQuads();
+    emits('quad-translation-cancel', payload);
+  },
+});
+const {
   state: canvasPointerGesture,
   start: startCanvasPointerGesture,
   move: moveCanvasPointerGesture,
@@ -296,8 +344,8 @@ const {
   handleLostPointerCapture: handleCanvasLostPointerCapture,
   reset: resetCanvasPointerGesture,
 } = useCanvasPanGesture({
-  canStart: () => props.canInteract && !quadPointDrag.active,
-  canContinue: () => props.canInteract && !quadPointDrag.active,
+  canStart: () => props.canInteract && !quadPointDrag.active && !quadTranslation.active,
+  canContinue: () => props.canInteract && !quadPointDrag.active && !quadTranslation.active,
   onGestureStart: beginPanGesture,
   onDrag: ({ previousX, previousY, currentX, currentY }) => {
     updateOffsetMoved(previousX, previousY, currentX, currentY);
@@ -316,6 +364,7 @@ defineExpose({
   clearImage,
   focusQuad,
   focusPixelAtMouse,
+  cancelQuadTranslation,
 });
 
 function outputMessage(message) {
@@ -400,7 +449,7 @@ function getDraggedImagePoint(event) {
 }
 
 function startQuadPointDrag(event, pointIndex) {
-  if (!props.canEdit || !props.canInteract || event.button !== 0) return;
+  if (!props.canEdit || !props.canInteract || quadTranslation.active || event.button !== 0) return;
 
   const quadIndex = highlightQuadIndex.value;
   const quad = getQuad(quadIndex);
@@ -456,11 +505,13 @@ function cancelQuadPointDrag() {
   drawCanvasForShowQuads();
 }
 
-function handleQuadPointDragKeyDown(event) {
-  if (event.key !== 'Escape' || !quadPointDrag.active) return;
+function handleQuadDragKeyDown(event) {
+  if (event.key !== 'Escape') return;
+  if (!quadPointDrag.active && !quadTranslation.active) return;
   event.preventDefault();
   event.stopPropagation();
-  cancelQuadPointDrag();
+  if (quadPointDrag.active) cancelQuadPointDrag();
+  else cancelQuadTranslation('escape');
 }
 
 // Base image rendering
@@ -556,12 +607,14 @@ function resetQuadsArray(
   { deletedIndex = null, insertedIndex = null, indexMutations = [] } = {},
 ) {
   if (quadPointDrag.active) resetQuadPointDragState();
+  if (quadTranslation.active) cancelQuadTranslation('overlay-reset');
   resetQuadOverlayData(newQuadArray, coordinateScale, { deletedIndex, insertedIndex, indexMutations });
 }
 
 watch(highlightQuadIndex, (newHighlightQuadIndex, oldHighlightQuadIndex) => {
   if (oldHighlightQuadIndex === newHighlightQuadIndex) return;
   if (quadPointDrag.active) cancelQuadPointDrag();
+  if (quadTranslation.active) cancelQuadTranslation('active-quad-changed');
   if (moveHighlightToEnd()) return;
   drawCanvasForShowQuads();
 });
@@ -602,7 +655,7 @@ watch([x, y], ([newX, newY]) => {
     endPanGesture();
     return;
   }
-  if (quadPointDrag.active) return;
+  if (quadPointDrag.active || quadTranslation.active) return;
   if (!canvasPointerGesture.active) updateHoveredQuadInfo(true);
 });
 
@@ -655,13 +708,14 @@ useResizeObserver(imgContainerRef, () => {
 });
 
 onMounted(() => {
-  window.addEventListener('keydown', handleQuadPointDragKeyDown, true);
+  window.addEventListener('keydown', handleQuadDragKeyDown, true);
   void updateViewSize();
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleQuadPointDragKeyDown, true);
+  window.removeEventListener('keydown', handleQuadDragKeyDown, true);
   if (quadPointDrag.active) resetQuadPointDragState();
+  if (quadTranslation.active) cancelQuadTranslation('unmounted');
   if (canvasPointerGesture.active) resetCanvasPointerGesture({ preserveDragResult: false });
   cancelScheduledViewPortDraw();
 });
@@ -670,6 +724,7 @@ watch(
   () => props.canEdit,
   canEdit => {
     if (!canEdit) cancelQuadPointDrag();
+    if (!canEdit) cancelQuadTranslation('editing-disabled');
   },
 );
 
@@ -768,6 +823,7 @@ function clearDots() {
 // Image lifecycle
 function resetAnnotationOverlay() {
   if (quadPointDrag.active) resetQuadPointDragState();
+  if (quadTranslation.active) cancelQuadTranslation('overlay-reset');
   clearQuadOverlay();
 }
 
@@ -1065,6 +1121,42 @@ function initCanvasSettings() {
 }
 
 .quad-point-handle:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.quad-translate-handle {
+  position: absolute;
+  z-index: 8;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid #ffffff;
+  border-radius: 6px;
+  background: #f97316;
+  color: #ffffff;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.45);
+  font: 800 16px / 1 var(--font-ui, sans-serif);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.quad-translate-handle:hover,
+.quad-translate-handle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.quad-translate-handle.dragging {
+  background: #ea580c;
+  cursor: grabbing;
+}
+
+.quad-translate-handle:disabled {
   cursor: default;
   opacity: 0.65;
 }

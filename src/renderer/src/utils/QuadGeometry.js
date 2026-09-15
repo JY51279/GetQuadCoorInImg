@@ -62,6 +62,39 @@ export function getQuadCenterPoint(points) {
   };
 }
 
+export function calculateClampedQuadTranslation(points, requestedDelta, imageSize) {
+  if (
+    !Array.isArray(points) ||
+    points.length !== 4 ||
+    !points.every(isSafeIntegerPoint) ||
+    !isSafeIntegerPoint(requestedDelta) ||
+    !Number.isSafeInteger(imageSize?.width) ||
+    imageSize.width <= 0 ||
+    !Number.isSafeInteger(imageSize?.height) ||
+    imageSize.height <= 0
+  ) {
+    return null;
+  }
+
+  const xValues = points.map(point => point.x);
+  const yValues = points.map(point => point.y);
+  const minimumX = Math.min(...xValues);
+  const maximumX = Math.max(...xValues);
+  const minimumY = Math.min(...yValues);
+  const maximumY = Math.max(...yValues);
+  if (minimumX < 0 || maximumX >= imageSize.width || minimumY < 0 || maximumY >= imageSize.height) return null;
+
+  const delta = {
+    x: Math.min(imageSize.width - 1 - maximumX, Math.max(-minimumX, requestedDelta.x)),
+    y: Math.min(imageSize.height - 1 - maximumY, Math.max(-minimumY, requestedDelta.y)),
+  };
+  return {
+    points: points.map(point => ({ x: point.x + delta.x, y: point.y + delta.y })),
+    delta,
+    clamped: delta.x !== requestedDelta.x || delta.y !== requestedDelta.y,
+  };
+}
+
 function isPointRightOfLine(point, lineStart, lineEnd) {
   return (lineEnd.x - lineStart.x) * (point.y - lineStart.y) - (lineEnd.y - lineStart.y) * (point.x - lineStart.x) > 0;
 }

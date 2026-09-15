@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calculateClampedQuadTranslation,
   getQuadCenterPoint,
   isPointInQuad,
   prepareQuad,
@@ -8,6 +9,27 @@ import {
 } from '../src/renderer/src/utils/QuadGeometry.js';
 
 describe('Quad geometry', () => {
+  it('translates every Quad point by one uniform delta and clamps at image boundaries', () => {
+    const points = [
+      { x: 2, y: 3 },
+      { x: 8, y: 3 },
+      { x: 8, y: 9 },
+      { x: 2, y: 9 },
+    ];
+
+    expect(calculateClampedQuadTranslation(points, { x: 20, y: -10 }, { width: 15, height: 12 })).toEqual({
+      points: [
+        { x: 8, y: 0 },
+        { x: 14, y: 0 },
+        { x: 14, y: 6 },
+        { x: 8, y: 6 },
+      ],
+      delta: { x: 6, y: -3 },
+      clamped: true,
+    });
+    expect(points[0]).toEqual({ x: 2, y: 3 });
+  });
+
   it('sorts a Quad from its top-left point in clockwise screen order', () => {
     const points = [
       { x: 10, y: 10 },

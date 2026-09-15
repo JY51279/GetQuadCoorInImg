@@ -126,6 +126,65 @@ describe('ImageView interactions', () => {
     wrapper.unmount();
   });
 
+  it('previews and commits one whole-Quad translation without hover-switching the active Quad', async () => {
+    const wrapper = await mountReadyImage({ hoverQuadActivationEnabled: true });
+    const secondQuad = QUAD.map(point => ({ x: point.x + 50, y: point.y }));
+    wrapper.vm.resetQuadsArray([QUAD, secondQuad], 1);
+    wrapper.vm.addShowQuadIndex(0);
+    wrapper.vm.addShowQuadIndex(1);
+    wrapper.vm.redrawQuadOverlay();
+    await nextTick();
+
+    const handle = wrapper.find('.quad-translate-handle');
+    const startX = Number.parseFloat(handle.element.style.left);
+    const startY = Number.parseFloat(handle.element.style.top);
+    await handle.trigger('pointerdown', { button: 0, pointerId: 8, clientX: startX, clientY: startY });
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: startX + 100, clientY: startY }));
+    await nextTick();
+    await handle.trigger('pointermove', { pointerId: 8, clientX: startX + 20, clientY: startY + 10 });
+    await handle.trigger('pointerup', { pointerId: 8, clientX: startX + 20, clientY: startY + 10 });
+
+    expect(wrapper.emitted('quad-translation-start')).toEqual([[{ quadIndex: 0 }]]);
+    expect(wrapper.emitted('select-quad-index')).toBeUndefined();
+    expect(wrapper.emitted('commit-quad-translation')).toEqual([
+      [
+        {
+          quadIndex: 0,
+          imageDelta: { x: 10, y: 5 },
+          imagePoints: [
+            { x: 20, y: 15 },
+            { x: 50, y: 15 },
+            { x: 50, y: 45 },
+            { x: 20, y: 45 },
+          ],
+        },
+      ],
+    ]);
+    wrapper.unmount();
+  });
+
+  it('restores the Quad preview when whole-Quad translation is canceled with Escape', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    wrapper.vm.redrawQuadOverlay();
+    await nextTick();
+
+    let handle = wrapper.find('.quad-translate-handle');
+    const startX = Number.parseFloat(handle.element.style.left);
+    const startY = Number.parseFloat(handle.element.style.top);
+    await handle.trigger('pointerdown', { button: 0, pointerId: 9, clientX: startX, clientY: startY });
+    await handle.trigger('pointermove', { pointerId: 9, clientX: startX + 20, clientY: startY + 10 });
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await nextTick();
+
+    handle = wrapper.find('.quad-translate-handle');
+    expect(Number.parseFloat(handle.element.style.left)).toBe(startX);
+    expect(Number.parseFloat(handle.element.style.top)).toBe(startY);
+    expect(wrapper.emitted('commit-quad-translation')).toBeUndefined();
+    expect(wrapper.emitted('quad-translation-cancel')?.at(-1)).toEqual([{ quadIndex: 0, reason: 'escape' }]);
+    wrapper.unmount();
+  });
+
   it('activates the sole Quad under the mouse when hover activation is enabled', async () => {
     const wrapper = await mountReadyImage({ activeQuadIndex: -1, hoverQuadActivationEnabled: true });
     wrapper.vm.resetQuadsArray([QUAD], 1);

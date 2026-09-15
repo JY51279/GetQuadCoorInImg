@@ -58,6 +58,22 @@ describe('Quad overlay', () => {
     expect(overlay.setQuadPoint(0, 4, { x: 1, y: 1 })).toBe(false);
   });
 
+  it('previews all four translated points and exposes the active Quad center handle', () => {
+    const overlay = useQuadOverlay({
+      activeQuadIndex: ref(0),
+      scale: ref(2),
+      imageToCanvas: point => ({ x: point.x * 2, y: point.y * 2 }),
+    });
+    overlay.resetQuads([createQuad(1)], 1);
+
+    expect(overlay.activeCenterHandle.value).toEqual({ x: 7, y: 7 });
+    const translatedPoints = createQuad(4);
+    expect(overlay.setQuadPoints(0, translatedPoints)).toBe(true);
+    translatedPoints[0].x = 999;
+    expect(overlay.getQuad(0)).toEqual(createQuad(4));
+    expect(overlay.setQuadPoints(0, createQuad(4).slice(0, 3))).toBe(false);
+  });
+
   it('draws mapped Quad pixels and selects exactly one hovered Quad', () => {
     const context = createCanvasContext();
     const mousePoint = { x: 5, y: 5 };
