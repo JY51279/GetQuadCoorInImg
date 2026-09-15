@@ -73,11 +73,11 @@
         <span class="dot-label">P{{ index + 1 }}</span>
       </div>
       <button
-        v-if="activeQuadCenterHandle"
+        v-if="draggableActiveQuadCenterHandle"
         type="button"
         class="quad-translate-handle"
         :class="{ dragging: quadTranslation.active }"
-        :style="{ top: `${activeQuadCenterHandle.y}px`, left: `${activeQuadCenterHandle.x}px` }"
+        :style="{ top: `${draggableActiveQuadCenterHandle.y}px`, left: `${draggableActiveQuadCenterHandle.x}px` }"
         :disabled="!canEdit"
         aria-label="拖动当前 Quad 整体平移"
         title="拖动以整体平移当前 Quad"
@@ -91,7 +91,7 @@
         <span aria-hidden="true">✥</span>
       </button>
       <button
-        v-for="handle in activeQuadPointHandles"
+        v-for="handle in draggableActiveQuadPointHandles"
         :key="`${activeQuadIndex}-${handle.pointIndex}`"
         type="button"
         class="quad-point-handle"
@@ -209,9 +209,13 @@ const props = defineProps({
     type: Object,
     default: null,
   },
-  hoverQuadActivationEnabled: {
-    type: Boolean,
-    default: false,
+  quadInteractionCapabilities: {
+    type: Object,
+    default: () => ({
+      hoverActivation: false,
+      pointDrag: false,
+      wholeQuadDrag: false,
+    }),
   },
   displayPixelRatio: {
     type: Number,
@@ -318,9 +322,15 @@ const {
   isMouseOver: () => mouseIsOverContainer.value,
   mousePoint: mouseCoord,
   outputMessage,
-  hoverActivationEnabled: () => props.hoverQuadActivationEnabled,
+  hoverActivationEnabled: () => props.quadInteractionCapabilities.hoverActivation,
   onSelectQuad: index => emits('select-quad-index', index),
 });
+const draggableActiveQuadPointHandles = computed(() =>
+  props.quadInteractionCapabilities.pointDrag ? activeQuadPointHandles.value : [],
+);
+const draggableActiveQuadCenterHandle = computed(() =>
+  props.quadInteractionCapabilities.wholeQuadDrag ? activeQuadCenterHandle.value : null,
+);
 const {
   state: quadTranslation,
   start: startQuadTranslation,
@@ -329,7 +339,8 @@ const {
   cancel: cancelQuadTranslation,
   handleLostPointerCapture: handleQuadTranslationLostPointerCapture,
 } = useQuadTranslationGesture({
-  canStart: () => props.canEdit && props.canInteract && !quadPointDrag.active,
+  canStart: () =>
+    props.canEdit && props.canInteract && props.quadInteractionCapabilities.wholeQuadDrag && !quadPointDrag.active,
   getQuad,
   getImageSize: () => ({ width: initImgWidth.value, height: initImgHeight.value }),
   getPointerImagePoint: getDraggedImagePoint,
@@ -459,7 +470,15 @@ function getDraggedImagePoint(event) {
 }
 
 function startQuadPointDrag(event, pointIndex) {
-  if (!props.canEdit || !props.canInteract || quadTranslation.active || event.button !== 0) return;
+  if (
+    !props.canEdit ||
+    !props.canInteract ||
+    !props.quadInteractionCapabilities.pointDrag ||
+    quadTranslation.active ||
+    event.button !== 0
+  ) {
+    return;
+  }
 
   const quadIndex = highlightQuadIndex.value;
   const quad = getQuad(quadIndex);
@@ -735,6 +754,20 @@ watch(
   canEdit => {
     if (!canEdit) cancelQuadPointDrag();
     if (!canEdit) cancelQuadTranslation('editing-disabled');
+  },
+);
+
+watch(
+  () => props.quadInteractionCapabilities.pointDrag,
+  enabled => {
+    if (!enabled) cancelQuadPointDrag();
+  },
+);
+
+watch(
+  () => props.quadInteractionCapabilities.wholeQuadDrag,
+  enabled => {
+    if (!enabled) cancelQuadTranslation('interaction-mode-changed');
   },
 );
 

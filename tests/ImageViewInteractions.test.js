@@ -11,6 +11,18 @@ const QUAD = [
   { x: 10, y: 40 },
 ];
 
+const DEFAULT_QUAD_INTERACTION = Object.freeze({
+  hoverActivation: false,
+  pointDrag: false,
+  wholeQuadDrag: false,
+});
+
+const DIRECT_QUAD_INTERACTION = Object.freeze({
+  hoverActivation: true,
+  pointDrag: true,
+  wholeQuadDrag: true,
+});
+
 function createCanvasContext(canvas) {
   return {
     canvas,
@@ -47,6 +59,7 @@ async function mountReadyImage(overrides = {}) {
       canInteract: true,
       activeQuadIndex: 0,
       selectedDots: [],
+      quadInteractionCapabilities: DIRECT_QUAD_INTERACTION,
       ...overrides,
     },
   });
@@ -103,6 +116,43 @@ describe('ImageView interactions', () => {
     wrapper.unmount();
   });
 
+  it('keeps point selection available but hides direct Quad controls in default mode', async () => {
+    const wrapper = await mountReadyImage({ quadInteractionCapabilities: DEFAULT_QUAD_INTERACTION });
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    await nextTick();
+
+    expect(wrapper.find('.quad-point-handle').exists()).toBe(false);
+    expect(wrapper.find('.quad-translate-handle').exists()).toBe(false);
+
+    await wrapper.find('canvas.canvas-layer').trigger('click', { clientX: 100, clientY: 100 });
+    expect(wrapper.emitted('update-selected-dots').at(-1)).toEqual([[{ x: 50, y: 50 }]]);
+    wrapper.unmount();
+  });
+
+  it('cancels a Quad point preview when direct editing is turned off', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    await nextTick();
+
+    const handle = wrapper.find('.quad-point-handle');
+    const startX = Number.parseFloat(handle.element.style.left);
+    const startY = Number.parseFloat(handle.element.style.top);
+    await handle.trigger('pointerdown', { button: 0, pointerId: 6, clientX: startX, clientY: startY });
+    await handle.trigger('pointermove', { pointerId: 6, clientX: startX + 20, clientY: startY + 10 });
+    await wrapper.setProps({ quadInteractionCapabilities: DEFAULT_QUAD_INTERACTION });
+    await nextTick();
+
+    expect(wrapper.find('.quad-point-handle').exists()).toBe(false);
+    expect(wrapper.emitted('commit-quad-point-drag')).toBeUndefined();
+
+    await wrapper.setProps({ quadInteractionCapabilities: DIRECT_QUAD_INTERACTION });
+    await nextTick();
+    const restoredHandle = wrapper.find('.quad-point-handle');
+    expect(Number.parseFloat(restoredHandle.element.style.left)).toBe(startX);
+    expect(Number.parseFloat(restoredHandle.element.style.top)).toBe(startY);
+    wrapper.unmount();
+  });
+
   it('uses device pixels for canvas backing stores while preserving CSS coordinates', async () => {
     const wrapper = await mountReadyImage({ displayPixelRatio: 1 });
     await wrapper.setProps({ displayPixelRatio: 1.5 });
@@ -145,7 +195,7 @@ describe('ImageView interactions', () => {
   });
 
   it('previews and commits one whole-Quad translation without hover-switching the active Quad', async () => {
-    const wrapper = await mountReadyImage({ hoverQuadActivationEnabled: true });
+    const wrapper = await mountReadyImage({ quadInteractionCapabilities: DIRECT_QUAD_INTERACTION });
     const secondQuad = QUAD.map(point => ({ x: point.x + 50, y: point.y }));
     wrapper.vm.resetQuadsArray([QUAD, secondQuad], 1);
     wrapper.vm.addShowQuadIndex(0);
@@ -204,7 +254,10 @@ describe('ImageView interactions', () => {
   });
 
   it('activates the sole Quad under the mouse when hover activation is enabled', async () => {
-    const wrapper = await mountReadyImage({ activeQuadIndex: -1, hoverQuadActivationEnabled: true });
+    const wrapper = await mountReadyImage({
+      activeQuadIndex: -1,
+      quadInteractionCapabilities: DIRECT_QUAD_INTERACTION,
+    });
     wrapper.vm.resetQuadsArray([QUAD], 1);
     wrapper.vm.addShowQuadIndex(0);
     wrapper.vm.redrawQuadOverlay();

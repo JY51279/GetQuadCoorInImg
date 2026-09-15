@@ -79,7 +79,7 @@
         :active-quad-index="activeQuadIndex"
         :selected-dots="selectedDots"
         :image-load-error="imageLoadError"
-        :hover-quad-activation-enabled="isHoverQuadActivationEnabled"
+        :quad-interaction-capabilities="quadInteractionCapabilities"
         :display-pixel-ratio="displayPixelRatio"
         @update-zoom-view="updateZoomView"
         @output-message="outputMessage"
@@ -169,7 +169,7 @@
 
             <div class="annotation-list-heading section-heading">
               <span>标注数据</span>
-              <small>{{ isHoverQuadActivationEnabled ? '悬停联动开启' : '悬停联动关闭' }}</small>
+              <small>{{ isDirectQuadEditingEnabled ? 'Tab 直接编辑模式' : '默认模式' }}</small>
             </div>
             <JsonView
               ref="jsonView"
@@ -261,15 +261,11 @@
               <div>
                 <strong>鼠标当前行为</strong>
                 <p>
-                  {{
-                    isHoverQuadActivationEnabled
-                      ? '悬停自动激活 Quad；点击图片标点'
-                      : '当前 Quad 保持不变；点击图片标点'
-                  }}
+                  {{ isDirectQuadEditingEnabled ? '悬停选择 Quad；可拖动 Quad 或顶点' : '观察 Quad；通过选点更新标注' }}
                 </p>
               </div>
-              <button class="action-button" :disabled="!canInteractWithImage" @click="toggleHoverQuadActivation">
-                {{ isHoverQuadActivationEnabled ? '关闭悬停联动' : '开启悬停联动' }} <kbd>Tab</kbd>
+              <button class="action-button" :disabled="!canInteractWithImage" @click="toggleQuadInteraction">
+                {{ isDirectQuadEditingEnabled ? '返回默认模式' : '进入直接编辑' }} <kbd>Tab</kbd>
               </button>
             </div>
             <div class="stacked-actions">
@@ -324,9 +320,9 @@
         <span class="status-divider"></span>
         <span>拖动画布：平移图片</span>
         <span class="status-divider"></span>
-        <span>中心手柄：平移 Quad</span>
+        <span>Quad 模式：{{ isDirectQuadEditingEnabled ? 'Tab 直接编辑' : '默认' }}</span>
         <span class="status-divider"></span>
-        <span>悬停联动：{{ isHoverQuadActivationEnabled ? '开' : '关' }}</span>
+        <span>{{ isDirectQuadEditingEnabled ? '手柄：拖动 Quad 或顶点' : '选点：更新激活 Quad' }}</span>
         <span class="status-divider"></span>
         <span>Quad {{ activeQuadLabel }}</span>
       </div>
@@ -388,6 +384,12 @@ import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { getAdjacentListSelectionIndex, handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import {
+  QUAD_INTERACTION_MODE,
+  getQuadInteractionCapabilities,
+  isDirectQuadEditingMode,
+  toggleQuadInteractionMode,
+} from '../state/QuadInteractionMode.js';
+import {
   WORKFLOW_OPERATION,
   WORKFLOW_PHASE,
   canChangeQuadSelection,
@@ -448,7 +450,9 @@ let imgFilePath = '';
 const imageCoordinateScale = ref({ x: 1, y: 1 });
 const currentImageOriginalSize = ref(null);
 let zoomSourceOrigin = null;
-const isHoverQuadActivationEnabled = ref(false);
+const quadInteractionMode = ref(QUAD_INTERACTION_MODE.DEFAULT);
+const quadInteractionCapabilities = computed(() => getQuadInteractionCapabilities(quadInteractionMode.value));
+const isDirectQuadEditingEnabled = computed(() => isDirectQuadEditingMode(quadInteractionMode.value));
 const { pixelRatio: rawDisplayPixelRatio } = useDevicePixelRatio();
 const displayPixelRatio = computed(() => normalizeDevicePixelRatio(rawDisplayPixelRatio.value));
 
@@ -682,7 +686,7 @@ const keyActions = {
     default: () => changeJsonItemSelection(KEYS.NEXT),
   },
   Tab: {
-    default: () => toggleHoverQuadActivation(),
+    default: () => toggleQuadInteraction(),
   },
 };
 
@@ -726,7 +730,7 @@ const shortcutHelpGroups = Object.freeze([
       { keys: ['Q'], label: '切换当前 Quad 显示' },
       { keys: ['Ctrl', 'Q'], label: '隐藏全部 Quad' },
       { keys: ['Ctrl', 'Shift', 'Q'], label: '显示全部 Quad' },
-      { keys: ['Tab'], label: '开启或关闭悬停联动选择 Quad' },
+      { keys: ['Tab'], label: '切换默认 / 直接编辑模式' },
       { keys: ['F1'], label: '打开或关闭帮助' },
     ],
   },
@@ -1447,10 +1451,10 @@ function clearShowQuads() {
   imgContainerRef.value?.clearShowQuadIndex();
 }
 
-function toggleHoverQuadActivation() {
+function toggleQuadInteraction() {
   if (!canInteractWithImage.value) return;
-  isHoverQuadActivationEnabled.value = !isHoverQuadActivationEnabled.value;
-  outputMessage(isHoverQuadActivationEnabled.value ? '已开启悬停联动选择 Quad。' : '已关闭悬停联动选择 Quad。');
+  quadInteractionMode.value = toggleQuadInteractionMode(quadInteractionMode.value);
+  outputMessage(isDirectQuadEditingEnabled.value ? '已进入 Tab 直接编辑模式。' : '已返回默认模式。');
 }
 </script>
 
