@@ -1,6 +1,10 @@
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
-import { getJsonActionLabel, useJsonHistory } from '../src/renderer/src/composables/useJsonHistory.js';
+import {
+  getJsonActionLabel,
+  getJsonHistoryEntryLabel,
+  useJsonHistory,
+} from '../src/renderer/src/composables/useJsonHistory.js';
 import { HISTORY_DIRECTION, commitHistoryStep } from '../src/renderer/src/state/UndoRedoHistory.js';
 import { KEYS } from '../src/renderer/src/utils/BasicFuncs.js';
 
@@ -12,11 +16,19 @@ describe('JSON history view state', () => {
   it('reports action labels used by history rows and notifications', () => {
     expect(getJsonActionLabel(KEYS.JSON_MODIFY)).toBe('更新 Quad');
     expect(getJsonActionLabel(KEYS.JSON_COPY_PREVIOUS_LOCATION)).toBe('沿用上一图坐标');
+    expect(getJsonActionLabel(KEYS.JSON_APPLY_QUAD_LOCATION)).toBe('批量应用坐标');
     expect(getJsonActionLabel(KEYS.JSON_TRANSLATE_QUAD)).toBe('整体平移 Quad');
     expect(getJsonActionLabel(KEYS.JSON_TRANSLATE_QUAD_EDGE)).toBe('平移 Quad 边');
     expect(getJsonActionLabel(KEYS.JSON_ADD)).toBe('新增 Quad');
     expect(getJsonActionLabel(KEYS.JSON_DELETE)).toBe('删除 Quad');
     expect(getJsonActionLabel('unknown')).toBe('JSON 操作');
+    expect(
+      getJsonHistoryEntryLabel({
+        action: KEYS.JSON_APPLY_QUAD_LOCATION,
+        itemIndex: 2,
+        mutations: [{}, {}],
+      }),
+    ).toBe('批量应用坐标 3（修改 2 张）');
   });
 
   it('keeps the current image first and derives row states', () => {

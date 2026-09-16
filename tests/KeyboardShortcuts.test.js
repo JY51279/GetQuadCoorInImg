@@ -46,14 +46,19 @@ describe('keyboard shortcuts', () => {
     expect(repeatedEvent.preventDefault).toHaveBeenCalledOnce();
   });
 
-  it('resolves Ctrl+E as a dedicated control shortcut', () => {
+  it('resolves Ctrl+E and Ctrl+Shift+E as separate location-copy shortcuts', () => {
     const copyPreviousLocation = vi.fn();
-    const actions = { e: { ctrl: copyPreviousLocation } };
-    const event = createKeyEvent({ key: 'E', ctrlKey: true });
+    const applyLocationForward = vi.fn();
+    const actions = { e: { ctrl: copyPreviousLocation, ctrlShift: applyLocationForward } };
+    const copyEvent = createKeyEvent({ key: 'E', ctrlKey: true });
+    const applyEvent = createKeyEvent({ key: 'E', ctrlKey: true, shiftKey: true });
 
-    expect(handleShortcutKeyDown(event, actions)).toBe(true);
+    expect(handleShortcutKeyDown(copyEvent, actions)).toBe(true);
+    expect(handleShortcutKeyDown(applyEvent, actions)).toBe(true);
     expect(copyPreviousLocation).toHaveBeenCalledOnce();
-    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(applyLocationForward).toHaveBeenCalledOnce();
+    expect(copyEvent.preventDefault).toHaveBeenCalledOnce();
+    expect(applyEvent.preventDefault).toHaveBeenCalledOnce();
   });
 
   it('leaves editable targets and unsupported shortcuts untouched', () => {

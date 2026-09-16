@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyQuadLocationToImagesWithHistory,
   applyJsonHistoryEntriesWithReceipt,
   applyJsonHistoryEntry,
   commitPreparedJsonProcess,
@@ -10,6 +11,7 @@ import {
   resetPicJson,
   replaceQuadLocationWithHistory,
   rollbackDatasetMutation,
+  resolveFollowingImageIndexes,
   translateQuadWithHistory,
   updateJson,
   updateJsonWithHistory,
@@ -44,6 +46,25 @@ function loadProductDataset(productType, location = '0 0 10 0 10 10 0 10', barco
   expect(prepared.success).toBe(true);
   expect(commitPreparedJsonProcess(prepared)).toBe(true);
   expect(resetPicJson('C:/images/one.png', 0).success).toBe(true);
+}
+
+function loadDbrPictureSeries(locations) {
+  const pictures = locations.map((location, index) => {
+    const picture = createPicture('DBR', `C:/images/${index + 1}.png`, location ?? undefined);
+    picture['No.'] = String(index + 1);
+    if (location === null) {
+      picture['Barcode Info'] = [];
+      picture['Barcode Count'] = 0;
+    }
+    return picture;
+  });
+  const prepared = prepareJsonProcess({
+    str: JSON.stringify({ Picture: pictures }),
+    path: 'C:/datasets/series.json',
+  });
+  expect(prepared.success).toBe(true);
+  expect(commitPreparedJsonProcess(prepared)).toBe(true);
+  expect(resetPicJson('C:/images/1.png', 0).success).toBe(true);
 }
 
 describe('Dataset mutations', () => {
@@ -200,6 +221,146 @@ describe('Dataset mutations', () => {
 
     expect(result).toEqual({ success: false, error: 'Quad 坐标超出当前图片边界。' });
     expect(getJsonFileInfo().str).toBe(before);
+  });
+
+  it('resolves an explicit number of consecutive following images without wrapping', () => {
+    loadDbrPictureSeries(['0 0 10 0 10 10 0 10', '1 1 11 1 11 11 1 11', '2 2 12 2 12 12 2 12', '3 3 13 3 13 13 3 13']);
+
+    expect(resolveFollowingImageIndexes({ sourceImageIndex: 0, count: 3 })).toEqual({
+      success: true,
+      imageIndexes: [1, 2, 3],
+      remainingCount: 3,
+    });
+    expect(resolveFollowingImageIndexes({ sourceImageIndex: 1, count: 2 })).toEqual({
+      success: true,
+      imageIndexes: [2, 3],
+      remainingCount: 2,
+    });
+    expect(resolveFollowingImageIndexes({ sourceImageIndex: 1, count: 3 })).toEqual({
+      success: true,
+      imageIndexes: [2, 3],
+      remainingCount: 2,
+    });
+    expect(resolveFollowingImageIndexes({ sourceImageIndex: 0 })).toEqual({
+      success: false,
+      error: '后续图片数量必须是正整数。',
+    });
+    expect(resolveFollowingImageIndexes({ sourceImageIndex: 3, count: 1 })).toEqual({
+      success: false,
+      error: '当前图片之后没有可应用坐标的图片。',
+    });
+  });
+
+  it.each(['DBR', 'DDN', 'DLR'])('applies the current %s Loc through the product schema', productType => {
+    const sourceLocation = '5 5 15 5 15 15 5 15';
+    const targetLocation = '20 20 30 20 30 30 20 30';
+    loadProductDataset(productType, sourceLocation, '', targetLocation);
+    const schema = PRODUCT_SCHEMAS[productType];
+
+    const result = applyQuadLocationToImagesWithHistory({
+      source: { imageIndex: 0, quadIndex: 0 },
+      targetImageIndexes: [1],
+    });
+
+    expect(result).toMatchObject({ success: true, changed: true });
+    expect(JSON.parse(getJsonFileInfo().str).Picture[1][schema.targetKey][0][schema.ItemKey]).toBe(sourceLocation);
+  });
+
+  it('applies only the source Loc to matching future Quads and undoes the batch as one history step', () => {
+    const sourceLocation = '5 5 15 5 15 15 5 15';
+    const targetLocation = '20 20 30 20 30 30 20 30';
+    loadDbrPictureSeries([sourceLocation, targetLocation, null, sourceLocation]);
+    const beforeDataset = JSON.parse(getJsonFileInfo().str);
+    beforeDataset.Picture[1]['Barcode Info'][0]['Barcode Text'] = 'keep-target-metadata';
+    const prepared = prepareJsonProcess({
+      str: JSON.stringify(beforeDataset),
+      path: 'C:/datasets/series.json',
+    });
+    expect(commitPreparedJsonProcess(prepared)).toBe(true);
+    expect(resetPicJson('C:/images/1.png', 0).success).toBe(true);
+
+    const result = applyQuadLocationToImagesWithHistory({
+      source: { imageIndex: 0, quadIndex: 0 },
+      targetImageIndexes: [1, 2, 3],
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      changed: true,
+      summary: {
+        requestedCount: 3,
+        updatedCount: 1,
+        unchangedCount: 1,
+        skippedImageIndexes: [2],
+      },
+      historyEntry: {
+        action: KEYS.JSON_APPLY_QUAD_LOCATION,
+        imageIndex: 0,
+        itemIndex: 0,
+        targetImageIndexes: [1, 2, 3],
+      },
+    });
+    expect(result.historyEntry.mutations).toHaveLength(1);
+
+    let dataset = JSON.parse(getJsonFileInfo().str);
+    expect(dataset.Picture[1]['Barcode Info'][0]['Barcode Location']).toBe(sourceLocation);
+    expect(dataset.Picture[1]['Barcode Info'][0]['Barcode Text']).toBe('keep-target-metadata');
+    expect(dataset.Picture[2]['Barcode Info']).toEqual([]);
+
+    expect(applyJsonHistoryEntriesWithReceipt([result.historyEntry], 'undo')).toMatchObject({
+      success: true,
+      changed: true,
+    });
+    dataset = JSON.parse(getJsonFileInfo().str);
+    expect(dataset.Picture[1]['Barcode Info'][0]['Barcode Location']).toBe(targetLocation);
+
+    expect(applyJsonHistoryEntriesWithReceipt([result.historyEntry], 'redo')).toMatchObject({
+      success: true,
+      changed: true,
+    });
+    dataset = JSON.parse(getJsonFileInfo().str);
+    expect(dataset.Picture[1]['Barcode Info'][0]['Barcode Location']).toBe(sourceLocation);
+  });
+
+  it('rolls back every future-image Loc in a batch receipt', () => {
+    const sourceLocation = '5 5 15 5 15 15 5 15';
+    const firstTargetLocation = '20 20 30 20 30 30 20 30';
+    const secondTargetLocation = '40 40 50 40 50 50 40 50';
+    loadDbrPictureSeries([sourceLocation, firstTargetLocation, secondTargetLocation]);
+
+    const result = applyQuadLocationToImagesWithHistory({
+      source: { imageIndex: 0, quadIndex: 0 },
+      targetImageIndexes: [1, 2],
+    });
+    expect(result.historyEntry.mutations).toHaveLength(2);
+    expect(rollbackDatasetMutation(result.receipt).success).toBe(true);
+
+    const dataset = JSON.parse(getJsonFileInfo().str);
+    expect(dataset.Picture[1]['Barcode Info'][0]['Barcode Location']).toBe(firstTargetLocation);
+    expect(dataset.Picture[2]['Barcode Info'][0]['Barcode Location']).toBe(secondTargetLocation);
+  });
+
+  it('reports unchanged and missing future Quads without creating history', () => {
+    const sourceLocation = '5 5 15 5 15 15 5 15';
+    loadDbrPictureSeries([sourceLocation, sourceLocation, null]);
+
+    expect(
+      applyQuadLocationToImagesWithHistory({
+        source: { imageIndex: 0, quadIndex: 0 },
+        targetImageIndexes: [1, 2],
+      }),
+    ).toEqual({
+      success: true,
+      changed: false,
+      historyEntry: null,
+      receipt: null,
+      summary: {
+        requestedCount: 2,
+        updatedCount: 0,
+        unchangedCount: 1,
+        skippedImageIndexes: [2],
+      },
+    });
   });
 
   it('uses the shared full-location mutation path for validated replacements', () => {

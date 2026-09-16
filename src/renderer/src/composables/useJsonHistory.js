@@ -18,12 +18,25 @@ export function getJsonActionLabel(action) {
   const labels = {
     [KEYS.JSON_MODIFY]: '更新 Quad',
     [KEYS.JSON_COPY_PREVIOUS_LOCATION]: '沿用上一图坐标',
+    [KEYS.JSON_APPLY_QUAD_LOCATION]: '批量应用坐标',
     [KEYS.JSON_TRANSLATE_QUAD]: '整体平移 Quad',
     [KEYS.JSON_TRANSLATE_QUAD_EDGE]: '平移 Quad 边',
     [KEYS.JSON_ADD]: '新增 Quad',
     [KEYS.JSON_DELETE]: '删除 Quad',
   };
   return labels[action] ?? 'JSON 操作';
+}
+
+const HISTORY_ENTRY_LABEL_FACTORIES = Object.freeze({
+  [KEYS.JSON_APPLY_QUAD_LOCATION]: entry =>
+    `${getJsonActionLabel(entry.action)} ${entry.itemIndex + 1}（修改 ${entry.mutations?.length ?? 0} 张）`,
+});
+
+export function getJsonHistoryEntryLabel(historyEntry) {
+  return (
+    HISTORY_ENTRY_LABEL_FACTORIES[historyEntry?.action]?.(historyEntry) ??
+    `${getJsonActionLabel(historyEntry?.action)} ${historyEntry?.itemIndex + 1}`
+  );
 }
 
 function getHistoryRowState(targetPosition, currentPosition) {
@@ -105,7 +118,7 @@ export function useJsonHistory({
             const targetPosition = index + 1;
             return {
               key: `operation-${targetPosition}`,
-              label: `${getJsonActionLabel(entry.action)} ${entry.itemIndex + 1}`,
+              label: getJsonHistoryEntryLabel(entry),
               recordedAt: entry.recordedAt ?? '',
               timestampLabel: formatHistoryTime(entry.recordedAt),
               targetPosition,

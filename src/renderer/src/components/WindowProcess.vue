@@ -185,8 +185,55 @@
               </div>
             </div>
 
-            <div class="annotation-list-heading section-heading">
-              <span>标注数据</span>
+            <div class="annotation-list-section">
+              <div class="annotation-list-heading section-heading">
+                <span>标注数据</span>
+                <button
+                  type="button"
+                  class="section-action-button"
+                  :disabled="!canApplyQuadLocationForward"
+                  :aria-expanded="isQuadLocationPropagationOpen"
+                  aria-controls="quad-location-propagation-panel"
+                  title="将当前 Quad 坐标应用到后续图片的同下标 Quad（Ctrl+Shift+E 直接应用）"
+                  @click="toggleQuadLocationPropagation"
+                >
+                  应用到后续…
+                </button>
+              </div>
+              <form
+                v-if="isQuadLocationPropagationOpen"
+                id="quad-location-propagation-panel"
+                class="quad-location-propagation-panel"
+                @submit.prevent="applyQuadLocationForward"
+                @keydown.esc.stop.prevent="closeQuadLocationPropagation"
+              >
+                <div class="propagation-panel-heading">
+                  <strong>应用 Quad {{ activeQuadIndex + 1 }} 的坐标</strong>
+                  <span>仅复制 loc，不缩放</span>
+                </div>
+                <label class="propagation-field">
+                  <span>批次张数</span>
+                  <span class="propagation-count-control">
+                    <input
+                      v-model.number="quadLocationPropagationCount"
+                      type="number"
+                      min="1"
+                      step="1"
+                      :disabled="!canOperate"
+                      aria-label="应用到后续图片的张数"
+                    />
+                    <small>
+                      本次 {{ effectiveQuadLocationPropagationCount }} / 剩余 {{ remainingFollowingImageCount }} 张
+                    </small>
+                  </span>
+                </label>
+                <div class="propagation-panel-actions">
+                  <button type="button" class="action-button" @click="closeQuadLocationPropagation">取消</button>
+                  <button type="submit" class="action-button primary" :disabled="!canSubmitQuadLocationPropagation">
+                    应用
+                  </button>
+                </div>
+              </form>
             </div>
             <JsonView
               ref="jsonView"
@@ -383,6 +430,7 @@ import { getJsonActionLabel, useJsonHistory } from '../composables/useJsonHistor
 import { usePointSelectionHistory } from '../composables/usePointSelectionHistory.js';
 import { useToastNotifications } from '../composables/useToastNotifications.js';
 import {
+  applyQuadLocationToImagesWithHistory,
   commitPreparedJsonProcess,
   copyPreviousQuadLocationWithHistory,
   getAdjacentJsonImageTarget,
@@ -396,6 +444,7 @@ import {
   getJsonImagePosition,
   getJsonFileInfo,
   resetPicJson,
+  resolveFollowingImageIndexes,
   translateQuadWithHistory,
 } from '../state/DatasetState.js';
 import { DATASET_LOAD_STATUS, prepareDatasetLoad } from '../services/DatasetLoadService.js';
@@ -485,6 +534,8 @@ const annotationView = ref({ formattedItems: [], quads: [], errorMessage: '' });
 const quadTotal = computed(() => annotationView.value.formattedItems.length);
 const imagePositionView = ref({ currentIndex: -1, total: 0 });
 const jumpImageIndex = ref('');
+const isQuadLocationPropagationOpen = ref(false);
+const quadLocationPropagationCount = ref(0);
 const imageObj = ref(new Image());
 const imgFileName = ref(null);
 const jsonFileName = ref(null);
@@ -536,6 +587,27 @@ const canCopyPreviousQuadLocation = computed(
     activeQuadIndex.value < quadTotal.value &&
     imagePositionView.value.currentIndex > 0 &&
     currentImageOriginalSize.value !== null,
+);
+const remainingFollowingImageCount = computed(() =>
+  Math.max(0, imagePositionView.value.total - imagePositionView.value.currentIndex - 1),
+);
+const canApplyQuadLocationForward = computed(
+  () =>
+    canOperate.value &&
+    activeQuadIndex.value >= 0 &&
+    activeQuadIndex.value < quadTotal.value &&
+    remainingFollowingImageCount.value > 0,
+);
+const isQuadLocationPropagationCountValid = computed(
+  () => Number.isInteger(quadLocationPropagationCount.value) && quadLocationPropagationCount.value > 0,
+);
+const effectiveQuadLocationPropagationCount = computed(() =>
+  isQuadLocationPropagationCountValid.value
+    ? Math.min(quadLocationPropagationCount.value, remainingFollowingImageCount.value)
+    : 0,
+);
+const canSubmitQuadLocationPropagation = computed(
+  () => canApplyQuadLocationForward.value && isQuadLocationPropagationCountValid.value,
 );
 const activeQuadLabel = computed(() =>
   activeQuadIndex.value >= 0 ? `${activeQuadIndex.value + 1} / ${quadTotal.value}` : `— / ${quadTotal.value}`,
@@ -700,6 +772,7 @@ const keyActions = {
   },
   e: {
     ctrl: () => copyPreviousQuadLocation(),
+    ctrlShift: () => applyQuadLocationForward(),
   },
   z: {
     default: () => focusPixelAtMouse(),
@@ -763,6 +836,7 @@ const shortcutHelpGroups = Object.freeze([
       { keys: ['1', '2', '3', '4'], separator: '/', label: '移除对应点位' },
       { keys: ['Ctrl', 'S'], label: '更新当前 Quad' },
       { keys: ['Ctrl', 'E'], label: '沿用上图同下标 Quad 坐标' },
+      { keys: ['Ctrl', 'Shift', 'E'], label: '将当前 Quad 坐标应用到后续图片' },
       { keys: ['Ctrl', 'A'], label: '新增 Quad' },
       { keys: ['Ctrl', 'D'], label: '删除当前 Quad' },
       { keys: ['C'], label: '清空待提交的 P1–P4' },
@@ -1095,6 +1169,70 @@ function deleteJsonItem() {
 
 function modifyJsonItem() {
   performJsonAction(KEYS.JSON_MODIFY);
+}
+
+function closeQuadLocationPropagation() {
+  isQuadLocationPropagationOpen.value = false;
+}
+
+function toggleQuadLocationPropagation() {
+  if (!canApplyQuadLocationForward.value) return;
+  if (isQuadLocationPropagationOpen.value) {
+    closeQuadLocationPropagation();
+    return;
+  }
+
+  if (quadLocationPropagationCount.value === 0) {
+    quadLocationPropagationCount.value = remainingFollowingImageCount.value;
+  }
+  isQuadLocationPropagationOpen.value = true;
+}
+
+function formatQuadLocationPropagationSummary(quadIndex, summary) {
+  const messages =
+    summary.updatedCount > 0
+      ? [`已将 Quad ${quadIndex + 1} 的坐标应用到 ${summary.updatedCount} 张后续图片`]
+      : [`Quad ${quadIndex + 1} 没有需要应用的坐标变更`];
+  if (summary.unchangedCount > 0) messages.push(`${summary.unchangedCount} 张坐标已相同`);
+  if (summary.skippedImageIndexes.length > 0) {
+    messages.push(`${summary.skippedImageIndexes.length} 张缺少对应 Quad，已跳过`);
+  }
+  return `${messages.join('；')}。`;
+}
+
+async function applyQuadLocationForward() {
+  if (!canApplyQuadLocationForward.value) {
+    closeQuadLocationPropagation();
+    return;
+  }
+
+  const sourceImageIndex = imagePositionView.value.currentIndex;
+  const quadIndex = activeQuadIndex.value;
+  const count = quadLocationPropagationCount.value;
+  const rangeResult = resolveFollowingImageIndexes({ sourceImageIndex, count });
+  if (!rangeResult.success) {
+    outputMessage(rangeResult.error);
+    return;
+  }
+
+  closeQuadLocationPropagation();
+  let historyEntry = null;
+  let summary = null;
+  await runSaveTransaction(
+    () => {
+      const updateResult = applyQuadLocationToImagesWithHistory({
+        source: { imageIndex: sourceImageIndex, quadIndex },
+        targetImageIndexes: rangeResult.imageIndexes,
+      });
+      historyEntry = updateResult.historyEntry ?? null;
+      summary = updateResult.summary ?? null;
+      return updateResult;
+    },
+    () => {
+      if (historyEntry) recordCurrentJsonHistory(historyEntry);
+      if (summary) outputMessage(formatQuadLocationPropagationSummary(quadIndex, summary));
+    },
+  );
 }
 
 async function copyPreviousQuadLocation() {
@@ -1436,6 +1574,7 @@ function resetImageForDatasetChange() {
   imageLoadError.value = null;
   resetImageRequestState();
   refreshImagePositionView();
+  quadLocationPropagationCount.value = imagePositionView.value.total;
   jumpImageIndex.value = '';
   resetDots();
   resetZoomPreview();
@@ -1512,6 +1651,14 @@ async function handleChooseJsonFileResponse(_event, response) {
 
 watch(selectedDots, () => {
   updateZoomView();
+});
+
+watch([() => imagePositionView.value.currentIndex, activeQuadIndex], closeQuadLocationPropagation);
+watch(activeInspectorPage, page => {
+  if (page !== INSPECTOR_PAGE.ANNOTATION) closeQuadLocationPropagation();
+});
+watch(canApplyQuadLocationForward, enabled => {
+  if (!enabled) closeQuadLocationPropagation();
 });
 
 // Zoom preview
@@ -1883,6 +2030,24 @@ function toggleQuadInteraction() {
   font-weight: 400;
 }
 
+.section-action-button {
+  padding: 3px 5px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font: 600 var(--font-size-caption) / 1.2 var(--font-ui);
+  cursor: pointer;
+}
+
+.section-action-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.section-action-button:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
 .precision-panel {
   display: grid;
   gap: 9px;
@@ -1979,8 +2144,76 @@ function toggleQuadInteraction() {
   font-size: var(--font-size-caption);
 }
 
-.annotation-list-heading {
+.annotation-list-section {
+  display: grid;
+  gap: 8px;
   align-self: end;
+}
+
+.quad-location-propagation-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.propagation-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.propagation-panel-heading strong {
+  font-size: var(--font-size-secondary);
+}
+
+.propagation-panel-heading span {
+  color: var(--text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.propagation-field {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+}
+
+.propagation-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: 400 var(--font-size-secondary) / 1 var(--font-ui);
+}
+
+.propagation-count-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.propagation-count-control small {
+  color: var(--text-muted);
+  font-size: var(--font-size-caption);
+  white-space: nowrap;
+}
+
+.propagation-panel-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
 }
 
 .annotation-list {

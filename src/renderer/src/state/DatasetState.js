@@ -270,6 +270,11 @@ function createDatasetMutationReceipt(entries, direction) {
   return Object.freeze({ entries: Object.freeze([...entries]), direction });
 }
 
+function getHistoryStepMutations(historyEntry, direction) {
+  const mutations = Array.isArray(historyEntry?.mutations) ? historyEntry.mutations : [historyEntry];
+  return direction === HISTORY_DIRECTION.UNDO ? mutations.toReversed() : mutations;
+}
+
 function runJsonMutationWithHistory(action, itemIndex, mutate) {
   if (datasetState.currentImageIndex < 0) {
     return { success: false, error: '当前没有激活的 JSON 图片。' };
@@ -426,6 +431,132 @@ export function copyPreviousQuadLocationWithHistory(activeQuadIndex = -1, imageS
   );
 }
 
+export function resolveFollowingImageIndexes({ sourceImageIndex, count } = {}) {
+  const pictures = datasetState.dataset[ROOT_KEY];
+  const totalImages = Array.isArray(pictures) ? pictures.length : 0;
+  if (!Number.isInteger(sourceImageIndex) || sourceImageIndex < 0 || sourceImageIndex >= totalImages) {
+    return { success: false, error: '源图片序号无效。' };
+  }
+
+  const remainingCount = totalImages - sourceImageIndex - 1;
+  if (remainingCount === 0) return { success: false, error: '当前图片之后没有可应用坐标的图片。' };
+  if (!Number.isInteger(count) || count < 1) return { success: false, error: '后续图片数量必须是正整数。' };
+
+  const resolvedCount = Math.min(count, remainingCount);
+
+  return {
+    success: true,
+    imageIndexes: Array.from({ length: resolvedCount }, (_, offset) => sourceImageIndex + offset + 1),
+    remainingCount,
+  };
+}
+
+function normalizeTargetImageIndexes(targetImageIndexes, sourceImageIndex, pictureCount) {
+  if (!Array.isArray(targetImageIndexes)) return null;
+
+  const normalizedIndexes = [];
+  const seenIndexes = new Set();
+  for (const imageIndex of targetImageIndexes) {
+    if (
+      !Number.isInteger(imageIndex) ||
+      imageIndex < 0 ||
+      imageIndex >= pictureCount ||
+      imageIndex === sourceImageIndex
+    ) {
+      return null;
+    }
+    if (seenIndexes.has(imageIndex)) continue;
+    seenIndexes.add(imageIndex);
+    normalizedIndexes.push(imageIndex);
+  }
+  return normalizedIndexes;
+}
+
+export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexes } = {}) {
+  const sourceImageIndex = source?.imageIndex;
+  const quadIndex = source?.quadIndex;
+  const pictures = datasetState.dataset[ROOT_KEY];
+  if (!Array.isArray(pictures) || pictures.length === 0) {
+    return { success: false, error: '当前 JSON 数据集中没有可用的图片数据。' };
+  }
+  if (!Number.isInteger(sourceImageIndex) || sourceImageIndex < 0 || sourceImageIndex >= pictures.length) {
+    return { success: false, error: '源图片序号无效。' };
+  }
+  if (sourceImageIndex !== datasetState.currentImageIndex) {
+    return { success: false, error: '源图片已与当前图片不一致。' };
+  }
+
+  const normalizedTargetIndexes = normalizeTargetImageIndexes(targetImageIndexes, sourceImageIndex, pictures.length);
+  if (normalizedTargetIndexes === null || normalizedTargetIndexes.length === 0) {
+    return { success: false, error: '目标图片序号无效。' };
+  }
+
+  const sourceItems = pictures[sourceImageIndex]?.[datasetState.productSchema.targetKey];
+  if (!Number.isInteger(quadIndex) || quadIndex < 0 || !Array.isArray(sourceItems) || quadIndex >= sourceItems.length) {
+    return { success: false, error: '当前没有激活有效的 Quad。' };
+  }
+
+  const sourceLocation = sourceItems[quadIndex]?.[datasetState.productSchema.ItemKey];
+  if (typeof sourceLocation !== 'string') {
+    return { success: false, error: '当前 Quad 的坐标无效。' };
+  }
+
+  const mutations = [];
+  const skippedImageIndexes = [];
+  let unchangedCount = 0;
+  for (const imageIndex of normalizedTargetIndexes) {
+    const targetItems = pictures[imageIndex]?.[datasetState.productSchema.targetKey];
+    if (!Array.isArray(targetItems) || quadIndex >= targetItems.length) {
+      skippedImageIndexes.push(imageIndex);
+      continue;
+    }
+
+    const targetItem = targetItems[quadIndex];
+    if (!targetItem || typeof targetItem !== 'object') {
+      return { success: false, error: `图片 ${imageIndex + 1} 的对应 Quad 数据无效。` };
+    }
+    if (targetItem[datasetState.productSchema.ItemKey] === sourceLocation) {
+      unchangedCount++;
+      continue;
+    }
+
+    const afterItem = cloneDeep(targetItem);
+    afterItem[datasetState.productSchema.ItemKey] = sourceLocation;
+    mutations.push({
+      action: KEYS.JSON_APPLY_QUAD_LOCATION,
+      imageIndex,
+      itemIndex: quadIndex,
+      beforeItem: cloneDeep(targetItem),
+      afterItem,
+    });
+  }
+
+  const summary = {
+    requestedCount: normalizedTargetIndexes.length,
+    updatedCount: mutations.length,
+    unchangedCount,
+    skippedImageIndexes,
+  };
+  if (mutations.length === 0) {
+    return { success: true, changed: false, historyEntry: null, receipt: null, summary };
+  }
+
+  const mutationResult = applyJsonHistoryEntriesWithReceipt(mutations, HISTORY_DIRECTION.REDO);
+  if (!mutationResult.success) return { ...mutationResult, summary };
+
+  return {
+    ...mutationResult,
+    historyEntry: {
+      action: KEYS.JSON_APPLY_QUAD_LOCATION,
+      imageIndex: sourceImageIndex,
+      itemIndex: quadIndex,
+      mutations,
+      targetImageIndexes: normalizedTargetIndexes,
+    },
+    summary,
+  };
+}
+
 export function applyJsonHistoryEntry(historyEntry, direction) {
   const isUndo = direction === 'undo';
   const isRedo = direction === 'redo';
@@ -471,6 +602,7 @@ export function applyJsonHistoryEntry(historyEntry, direction) {
   return {
     success: true,
     action: historyEntry.action,
+    imageIndex,
     itemIndex,
     mutationType,
     activeQuadIndex: mutationType === 'delete' ? Math.min(itemIndex, items.length - 1) : itemIndex,
@@ -511,18 +643,20 @@ export function applyJsonHistoryEntriesWithReceipt(historyEntries, direction) {
   const appliedEntries = [];
   const mutationResults = [];
   for (const historyEntry of historyEntries) {
-    const mutationResult = applyJsonHistoryEntry(historyEntry, direction);
-    if (!mutationResult.success) {
-      const receipt = createDatasetMutationReceipt(appliedEntries, direction);
-      const rollbackResult = receipt ? rollbackDatasetMutation(receipt) : { success: true };
-      return {
-        success: false,
-        error: mutationResult.error,
-        rollbackFailed: !rollbackResult.success,
-      };
+    for (const mutation of getHistoryStepMutations(historyEntry, direction)) {
+      const mutationResult = applyJsonHistoryEntry(mutation, direction);
+      if (!mutationResult.success) {
+        const receipt = createDatasetMutationReceipt(appliedEntries, direction);
+        const rollbackResult = receipt ? rollbackDatasetMutation(receipt) : { success: true };
+        return {
+          success: false,
+          error: mutationResult.error,
+          rollbackFailed: !rollbackResult.success,
+        };
+      }
+      appliedEntries.push(mutation);
+      mutationResults.push(mutationResult);
     }
-    appliedEntries.push(historyEntry);
-    mutationResults.push(mutationResult);
   }
 
   return {
