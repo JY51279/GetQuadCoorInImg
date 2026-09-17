@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { handleShortcutKeyDown, resolveShortcutAction } from '../src/renderer/src/utils/KeyboardShortcuts.js';
+import {
+  handleShortcutKeyDown,
+  handleWorkspaceShortcutKeyDown,
+  resolveShortcutAction,
+} from '../src/renderer/src/utils/KeyboardShortcuts.js';
 
 function createKeyEvent(overrides = {}) {
   return {
@@ -72,5 +76,51 @@ describe('keyboard shortcuts', () => {
     expect(action).not.toHaveBeenCalled();
     expect(inputEvent.preventDefault).not.toHaveBeenCalled();
     expect(unsupportedEvent.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('keeps operational shortcuts active while the help page is open', () => {
+    const changeImage = vi.fn();
+    const event = createKeyEvent({ key: 'd' });
+
+    expect(
+      handleWorkspaceShortcutKeyDown(event, {
+        isHelpOpen: true,
+        shortcutActions: { d: { default: changeImage } },
+      }),
+    ).toBe(true);
+    expect(changeImage).toHaveBeenCalledOnce();
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('lets a consumed Escape cancel a Quad drag before a later Escape closes help', () => {
+    const closeHelp = vi.fn();
+    const consumedEscape = createKeyEvent({ key: 'Escape', defaultPrevented: true });
+    const closeEscape = createKeyEvent({ key: 'Escape' });
+    const options = { isHelpOpen: true, onCloseHelp: closeHelp, shortcutActions: {} };
+
+    expect(handleWorkspaceShortcutKeyDown(consumedEscape, options)).toBe(false);
+    expect(closeHelp).not.toHaveBeenCalled();
+    expect(consumedEscape.preventDefault).not.toHaveBeenCalled();
+
+    expect(handleWorkspaceShortcutKeyDown(closeEscape, options)).toBe(true);
+    expect(closeHelp).toHaveBeenCalledOnce();
+    expect(closeEscape.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('toggles help with F1 without triggering an operational shortcut', () => {
+    const toggleHelp = vi.fn();
+    const shortcutAction = vi.fn();
+    const event = createKeyEvent({ key: 'F1' });
+
+    expect(
+      handleWorkspaceShortcutKeyDown(event, {
+        isHelpOpen: true,
+        onToggleHelp: toggleHelp,
+        shortcutActions: { F1: { default: shortcutAction } },
+      }),
+    ).toBe(true);
+    expect(toggleHelp).toHaveBeenCalledOnce();
+    expect(shortcutAction).not.toHaveBeenCalled();
+    expect(event.preventDefault).toHaveBeenCalledOnce();
   });
 });

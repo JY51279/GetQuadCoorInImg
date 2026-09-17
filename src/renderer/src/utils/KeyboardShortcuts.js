@@ -30,3 +30,24 @@ export function handleShortcutKeyDown(event, shortcutActions) {
   if (!event.repeat) action();
   return true;
 }
+
+export function handleWorkspaceShortcutKeyDown(
+  event,
+  { isHelpOpen = false, onToggleHelp, onCloseHelp, shortcutActions } = {},
+) {
+  if (!event || (event.defaultPrevented && event.key === 'Escape')) return false;
+
+  if (event.key === 'F1') {
+    event.preventDefault();
+    if (!event.repeat) onToggleHelp?.();
+    return true;
+  }
+
+  if (isHelpOpen && event.key === 'Escape') {
+    event.preventDefault();
+    if (!event.repeat) onCloseHelp?.();
+    return true;
+  }
+
+  return handleShortcutKeyDown(event, shortcutActions);
+}

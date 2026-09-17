@@ -47,6 +47,12 @@ function createCanvasContext(canvas) {
   };
 }
 
+function dispatchEscapeFromDocument() {
+  const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+  document.body.dispatchEvent(event);
+  return event;
+}
+
 async function mountReadyImage(overrides = {}) {
   const wrapper = mount(ImageView, {
     attachTo: document.body,
@@ -198,6 +204,32 @@ describe('ImageView interactions', () => {
     wrapper.unmount();
   });
 
+  it('restores a point preview and consumes Escape before workspace shortcuts', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    await nextTick();
+
+    let handle = wrapper.find('.quad-point-handle');
+    const startX = Number.parseFloat(handle.element.style.left);
+    const startY = Number.parseFloat(handle.element.style.top);
+    await handle.trigger('pointerdown', { button: 0, pointerId: 10, clientX: startX, clientY: startY });
+    await handle.trigger('pointermove', { pointerId: 10, clientX: startX + 20, clientY: startY + 10 });
+
+    const workspaceKeyDown = vi.fn();
+    window.addEventListener('keydown', workspaceKeyDown);
+    const escapeEvent = dispatchEscapeFromDocument();
+    window.removeEventListener('keydown', workspaceKeyDown);
+    await nextTick();
+
+    handle = wrapper.find('.quad-point-handle');
+    expect(Number.parseFloat(handle.element.style.left)).toBe(startX);
+    expect(Number.parseFloat(handle.element.style.top)).toBe(startY);
+    expect(escapeEvent.defaultPrevented).toBe(true);
+    expect(workspaceKeyDown).not.toHaveBeenCalled();
+    expect(wrapper.emitted('commit-quad-point-drag')).toBeUndefined();
+    wrapper.unmount();
+  });
+
   it('previews and commits one whole-Quad translation without hover-switching the active Quad', async () => {
     const wrapper = await mountReadyImage({ quadInteractionCapabilities: DIRECT_QUAD_INTERACTION });
     const secondQuad = QUAD.map(point => ({ x: point.x + 50, y: point.y }));
@@ -315,15 +347,41 @@ describe('ImageView interactions', () => {
     const startY = Number.parseFloat(handle.element.style.top);
     await handle.trigger('pointerdown', { button: 0, pointerId: 9, clientX: startX, clientY: startY });
     await handle.trigger('pointermove', { pointerId: 9, clientX: startX + 20, clientY: startY + 10 });
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    const escapeEvent = dispatchEscapeFromDocument();
     await nextTick();
 
     handle = wrapper.find('.quad-translate-handle');
     expect(Number.parseFloat(handle.element.style.left)).toBe(startX);
     expect(Number.parseFloat(handle.element.style.top)).toBe(startY);
+    expect(escapeEvent.defaultPrevented).toBe(true);
     expect(wrapper.emitted('commit-quad-translation')).toBeUndefined();
     expect(wrapper.emitted('quad-translation-cancel')?.at(-1)).toEqual([
       { quadIndex: 0, target: { type: QUAD_TRANSLATION_TARGET.WHOLE }, reason: 'escape' },
+    ]);
+    wrapper.unmount();
+  });
+
+  it('restores an edge preview when edge translation is canceled with Escape', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    wrapper.vm.redrawQuadOverlay();
+    await nextTick();
+
+    let handle = wrapper.findAll('.quad-edge-handle')[0];
+    const startX = Number.parseFloat(handle.element.style.left);
+    const startY = Number.parseFloat(handle.element.style.top);
+    await handle.trigger('pointerdown', { button: 0, pointerId: 13, clientX: startX, clientY: startY });
+    await handle.trigger('pointermove', { pointerId: 13, clientX: startX + 20, clientY: startY + 10 });
+    const escapeEvent = dispatchEscapeFromDocument();
+    await nextTick();
+
+    handle = wrapper.findAll('.quad-edge-handle')[0];
+    expect(Number.parseFloat(handle.element.style.left)).toBe(startX);
+    expect(Number.parseFloat(handle.element.style.top)).toBe(startY);
+    expect(escapeEvent.defaultPrevented).toBe(true);
+    expect(wrapper.emitted('commit-quad-translation')).toBeUndefined();
+    expect(wrapper.emitted('quad-translation-cancel')?.at(-1)).toEqual([
+      { quadIndex: 0, target: { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex: 0 }, reason: 'escape' },
     ]);
     wrapper.unmount();
   });

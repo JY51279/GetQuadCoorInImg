@@ -465,7 +465,7 @@ import { KEYS } from '../utils/BasicFuncs.js';
 import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { QUAD_TRANSLATION_TARGET } from '../utils/QuadGeometry.js';
-import { handleShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
+import { handleWorkspaceShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import { getAdjacentQuadIndex, normalizeQuadIndex } from '../state/QuadSelection.js';
 import {
@@ -864,19 +864,12 @@ function handleKeyDown(e) {
     if (e.key !== 'Escape') e.preventDefault();
     return;
   }
-  if (e.key === 'F1') {
-    e.preventDefault();
-    if (!e.repeat) selectInspectorPage(INSPECTOR_PAGE.HELP);
-    return;
-  }
-  if (activeInspectorPage.value === INSPECTOR_PAGE.HELP) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      if (!e.repeat) selectInspectorPage(previousInspectorPage);
-    }
-    return;
-  }
-  handleShortcutKeyDown(e, keyActions);
+  handleWorkspaceShortcutKeyDown(e, {
+    isHelpOpen: activeInspectorPage.value === INSPECTOR_PAGE.HELP,
+    onToggleHelp: () => selectInspectorPage(INSPECTOR_PAGE.HELP),
+    onCloseHelp: () => selectInspectorPage(previousInspectorPage),
+    shortcutActions: keyActions,
+  });
 }
 
 // Child component commands
