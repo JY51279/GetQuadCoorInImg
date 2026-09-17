@@ -465,7 +465,8 @@ import { KEYS } from '../utils/BasicFuncs.js';
 import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { QUAD_TRANSLATION_TARGET } from '../utils/QuadGeometry.js';
-import { handleWorkspaceShortcutKeyDown } from '../utils/KeyboardShortcuts.js';
+import { createShortcutHelpGroups, dispatchShortcut } from '../utils/KeyboardShortcuts.js';
+import { WORKSPACE_SHORTCUT_HELP_GROUPS, createWorkspaceShortcutCommands } from '../shortcuts/WorkspaceShortcuts.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import { getAdjacentQuadIndex, normalizeQuadIndex } from '../state/QuadSelection.js';
 import {
@@ -729,146 +730,47 @@ function syncZoomCanvasPixelRatio() {
 watch(displayPixelRatio, syncZoomCanvasPixelRatio);
 
 // Keyboard shortcuts
-const keyActions = {
-  1: {
-    default: () => clearOneDot(0),
-    ctrl: () => selectInspectorPage(INSPECTOR_PAGE.DATASET),
-  },
-  2: {
-    default: () => clearOneDot(1),
-    ctrl: () => selectInspectorPage(INSPECTOR_PAGE.ANNOTATION),
-  },
-  3: {
-    default: () => clearOneDot(2),
-    ctrl: () => selectInspectorPage(INSPECTOR_PAGE.DISPLAY),
-  },
-  4: {
-    default: () => clearOneDot(3),
-    ctrl: () => selectInspectorPage(INSPECTOR_PAGE.HISTORY),
-  },
-  w: {
-    default: () => changeJsonItemSelection(KEYS.PREVIOUS),
-  },
-  s: {
-    default: () => changeJsonItemSelection(KEYS.NEXT),
-    ctrl: () => modifyJsonItem(),
-  },
-  d: {
-    default: () => changeImageByArrowKeys(KEYS.NEXT),
-    ctrl: () => deleteJsonItem(),
-  },
-  a: {
-    default: () => changeImageByArrowKeys(KEYS.PREVIOUS),
-    ctrl: () => addJsonItem(),
-  },
-  c: {
-    default: () => clearDots(),
-  },
-  r: {
-    default: () => resetPosition(),
-  },
-  f: {
-    default: () => toggleQuadFocusMode(),
-  },
-  e: {
-    ctrl: () => copyPreviousQuadLocation(),
-    ctrlShift: () => applyQuadLocationForward(),
-  },
-  z: {
-    default: () => focusPixelAtMouse(),
-    ctrl: () => undoPointEdit(),
-    ctrlShift: () => undoJsonEdit(),
-  },
-  y: {
-    ctrl: () => redoPointEdit(),
-    ctrlShift: () => redoJsonEdit(),
-  },
-  q: {
-    default: () => toggleHighlight2ShowQuads(),
-    ctrl: () => clearShowQuads(),
-    ctrlShift: () => addAll2ShowQuads(),
-  },
-  o: {
-    ctrl: () => chooseJsonFile(),
-  },
-  i: {
-    ctrl: () => chooseImgFile(),
-  },
-  ArrowLeft: {
-    default: () => changeImageByArrowKeys(KEYS.PREVIOUS),
-  },
-  ArrowRight: {
-    default: () => changeImageByArrowKeys(KEYS.NEXT),
-  },
-  ArrowUp: {
-    default: () => changeJsonItemSelection(KEYS.PREVIOUS),
-  },
-  ArrowDown: {
-    default: () => changeJsonItemSelection(KEYS.NEXT),
-  },
-  Tab: {
-    default: () => toggleQuadInteraction(),
-  },
-};
-
-const shortcutHelpGroups = Object.freeze([
-  {
-    title: '导航与定位',
-    items: [
-      { keys: ['Ctrl', '1'], label: '打开图集与图片页' },
-      { keys: ['Ctrl', '2'], label: '打开 Quad 标注页' },
-      { keys: ['Ctrl', '3'], label: '打开视图与交互页' },
-      { keys: ['Ctrl', '4'], label: '打开操作历史页' },
-      { keys: ['W', '↑'], separator: '/', label: '上一个 Quad' },
-      { keys: ['S', '↓'], separator: '/', label: '下一个 Quad' },
-      { keys: ['A', '←'], separator: '/', label: '上一张图片' },
-      { keys: ['D', '→'], separator: '/', label: '下一张图片' },
-      { keys: ['F'], label: '开关 Quad 聚焦模式' },
-      { keys: ['Z'], label: '聚焦鼠标所在像素' },
-      { keys: ['R'], label: '重置图片位置' },
-      { keys: ['Ctrl', 'O'], label: '打开图集 JSON' },
-      { keys: ['Ctrl', 'I'], label: '手动匹配图片' },
-    ],
-  },
-  {
-    title: '标注编辑',
-    items: [
-      { keys: ['1', '2', '3', '4'], separator: '/', label: '移除对应点位' },
-      { keys: ['Ctrl', 'S'], label: '更新当前 Quad' },
-      { keys: ['Ctrl', 'E'], label: '沿用上图同下标 Quad 坐标' },
-      { keys: ['Ctrl', 'Shift', 'E'], label: '将当前 Quad 坐标应用到后续图片' },
-      { keys: ['Ctrl', 'A'], label: '新增 Quad' },
-      { keys: ['Ctrl', 'D'], label: '删除当前 Quad' },
-      { keys: ['C'], label: '清空待提交的 P1–P4' },
-      { keys: ['Ctrl', 'Z'], label: '撤回选点' },
-      { keys: ['Ctrl', 'Y'], label: '重做选点' },
-      { keys: ['Ctrl', 'Shift', 'Z'], label: '撤销 JSON 操作' },
-      { keys: ['Ctrl', 'Shift', 'Y'], label: '重做 JSON 操作' },
-    ],
-  },
-  {
-    title: '显示',
-    items: [
-      { keys: ['Q'], label: '切换当前 Quad 显示' },
-      { keys: ['Ctrl', 'Q'], label: '隐藏全部 Quad' },
-      { keys: ['Ctrl', 'Shift', 'Q'], label: '显示全部 Quad' },
-      { keys: ['Tab'], label: '切换默认 / 直接编辑模式' },
-      { keys: ['F1'], label: '打开或关闭帮助' },
-    ],
-  },
-]);
+const shortcutCommands = createWorkspaceShortcutCommands({
+  'inspector.dataset': () => selectInspectorPage(INSPECTOR_PAGE.DATASET),
+  'inspector.annotation': () => selectInspectorPage(INSPECTOR_PAGE.ANNOTATION),
+  'inspector.display': () => selectInspectorPage(INSPECTOR_PAGE.DISPLAY),
+  'inspector.history': () => selectInspectorPage(INSPECTOR_PAGE.HISTORY),
+  'quad.previous': () => changeJsonItemSelection(KEYS.PREVIOUS),
+  'quad.next': () => changeJsonItemSelection(KEYS.NEXT),
+  'image.previous': () => changeImageByArrowKeys(KEYS.PREVIOUS),
+  'image.next': () => changeImageByArrowKeys(KEYS.NEXT),
+  'quad.focus.toggle': () => toggleQuadFocusMode(),
+  'pixel.focus': () => focusPixelAtMouse(),
+  'image.position.reset': () => resetPosition(),
+  'dataset.open': () => chooseJsonFile(),
+  'image.match': () => chooseImgFile(),
+  'point.remove': ({ event }) => clearOneDot(Number(event.key) - 1),
+  'quad.update': () => modifyJsonItem(),
+  'quad.location.copy-previous': () => copyPreviousQuadLocation(),
+  'quad.location.apply-forward': () => applyQuadLocationForward(),
+  'quad.add': () => addJsonItem(),
+  'quad.delete': () => deleteJsonItem(),
+  'point.clear': () => clearDots(),
+  'point.undo': () => undoPointEdit(),
+  'point.redo': () => redoPointEdit(),
+  'json.undo': () => undoJsonEdit(),
+  'json.redo': () => redoJsonEdit(),
+  'quad.visibility.toggle': () => toggleHighlight2ShowQuads(),
+  'quad.visibility.hide-all': () => clearShowQuads(),
+  'quad.visibility.show-all': () => addAll2ShowQuads(),
+  'quad.interaction.toggle': () => toggleQuadInteraction(),
+  'help.toggle': () => selectInspectorPage(INSPECTOR_PAGE.HELP),
+  'help.close': () => selectInspectorPage(previousInspectorPage),
+});
+const shortcutHelpGroups = Object.freeze(createShortcutHelpGroups(shortcutCommands, WORKSPACE_SHORTCUT_HELP_GROUPS));
 
 function handleKeyDown(e) {
-  if (e.defaultPrevented && e.key === 'Escape') return;
   if (isQuadSelectionLocked.value) {
-    if (e.key !== 'Escape') e.preventDefault();
+    e.preventDefault();
     return;
   }
-  handleWorkspaceShortcutKeyDown(e, {
+  dispatchShortcut(e, shortcutCommands, {
     isHelpOpen: activeInspectorPage.value === INSPECTOR_PAGE.HELP,
-    onToggleHelp: () => selectInspectorPage(INSPECTOR_PAGE.HELP),
-    onCloseHelp: () => selectInspectorPage(previousInspectorPage),
-    shortcutActions: keyActions,
   });
 }
 

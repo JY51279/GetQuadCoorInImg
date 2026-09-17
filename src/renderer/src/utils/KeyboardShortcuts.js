@@ -1,4 +1,10 @@
 const EDITABLE_TAG_NAMES = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+const SHORTCUT_KEY_LABELS = Object.freeze({
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+});
 
 function isEditableTarget(target) {
   const tagName = typeof target?.tagName === 'string' ? target.tagName.toUpperCase() : '';
@@ -9,45 +15,65 @@ function normalizeKey(key) {
   return typeof key === 'string' && key.length === 1 ? key.toLowerCase() : key;
 }
 
-export function resolveShortcutAction(event, shortcutActions) {
-  if (!event || !shortcutActions || event.altKey || event.metaKey) return null;
-
-  const action = shortcutActions[normalizeKey(event.key)];
-  if (!action) return null;
-  if (event.ctrlKey && event.shiftKey) return action.ctrlShift ?? null;
-  if (event.ctrlKey) return action.ctrl ?? null;
-  if (event.shiftKey) return null;
-  return action.default ?? null;
+export function matchesShortcut(event, shortcut) {
+  if (!event || !shortcut || normalizeKey(event.key) !== normalizeKey(shortcut.key)) return false;
+  return (
+    Boolean(event.ctrlKey) === Boolean(shortcut.ctrl) &&
+    Boolean(event.shiftKey) === Boolean(shortcut.shift) &&
+    Boolean(event.altKey) === Boolean(shortcut.alt) &&
+    Boolean(event.metaKey) === Boolean(shortcut.meta)
+  );
 }
 
-export function handleShortcutKeyDown(event, shortcutActions) {
-  if (isEditableTarget(event?.target)) return false;
+export function dispatchShortcut(event, commands, context = null) {
+  if (!event || event.defaultPrevented || !Array.isArray(commands)) return false;
 
-  const action = resolveShortcutAction(event, shortcutActions);
-  if (typeof action !== 'function') return false;
+  const editableTarget = isEditableTarget(event.target);
+  for (const command of commands) {
+    if (typeof command?.run !== 'function' || !Array.isArray(command.shortcuts)) continue;
+    const shortcut = command.shortcuts.find(candidate => matchesShortcut(event, candidate));
+    if (!shortcut || (editableTarget && !command.allowInEditable)) continue;
 
-  event.preventDefault();
-  if (!event.repeat) action();
-  return true;
+    const invocation = { command, context, event, shortcut };
+    if (typeof command.when === 'function' && !command.when(invocation)) continue;
+
+    event.preventDefault();
+    if (!event.repeat || command.allowRepeat) command.run(invocation);
+    return true;
+  }
+  return false;
 }
 
-export function handleWorkspaceShortcutKeyDown(
-  event,
-  { isHelpOpen = false, onToggleHelp, onCloseHelp, shortcutActions } = {},
-) {
-  if (!event || (event.defaultPrevented && event.key === 'Escape')) return false;
+export function formatShortcut(shortcut) {
+  if (!shortcut || typeof shortcut.key !== 'string' || shortcut.key === '') return [];
 
-  if (event.key === 'F1') {
-    event.preventDefault();
-    if (!event.repeat) onToggleHelp?.();
-    return true;
-  }
+  const keys = [];
+  if (shortcut.ctrl) keys.push('Ctrl');
+  if (shortcut.shift) keys.push('Shift');
+  if (shortcut.alt) keys.push('Alt');
+  if (shortcut.meta) keys.push('Meta');
 
-  if (isHelpOpen && event.key === 'Escape') {
-    event.preventDefault();
-    if (!event.repeat) onCloseHelp?.();
-    return true;
-  }
+  const keyLabel = SHORTCUT_KEY_LABELS[shortcut.key] ?? shortcut.key;
+  keys.push(keyLabel.length === 1 ? keyLabel.toUpperCase() : keyLabel);
+  return keys;
+}
 
-  return handleShortcutKeyDown(event, shortcutActions);
+export function createShortcutHelpGroups(commands, groups) {
+  if (!Array.isArray(commands) || !Array.isArray(groups)) return [];
+
+  return groups
+    .map(group => ({
+      title: group.title,
+      items: commands
+        .filter(command => command.group === group.id && command.showInHelp !== false)
+        .map(command => ({
+          label: command.label,
+          shortcuts: (Array.isArray(command.shortcuts) ? command.shortcuts : [])
+            .filter(shortcut => shortcut.showInHelp !== false)
+            .map(formatShortcut)
+            .filter(keys => keys.length > 0),
+        }))
+        .filter(item => item.label && item.shortcuts.length > 0),
+    }))
+    .filter(group => group.title && group.items.length > 0);
 }

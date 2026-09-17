@@ -12,9 +12,15 @@
         <dl>
           <div v-for="item in group.items" :key="`${group.title}-${item.label}`" class="shortcut-row">
             <dt>
-              <template v-for="(key, index) in item.keys" :key="`${item.label}-${key}-${index}`">
-                <span v-if="index > 0" class="key-separator">{{ item.separator || '+' }}</span>
-                <kbd>{{ key }}</kbd>
+              <template
+                v-for="(shortcut, shortcutIndex) in item.shortcuts"
+                :key="`${item.label}-${shortcut.join('-')}`"
+              >
+                <span v-if="shortcutIndex > 0" class="key-separator">/</span>
+                <template v-for="(key, keyIndex) in shortcut" :key="`${item.label}-${shortcutIndex}-${key}`">
+                  <span v-if="keyIndex > 0" class="key-separator">+</span>
+                  <kbd>{{ key }}</kbd>
+                </template>
               </template>
             </dt>
             <dd>{{ item.label }}</dd>
