@@ -32,6 +32,15 @@
         >
           匹配图片
         </button>
+        <div
+          class="toolbar-dataset-name"
+          :title="jsonFileName || '未加载图集'"
+          :aria-label="`当前图集：${jsonFileName || '未加载'}`"
+          aria-live="polite"
+        >
+          <span>图集：</span>
+          <strong>{{ jsonFileName || '未加载' }}</strong>
+        </div>
       </div>
 
       <div class="toolbar-group image-navigation" aria-label="图片导航">
@@ -1487,6 +1496,7 @@ function chooseJsonFile() {
     outputMessage(started.error);
     return;
   }
+  selectInspectorPage(INSPECTOR_PAGE.DATASET);
   try {
     ipcRenderer.send('open-json-file-dialog', { requestId: started.operationId });
   } catch (error) {
@@ -1689,6 +1699,36 @@ function toggleQuadInteraction() {
   align-items: center;
   padding-right: 10px;
   border-right: 1px solid var(--border-subtle);
+}
+
+.toolbar-files {
+  min-width: 0;
+}
+
+.toolbar-files .toolbar-button {
+  flex: 0 0 auto;
+}
+
+.toolbar-dataset-name {
+  display: flex;
+  width: clamp(120px, 18vw, 220px);
+  min-width: 0;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: var(--font-size-secondary);
+  white-space: nowrap;
+}
+
+.toolbar-dataset-name span {
+  flex: 0 0 auto;
+}
+
+.toolbar-dataset-name strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
 }
 
 .toolbar-button,
