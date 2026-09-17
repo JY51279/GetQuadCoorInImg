@@ -25,6 +25,22 @@
           打开图集
         </button>
         <button
+          class="toolbar-button compact"
+          title="上一图集（Shift+A / Shift+←）"
+          :disabled="!canNavigateDataset"
+          @click="changeDatasetByDirection(KEYS.PREVIOUS)"
+        >
+          上一图集
+        </button>
+        <button
+          class="toolbar-button compact"
+          title="下一图集（Shift+D / Shift+→）"
+          :disabled="!canNavigateDataset"
+          @click="changeDatasetByDirection(KEYS.NEXT)"
+        >
+          下一图集
+        </button>
+        <button
           class="toolbar-button"
           title="手动匹配图片（Ctrl+I）"
           :disabled="imagePositionView.total === 0 || !canLoadImage"
@@ -452,6 +468,7 @@ import {
   updateJsonWithHistory,
   getJsonImagePosition,
   getJsonFileInfo,
+  getJsonFilePath,
   resetPicJson,
   resolveFollowingImageIndexes,
   translateQuadWithHistory,
@@ -583,6 +600,7 @@ const {
   reset: resetDots,
 } = usePointSelectionHistory({ canEdit: canOperate });
 const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
+const canNavigateDataset = computed(() => canLoadDataset.value && Boolean(jsonFileName.value));
 const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(imageObj.value?.src));
@@ -748,6 +766,8 @@ const shortcutCommands = createWorkspaceShortcutCommands({
   'quad.next': () => changeJsonItemSelection(KEYS.NEXT),
   'image.previous': () => changeImageByArrowKeys(KEYS.PREVIOUS),
   'image.next': () => changeImageByArrowKeys(KEYS.NEXT),
+  'dataset.previous': () => changeDatasetByDirection(KEYS.PREVIOUS),
+  'dataset.next': () => changeDatasetByDirection(KEYS.NEXT),
   'quad.focus.toggle': () => toggleQuadFocusMode(),
   'pixel.focus': () => focusPixelAtMouse(),
   'image.position.reset': () => resetPosition(),
@@ -1486,23 +1506,53 @@ function resetImageForDatasetChange() {
   clearCurrentAnnotations();
 }
 
-function chooseJsonFile() {
+function beginDatasetLoadOperation() {
   if (!canLoadDataset.value) {
     outputMessage(USER_MESSAGES.WAIT_FOR_CURRENT_OPERATION);
-    return;
+    return null;
   }
   const started = startDatasetLoad(workflowState.value);
   if (!applyWorkflowTransition(started)) {
     outputMessage(started.error);
-    return;
+    return null;
   }
+  return started.operationId;
+}
+
+function chooseJsonFile() {
+  const operationId = beginDatasetLoadOperation();
+  if (operationId === null) return;
+
   selectInspectorPage(INSPECTOR_PAGE.DATASET);
   try {
-    ipcRenderer.send('open-json-file-dialog', { requestId: started.operationId });
+    ipcRenderer.send('open-json-file-dialog', { requestId: operationId });
   } catch (error) {
     console.error('Error while sending IPC message open-json-file-dialog:', error);
     outputMessage(toUserErrorMessage(error, USER_MESSAGES.JSON_OPEN_FAILED));
-    applyWorkflowTransition(failOperation(workflowState.value, started.operationId));
+    applyWorkflowTransition(failOperation(workflowState.value, operationId));
+  }
+}
+
+async function changeDatasetByDirection(direction) {
+  const currentFilePath = getJsonFilePath();
+  if (!currentFilePath) {
+    outputMessage(USER_MESSAGES.NO_DATASET);
+    return;
+  }
+
+  const operationId = beginDatasetLoadOperation();
+  if (operationId === null) return;
+
+  try {
+    const response = await ipcRenderer.invoke('open-adjacent-json-file', {
+      currentFilePath,
+      direction,
+      requestId: operationId,
+    });
+    await handleChooseJsonFileResponse(null, response);
+  } catch (error) {
+    if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return;
+    failDatasetLoad(operationId, toUserErrorMessage(error, USER_MESSAGES.DATASET_SWITCH_FAILED));
   }
 }
 

@@ -33,6 +33,10 @@ describe('workspace shortcut configuration', () => {
     expect(commands).toHaveLength(WORKSPACE_SHORTCUT_DEFINITIONS.length);
     expect(dispatchShortcut(createKeyEvent(), commands)).toBe(true);
     expect(actions['image.next']).toHaveBeenCalledOnce();
+
+    expect(dispatchShortcut(createKeyEvent({ shiftKey: true }), commands)).toBe(true);
+    expect(actions['dataset.next']).toHaveBeenCalledOnce();
+    expect(actions['image.next']).toHaveBeenCalledOnce();
   });
 
   it('fails fast when a command action is missing', () => {
@@ -54,5 +58,12 @@ describe('workspace shortcut configuration', () => {
     expect(actions['help.close']).toHaveBeenCalledOnce();
     expect(helpGroups.flatMap(group => group.items).some(item => item.label === '关闭帮助')).toBe(false);
     expect(helpGroups.flatMap(group => group.items).some(item => item.label === '下一张图片')).toBe(true);
+    expect(helpGroups.flatMap(group => group.items).find(item => item.label === '下一图集')).toEqual({
+      label: '下一图集',
+      shortcuts: [
+        ['Shift', 'D'],
+        ['Shift', '→'],
+      ],
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
   getDefaultDialogDirectory,
   getImageDialogDefaultDirectory,
   initializeFileOperations,
+  readAdjacentJsonFile,
   readJsonFile,
   rememberJsonDirectory,
   resolveJsonImagePath,
@@ -71,6 +72,35 @@ describe('Main-process file operations', () => {
       fileName: 'sample.json',
     });
     expect((await fs.readdir(root)).filter(fileName => fileName.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('reads adjacent JSON files using direct string order and wraps at both ends', async () => {
+    const root = await createTemporaryDirectory();
+    const atlas1 = path.join(root, 'atlas1.json');
+    const atlas10 = path.join(root, 'atlas10.json');
+    const atlas2 = path.join(root, 'atlas2.json');
+    await Promise.all([
+      fs.writeFile(atlas1, '{"atlas":1}', 'utf-8'),
+      fs.writeFile(atlas10, '{"atlas":10}', 'utf-8'),
+      fs.writeFile(atlas2, '{"atlas":2}', 'utf-8'),
+      fs.writeFile(path.join(root, 'notes.txt'), '{}', 'utf-8'),
+      fs.mkdir(path.join(root, 'ignored.json')),
+    ]);
+
+    await expect(readAdjacentJsonFile(atlas1, 'next')).resolves.toMatchObject({
+      path: atlas10,
+      fileName: 'atlas10.json',
+    });
+    await expect(readAdjacentJsonFile(atlas2, 'next')).resolves.toMatchObject({ path: atlas1 });
+    await expect(readAdjacentJsonFile(atlas1, 'previous')).resolves.toMatchObject({ path: atlas2 });
+  });
+
+  it('rejects atlas navigation when the directory has no other JSON file', async () => {
+    const root = await createTemporaryDirectory();
+    const onlyAtlas = path.join(root, 'only.json');
+    await fs.writeFile(onlyAtlas, '{}', 'utf-8');
+
+    await expect(readAdjacentJsonFile(onlyAtlas, 'next')).rejects.toThrow('当前目录没有其他图集。');
   });
 
   it('backs up the original JSON before a lossy repair replaces it', async () => {

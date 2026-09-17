@@ -2,6 +2,7 @@ import { dialog, ipcMain } from 'electron';
 import {
   getDefaultDialogDirectory,
   getImageDialogDefaultDirectory,
+  readAdjacentJsonFile,
   readJsonFile,
   rememberJsonDirectory,
   resolveJsonImagePath,
@@ -100,6 +101,21 @@ export async function handleOpenJsonDialog(event, context) {
   }
 }
 
+export async function handleOpenAdjacentJson(_event, request) {
+  const requestId = request?.requestId ?? null;
+  try {
+    const jsonInfo = await readAdjacentJsonFile(request?.currentFilePath, request?.direction);
+    return { success: true, requestId, jsonInfo };
+  } catch (error) {
+    console.error('Failed to open adjacent JSON file:', error);
+    return {
+      success: false,
+      requestId,
+      error: toUserErrorMessage(error, USER_MESSAGES.DATASET_SWITCH_FAILED),
+    };
+  }
+}
+
 export function handleResolveJsonImagePaths(_event, data) {
   try {
     if (!data || typeof data.jsonFilePath !== 'string' || !Array.isArray(data.imagePaths)) {
@@ -126,6 +142,7 @@ export async function handleSaveJsonFile(_event, data) {
 export function registerIpcHandlers() {
   ipcMain.handle('open-image-file-dialog', handleOpenImageDialog);
   ipcMain.handle('prepare-image', handlePrepareImage);
+  ipcMain.handle('open-adjacent-json-file', handleOpenAdjacentJson);
 
   ipcMain.on('open-json-file-dialog', handleOpenJsonDialog);
 

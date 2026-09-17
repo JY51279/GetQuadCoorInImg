@@ -6,6 +6,7 @@ export const USER_MESSAGES = Object.freeze({
   JSON_SAVE_FAILED: '保存 JSON 文件失败。',
   JSON_READ_FAILED: '读取 JSON 文件失败。',
   JSON_OPEN_FAILED: '打开 JSON 文件选择窗口失败。',
+  DATASET_SWITCH_FAILED: '切换图集失败。',
   IMAGE_OPEN_FAILED: '打开图片失败。',
   IMAGE_READ_FAILED: '读取图片失败。',
   IMAGE_PATH_RESOLUTION_FAILED: '解析图片路径失败。',

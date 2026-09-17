@@ -9,6 +9,7 @@ const electronMocks = vi.hoisted(() => ({
 const fileOperationMocks = vi.hoisted(() => ({
   getDefaultDialogDirectory: vi.fn(),
   getImageDialogDefaultDirectory: vi.fn(),
+  readAdjacentJsonFile: vi.fn(),
   readJsonFile: vi.fn(),
   rememberJsonDirectory: vi.fn(),
   resolveJsonImagePath: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('../src/main/ImageFileReader.js', () => ({
 }));
 
 import {
+  handleOpenAdjacentJson,
   handleOpenImageDialog,
   handleOpenJsonDialog,
   handlePrepareImage,
@@ -113,6 +115,36 @@ describe('Main-process IPC handlers', () => {
       success: false,
       requestId: 44,
       error: '打开 JSON 文件选择窗口失败。',
+    });
+  });
+
+  it('returns the adjacent JSON file with the original request context', async () => {
+    const jsonInfo = { path: 'C:/datasets/atlas10.json', str: '{}', fileName: 'atlas10.json' };
+    fileOperationMocks.readAdjacentJsonFile.mockResolvedValue(jsonInfo);
+
+    await expect(
+      handleOpenAdjacentJson(null, {
+        currentFilePath: 'C:/datasets/atlas1.json',
+        direction: 'next',
+        requestId: 45,
+      }),
+    ).resolves.toEqual({ success: true, requestId: 45, jsonInfo });
+    expect(fileOperationMocks.readAdjacentJsonFile).toHaveBeenCalledWith('C:/datasets/atlas1.json', 'next');
+  });
+
+  it('preserves a user-facing adjacent-JSON error', async () => {
+    fileOperationMocks.readAdjacentJsonFile.mockRejectedValue(new Error('当前目录没有其他图集。'));
+
+    await expect(
+      handleOpenAdjacentJson(null, {
+        currentFilePath: 'C:/datasets/only.json',
+        direction: 'next',
+        requestId: 46,
+      }),
+    ).resolves.toEqual({
+      success: false,
+      requestId: 46,
+      error: '当前目录没有其他图集。',
     });
   });
 
@@ -205,6 +237,7 @@ describe('Main-process IPC handlers', () => {
 
     expect(electronMocks.handle).toHaveBeenCalledWith('open-image-file-dialog', handleOpenImageDialog);
     expect(electronMocks.handle).toHaveBeenCalledWith('prepare-image', handlePrepareImage);
+    expect(electronMocks.handle).toHaveBeenCalledWith('open-adjacent-json-file', handleOpenAdjacentJson);
     expect(electronMocks.handle).toHaveBeenCalledWith('resolve-json-image-paths', handleResolveJsonImagePaths);
     expect(electronMocks.handle).toHaveBeenCalledWith('save-json-file', handleSaveJsonFile);
     expect(electronMocks.on).toHaveBeenCalledWith('open-json-file-dialog', handleOpenJsonDialog);

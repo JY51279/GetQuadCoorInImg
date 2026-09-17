@@ -60,6 +60,24 @@ export const WORKSPACE_SHORTCUT_DEFINITIONS = Object.freeze([
     shortcuts: [{ key: 'd' }, { key: 'ArrowRight' }],
   },
   {
+    id: 'dataset.previous',
+    group: SHORTCUT_GROUP.NAVIGATION,
+    label: '上一图集',
+    shortcuts: [
+      { key: 'a', shift: true },
+      { key: 'ArrowLeft', shift: true },
+    ],
+  },
+  {
+    id: 'dataset.next',
+    group: SHORTCUT_GROUP.NAVIGATION,
+    label: '下一图集',
+    shortcuts: [
+      { key: 'd', shift: true },
+      { key: 'ArrowRight', shift: true },
+    ],
+  },
+  {
     id: 'quad.focus.toggle',
     group: SHORTCUT_GROUP.NAVIGATION,
     label: '开关 Quad 聚焦模式',

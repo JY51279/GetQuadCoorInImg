@@ -108,6 +108,37 @@ function getExistingDirectory(directoryPath) {
   }
 }
 
+function areFileNamesEquivalent(leftFileName, rightFileName) {
+  if (process.platform !== 'win32') return leftFileName === rightFileName;
+  return leftFileName.toLowerCase() === rightFileName.toLowerCase();
+}
+
+export async function readAdjacentJsonFile(currentFilePath, direction) {
+  if (typeof currentFilePath !== 'string' || currentFilePath.length === 0) {
+    throw new Error('当前图集路径无效。');
+  }
+  if (direction !== 'previous' && direction !== 'next') {
+    throw new Error('图集切换方向无效。');
+  }
+
+  const resolvedCurrentPath = path.resolve(currentFilePath);
+  const directory = path.dirname(resolvedCurrentPath);
+  const currentFileName = path.basename(resolvedCurrentPath);
+  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  const jsonFileNames = entries
+    .filter(entry => entry.isFile() && path.extname(entry.name).toLowerCase() === '.json')
+    .map(entry => entry.name)
+    .sort();
+
+  const currentIndex = jsonFileNames.findIndex(fileName => areFileNamesEquivalent(fileName, currentFileName));
+  if (currentIndex < 0) throw new Error('当前图集不在所在目录的 JSON 文件列表中。');
+  if (jsonFileNames.length <= 1) throw new Error('当前目录没有其他图集。');
+
+  const step = direction === 'next' ? 1 : -1;
+  const targetIndex = (currentIndex + step + jsonFileNames.length) % jsonFileNames.length;
+  return readJsonFile(path.join(directory, jsonFileNames[targetIndex]));
+}
+
 export async function initializeFileOperations(electronApp) {
   lastJsonDirectory = '';
   documentsDirectory = electronApp.getPath('documents');
