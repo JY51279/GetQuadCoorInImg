@@ -12,3 +12,13 @@ export function createDatasetTarget(filePath, fileName = '') {
     fileName: typeof fileName === 'string' && fileName.length > 0 ? fileName : fallbackFileName,
   };
 }
+
+export function createCanceledDatasetFileResponse(requestId) {
+  return {
+    requestId,
+    status: DATASET_FILE_STATUS.CANCELED,
+    target: null,
+    jsonInfo: null,
+    error: '',
+  };
+}

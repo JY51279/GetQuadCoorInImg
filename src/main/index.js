@@ -72,7 +72,7 @@ function createWindow() {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
   await initializeFileOperations(app);
-  initializeWorkspaceSessionStore(app);
+  await initializeWorkspaceSessionStore(app);
   await initializeImageFileReader(app, nativeImage);
   registerImageProtocol(protocol, net);
   // Set app user model id for windows

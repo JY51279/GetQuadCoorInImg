@@ -115,6 +115,16 @@ function normalizePathForComparison(filePath) {
   return process.platform === 'win32' ? normalizedPath.toLowerCase() : normalizedPath;
 }
 
+export function areFilePathsEqual(leftPath, rightPath) {
+  return (
+    typeof leftPath === 'string' &&
+    leftPath.length > 0 &&
+    typeof rightPath === 'string' &&
+    rightPath.length > 0 &&
+    normalizePathForComparison(leftPath) === normalizePathForComparison(rightPath)
+  );
+}
+
 export function compareFileNames(leftFileName, rightFileName) {
   if (leftFileName === rightFileName) return 0;
   return leftFileName < rightFileName ? -1 : 1;
@@ -136,8 +146,7 @@ export function getAdjacentFilePath(filePaths, currentFilePath, direction) {
   if (!Array.isArray(filePaths) || filePaths.length === 0) throw new Error('文件列表为空。');
   if (typeof currentFilePath !== 'string' || currentFilePath.length === 0) throw new Error('当前文件路径无效。');
 
-  const currentPathKey = normalizePathForComparison(currentFilePath);
-  const currentIndex = filePaths.findIndex(filePath => normalizePathForComparison(filePath) === currentPathKey);
+  const currentIndex = filePaths.findIndex(filePath => areFilePathsEqual(filePath, currentFilePath));
   if (currentIndex < 0) throw new Error('当前文件不在文件列表中。');
   if (filePaths.length <= 1) throw new Error('当前目录没有其他图集。');
 

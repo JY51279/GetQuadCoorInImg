@@ -5,9 +5,22 @@ function failed(error) {
 }
 
 export function createWorkspaceSessionService({ invoke } = {}) {
-  async function load() {
+  function normalizeRecordResponse(response, fallbackError) {
+    if (!response?.success) return failed(response?.error || fallbackError);
+    const session = response.session === null ? null : normalizeWorkspaceSession(response.session);
+    if (response.session !== null && !session) return failed('工作区记录响应格式无效。');
+    return {
+      success: true,
+      changed: response.changed === true,
+      stale: response.stale === true,
+      session,
+      error: '',
+    };
+  }
+
+  async function get() {
     try {
-      const response = await invoke('load-workspace-session');
+      const response = await invoke('get-workspace-session');
       if (!response?.success) return failed(response?.error || '读取上次工作区记录失败。');
       if (response.session === null) return { success: true, session: null, error: '' };
 
@@ -18,22 +31,33 @@ export function createWorkspaceSessionService({ invoke } = {}) {
     }
   }
 
-  async function save(datasetPath, image = null) {
-    const session = createWorkspaceSession(datasetPath, {
-      imagePath: image?.path,
-      imageIndex: image?.index,
-    });
+  async function recordDatasetTarget(datasetPath) {
+    const session = createWorkspaceSession(datasetPath);
     if (!session) return failed('工作区记录缺少有效的图集路径。');
 
     try {
-      const response = await invoke('save-workspace-session', session);
-      return response?.success
-        ? { success: true, session, error: '' }
-        : failed(response?.error || '保存工作区记录失败。');
+      const response = await invoke('record-workspace-dataset', { datasetPath: session.datasetPath });
+      return normalizeRecordResponse(response, '保存工作区图集记录失败。');
     } catch {
-      return failed('保存工作区记录失败。');
+      return failed('保存工作区图集记录失败。');
     }
   }
 
-  return { load, save };
+  async function recordImage({ datasetPath, imagePath, imageIndex } = {}) {
+    const session = createWorkspaceSession(datasetPath, { imagePath, imageIndex });
+    if (!session?.imagePath || session.imageIndex === null) return failed('工作区图片记录无效。');
+
+    try {
+      const response = await invoke('record-workspace-image', {
+        datasetPath: session.datasetPath,
+        imagePath: session.imagePath,
+        imageIndex: session.imageIndex,
+      });
+      return normalizeRecordResponse(response, '保存工作区图片记录失败。');
+    } catch {
+      return failed('保存工作区图片记录失败。');
+    }
+  }
+
+  return { get, recordDatasetTarget, recordImage };
 }

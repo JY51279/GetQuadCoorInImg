@@ -9,7 +9,11 @@ import {
   saveJsonFileAtomically,
 } from './FileOperations.js';
 import { IMAGE_EXTENSIONS, prepareImageFile } from './ImageFileReader.js';
-import { loadWorkspaceSession, saveWorkspaceSession } from './WorkspaceSessionStore.js';
+import {
+  getWorkspaceSession,
+  recordWorkspaceDatasetImage,
+  recordWorkspaceDatasetTarget,
+} from './WorkspaceSessionStore.js';
 import { DATASET_FILE_STATUS, createDatasetTarget } from '../shared/DatasetFileResponse.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../shared/UserMessages.js';
 
@@ -166,22 +170,32 @@ export async function handleSaveJsonFile(_event, data) {
   }
 }
 
-export async function handleLoadWorkspaceSession() {
+export async function handleGetWorkspaceSession() {
   try {
-    return { success: true, session: await loadWorkspaceSession() };
+    return { success: true, session: await getWorkspaceSession() };
   } catch (error) {
     console.error('Failed to load workspace session:', error.message);
     return { success: false, session: null, error: '读取上次工作区记录失败。' };
   }
 }
 
-export async function handleSaveWorkspaceSession(_event, session) {
+export async function handleRecordWorkspaceDataset(_event, request) {
   try {
-    await saveWorkspaceSession(session);
-    return { success: true };
+    const result = await recordWorkspaceDatasetTarget(request?.datasetPath);
+    return { success: true, ...result };
   } catch (error) {
-    console.error('Failed to save workspace session:', error.message);
-    return { success: false, error: '保存工作区记录失败。' };
+    console.error('Failed to record workspace dataset:', error.message);
+    return { success: false, session: null, error: '保存工作区图集记录失败。' };
+  }
+}
+
+export async function handleRecordWorkspaceImage(_event, request) {
+  try {
+    const result = await recordWorkspaceDatasetImage(request);
+    return { success: true, ...result };
+  } catch (error) {
+    console.error('Failed to record workspace image:', error.message);
+    return { success: false, session: null, error: '保存工作区图片记录失败。' };
   }
 }
 
@@ -194,6 +208,7 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('resolve-json-image-paths', handleResolveJsonImagePaths);
   ipcMain.handle('save-json-file', handleSaveJsonFile);
-  ipcMain.handle('load-workspace-session', handleLoadWorkspaceSession);
-  ipcMain.handle('save-workspace-session', handleSaveWorkspaceSession);
+  ipcMain.handle('get-workspace-session', handleGetWorkspaceSession);
+  ipcMain.handle('record-workspace-dataset', handleRecordWorkspaceDataset);
+  ipcMain.handle('record-workspace-image', handleRecordWorkspaceImage);
 }

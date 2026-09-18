@@ -542,6 +542,7 @@ import {
   startImageLoad,
 } from '../state/WorkflowState.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
+import { createCanceledDatasetFileResponse } from '../../../shared/DatasetFileResponse.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 const { save: saveJsonFileRequest } = createJsonFileService({
@@ -1515,10 +1516,13 @@ async function handleImageRequestResult(result) {
   resetImageRequestState();
   if (imageOperationCompleted && isReady) {
     synchronizeQuadFocusSelection({ forceFocus: true });
-    persistWorkspaceSession(selectedDataset.value.path, {
-      path: imageInfo.path,
-      index: getCurrentJsonImageIndex(),
-    });
+    reportWorkspaceSessionRecord(
+      workspaceSessionService.recordImage({
+        datasetPath: selectedDataset.value.path,
+        imagePath: imageInfo.path,
+        imageIndex: getCurrentJsonImageIndex(),
+      }),
+    );
   }
   outputMessage(isReady ? '图片加载成功。' : '图片已加载，但没有找到匹配的 JSON 数据。');
 }
@@ -1548,15 +1552,15 @@ function resetViewForDatasetSelection() {
   resetImageForDatasetChange();
 }
 
-function persistWorkspaceSession(datasetPath, image = null) {
-  void workspaceSessionService.save(datasetPath, image).then(result => {
+function reportWorkspaceSessionRecord(recordOperation) {
+  void recordOperation.then(result => {
     if (!result.success) console.error(result.error);
   });
 }
 
 function handleDatasetTargetSelected(target) {
   resetViewForDatasetSelection();
-  persistWorkspaceSession(target.path);
+  reportWorkspaceSessionRecord(workspaceSessionService.recordDatasetTarget(target.path));
 }
 
 function getRestoredImageTarget(session) {
@@ -1568,22 +1572,26 @@ function getRestoredImageTarget(session) {
 }
 
 async function restoreWorkspaceSession() {
-  const loaded = await workspaceSessionService.load();
-  if (!loaded.success) {
-    console.error(loaded.error);
-    return false;
-  }
-  if (!loaded.session || !canLoadDataset.value) return false;
+  let restoredSession = null;
 
   return runDatasetLoad(
-    requestId =>
-      ipcRenderer.invoke('read-json-file', {
-        filePath: loaded.session.datasetPath,
+    async requestId => {
+      const loaded = await workspaceSessionService.get();
+      if (!loaded.success) {
+        console.error(loaded.error);
+        return createCanceledDatasetFileResponse(requestId);
+      }
+      restoredSession = loaded.session;
+      if (!restoredSession) return createCanceledDatasetFileResponse(requestId);
+
+      return ipcRenderer.invoke('read-json-file', {
+        filePath: restoredSession.datasetPath,
         requestId,
-      }),
+      });
+    },
     {
       fallbackMessage: '恢复上次图集失败。',
-      getInitialImageTarget: () => getRestoredImageTarget(loaded.session),
+      getInitialImageTarget: () => getRestoredImageTarget(restoredSession),
     },
   );
 }

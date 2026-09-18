@@ -22,8 +22,9 @@ const imageReaderMocks = vi.hoisted(() => ({
 }));
 
 const workspaceSessionMocks = vi.hoisted(() => ({
-  loadWorkspaceSession: vi.fn(),
-  saveWorkspaceSession: vi.fn(),
+  getWorkspaceSession: vi.fn(),
+  recordWorkspaceDatasetImage: vi.fn(),
+  recordWorkspaceDatasetTarget: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -46,8 +47,9 @@ import {
   handleReadJsonFile,
   handleResolveJsonImagePaths,
   handleSaveJsonFile,
-  handleLoadWorkspaceSession,
-  handleSaveWorkspaceSession,
+  handleGetWorkspaceSession,
+  handleRecordWorkspaceDataset,
+  handleRecordWorkspaceImage,
   registerIpcHandlers,
 } from '../src/main/IpcHandlers.js';
 
@@ -59,8 +61,17 @@ describe('Main-process IPC handlers', () => {
     fileOperationMocks.getImageDialogDefaultDirectory.mockReturnValue('C:/images');
     fileOperationMocks.rememberJsonDirectory.mockResolvedValue(undefined);
     fileOperationMocks.resolveJsonImagePath.mockImplementation(path => path);
-    workspaceSessionMocks.loadWorkspaceSession.mockResolvedValue(null);
-    workspaceSessionMocks.saveWorkspaceSession.mockResolvedValue(undefined);
+    workspaceSessionMocks.getWorkspaceSession.mockResolvedValue(null);
+    workspaceSessionMocks.recordWorkspaceDatasetTarget.mockResolvedValue({
+      changed: true,
+      stale: false,
+      session: null,
+    });
+    workspaceSessionMocks.recordWorkspaceDatasetImage.mockResolvedValue({
+      changed: true,
+      stale: false,
+      session: null,
+    });
   });
 
   afterEach(() => {
@@ -282,32 +293,47 @@ describe('Main-process IPC handlers', () => {
     });
   });
 
-  it('loads and saves workspace session records through structured responses', async () => {
+  it('gets and records workspace session events through structured responses', async () => {
     const session = {
       schemaVersion: 1,
       datasetPath: 'C:/datasets/A.json',
       imagePath: 'C:/images/one.png',
       imageIndex: 0,
     };
-    workspaceSessionMocks.loadWorkspaceSession.mockResolvedValue(session);
+    const recordResult = { changed: true, stale: false, session };
+    workspaceSessionMocks.getWorkspaceSession.mockResolvedValue(session);
+    workspaceSessionMocks.recordWorkspaceDatasetTarget.mockResolvedValue(recordResult);
+    workspaceSessionMocks.recordWorkspaceDatasetImage.mockResolvedValue(recordResult);
 
-    await expect(handleLoadWorkspaceSession()).resolves.toEqual({ success: true, session });
-    await expect(handleSaveWorkspaceSession(null, session)).resolves.toEqual({ success: true });
-    expect(workspaceSessionMocks.saveWorkspaceSession).toHaveBeenCalledWith(session);
+    await expect(handleGetWorkspaceSession()).resolves.toEqual({ success: true, session });
+    await expect(handleRecordWorkspaceDataset(null, { datasetPath: session.datasetPath })).resolves.toEqual({
+      success: true,
+      ...recordResult,
+    });
+    await expect(handleRecordWorkspaceImage(null, session)).resolves.toEqual({ success: true, ...recordResult });
+    expect(workspaceSessionMocks.recordWorkspaceDatasetTarget).toHaveBeenCalledWith(session.datasetPath);
+    expect(workspaceSessionMocks.recordWorkspaceDatasetImage).toHaveBeenCalledWith(session);
   });
 
   it('contains workspace session storage failures at the IPC boundary', async () => {
-    workspaceSessionMocks.loadWorkspaceSession.mockRejectedValue(new Error('read failed'));
-    workspaceSessionMocks.saveWorkspaceSession.mockRejectedValue(new Error('write failed'));
+    workspaceSessionMocks.getWorkspaceSession.mockRejectedValue(new Error('read failed'));
+    workspaceSessionMocks.recordWorkspaceDatasetTarget.mockRejectedValue(new Error('write failed'));
+    workspaceSessionMocks.recordWorkspaceDatasetImage.mockRejectedValue(new Error('write failed'));
 
-    await expect(handleLoadWorkspaceSession()).resolves.toEqual({
+    await expect(handleGetWorkspaceSession()).resolves.toEqual({
       success: false,
       session: null,
       error: '读取上次工作区记录失败。',
     });
-    await expect(handleSaveWorkspaceSession(null, {})).resolves.toEqual({
+    await expect(handleRecordWorkspaceDataset(null, {})).resolves.toEqual({
       success: false,
-      error: '保存工作区记录失败。',
+      session: null,
+      error: '保存工作区图集记录失败。',
+    });
+    await expect(handleRecordWorkspaceImage(null, {})).resolves.toEqual({
+      success: false,
+      session: null,
+      error: '保存工作区图片记录失败。',
     });
   });
 
@@ -321,8 +347,9 @@ describe('Main-process IPC handlers', () => {
     expect(electronMocks.handle).toHaveBeenCalledWith('read-json-file', handleReadJsonFile);
     expect(electronMocks.handle).toHaveBeenCalledWith('resolve-json-image-paths', handleResolveJsonImagePaths);
     expect(electronMocks.handle).toHaveBeenCalledWith('save-json-file', handleSaveJsonFile);
-    expect(electronMocks.handle).toHaveBeenCalledWith('load-workspace-session', handleLoadWorkspaceSession);
-    expect(electronMocks.handle).toHaveBeenCalledWith('save-workspace-session', handleSaveWorkspaceSession);
+    expect(electronMocks.handle).toHaveBeenCalledWith('get-workspace-session', handleGetWorkspaceSession);
+    expect(electronMocks.handle).toHaveBeenCalledWith('record-workspace-dataset', handleRecordWorkspaceDataset);
+    expect(electronMocks.handle).toHaveBeenCalledWith('record-workspace-image', handleRecordWorkspaceImage);
     expect(electronMocks.on).not.toHaveBeenCalled();
   });
 });

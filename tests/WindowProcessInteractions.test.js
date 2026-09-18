@@ -23,8 +23,10 @@ describe('WindowProcess interactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ipcRenderer.invoke.mockImplementation(async channel => {
-      if (channel === 'load-workspace-session') return { success: true, session: null };
-      if (channel === 'save-workspace-session') return { success: true };
+      if (channel === 'get-workspace-session') return { success: true, session: null };
+      if (channel === 'record-workspace-dataset') {
+        return { success: true, changed: true, stale: false, session: null };
+      }
       throw new Error(`Unexpected IPC channel: ${channel}`);
     });
     vi.stubGlobal(
@@ -54,11 +56,14 @@ describe('WindowProcess interactions', () => {
 
   it('shows the current dataset name in the toolbar and opens the dataset page before the file dialog', async () => {
     ipcRenderer.invoke.mockImplementation(channel => {
-      if (channel === 'load-workspace-session') return Promise.resolve({ success: true, session: null });
-      if (channel === 'save-workspace-session') return Promise.resolve({ success: true });
+      if (channel === 'get-workspace-session') return Promise.resolve({ success: true, session: null });
+      if (channel === 'record-workspace-dataset') {
+        return Promise.resolve({ success: true, changed: true, stale: false, session: null });
+      }
       return new Promise(() => {});
     });
     const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    await flushPromises();
     await nextTick();
 
     const datasetTab = wrapper.find('button[aria-label="图集与图片"]');
@@ -72,14 +77,52 @@ describe('WindowProcess interactions', () => {
     expect(datasetTab.attributes('aria-pressed')).toBe('true');
     expect(annotationTab.attributes('aria-pressed')).toBe('false');
     expect(wrapper.find('.toolbar-dataset-name').text()).toBe('图集：未加载');
-    expect(ipcRenderer.invoke).toHaveBeenCalledWith('open-json-file-dialog', { requestId: 1 });
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('open-json-file-dialog', { requestId: 2 });
+    wrapper.unmount();
+  });
+
+  it('locks dataset loading while a delayed startup session lookup is pending', async () => {
+    let resolveSessionLookup;
+    const sessionLookup = new Promise(resolve => {
+      resolveSessionLookup = resolve;
+    });
+    ipcRenderer.invoke.mockImplementation(async (channel, request) => {
+      if (channel === 'get-workspace-session') return sessionLookup;
+      if (channel === 'open-json-file-dialog') {
+        return {
+          requestId: request.requestId,
+          status: DATASET_FILE_STATUS.CANCELED,
+          target: null,
+          jsonInfo: null,
+          error: '',
+        };
+      }
+      throw new Error(`Unexpected IPC channel: ${channel}`);
+    });
+    const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    await nextTick();
+
+    const openButton = wrapper.find('button[title="打开或更换图集（Ctrl+O）"]');
+    expect(openButton.attributes('disabled')).toBeDefined();
+    await openButton.trigger('click');
+    expect(ipcRenderer.invoke).not.toHaveBeenCalledWith('open-json-file-dialog', expect.anything());
+
+    resolveSessionLookup({ success: true, session: null });
+    await flushPromises();
+    expect(openButton.attributes('disabled')).toBeUndefined();
+
+    await openButton.trigger('click');
+    await flushPromises();
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('open-json-file-dialog', { requestId: 2 });
     wrapper.unmount();
   });
 
   it('shows a dataset failure state with the attempted path', async () => {
     ipcRenderer.invoke.mockImplementation(async (channel, request) => {
-      if (channel === 'load-workspace-session') return { success: true, session: null };
-      if (channel === 'save-workspace-session') return { success: true };
+      if (channel === 'get-workspace-session') return { success: true, session: null };
+      if (channel === 'record-workspace-dataset') {
+        return { success: true, changed: true, stale: false, session: null };
+      }
       return {
         requestId: request.requestId,
         status: DATASET_FILE_STATUS.FAILED,
@@ -89,6 +132,7 @@ describe('WindowProcess interactions', () => {
       };
     });
     const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    await flushPromises();
 
     await wrapper.find('button[title="打开或更换图集（Ctrl+O）"]').trigger('click');
     await flushPromises();
@@ -106,8 +150,10 @@ describe('WindowProcess interactions', () => {
   it('navigates from a rejected dataset target instead of the last valid dataset', async () => {
     const adjacentRequests = [];
     ipcRenderer.invoke.mockImplementation(async (channel, request) => {
-      if (channel === 'load-workspace-session') return { success: true, session: null };
-      if (channel === 'save-workspace-session') return { success: true };
+      if (channel === 'get-workspace-session') return { success: true, session: null };
+      if (channel === 'record-workspace-dataset') {
+        return { success: true, changed: true, stale: false, session: null };
+      }
       if (channel === 'open-json-file-dialog') {
         return {
           requestId: request.requestId,
@@ -150,6 +196,7 @@ describe('WindowProcess interactions', () => {
       throw new Error(`Unexpected IPC channel: ${channel}`);
     });
     const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    await flushPromises();
 
     await wrapper.find('button[title="打开或更换图集（Ctrl+O）"]').trigger('click');
     await flushPromises();
@@ -172,22 +219,14 @@ describe('WindowProcess interactions', () => {
       expect.objectContaining({ currentFilePath: 'C:/datasets/B.json', direction: 'next' }),
       expect.objectContaining({ currentFilePath: 'C:/datasets/B.json', direction: 'previous' }),
     ]);
-    expect(ipcRenderer.invoke).toHaveBeenCalledWith(
-      'save-workspace-session',
-      expect.objectContaining({
-        schemaVersion: 1,
-        datasetPath: 'C:/datasets/B.json',
-        imagePath: '',
-        imageIndex: null,
-      }),
-    );
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('record-workspace-dataset', { datasetPath: 'C:/datasets/B.json' });
     wrapper.unmount();
   });
 
   it('restores the saved dataset and image through the normal loading flows', async () => {
     const pendingImage = new Promise(() => {});
     ipcRenderer.invoke.mockImplementation(async (channel, request) => {
-      if (channel === 'load-workspace-session') {
+      if (channel === 'get-workspace-session') {
         return {
           success: true,
           session: {
@@ -217,7 +256,9 @@ describe('WindowProcess interactions', () => {
           imagePaths: ['C:/datasets/images/one.png', 'C:/datasets/images/two.png'],
         };
       }
-      if (channel === 'save-workspace-session') return { success: true };
+      if (channel === 'record-workspace-dataset') {
+        return { success: true, changed: false, stale: false, session: null };
+      }
       if (channel === 'prepare-image') return pendingImage;
       throw new Error(`Unexpected IPC channel: ${channel}`);
     });
