@@ -461,14 +461,16 @@ import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
 import Help from './Help.vue';
 import HistoryView from './HistoryView.vue';
+import {
+  DATASET_LOAD_TRANSACTION_STATUS,
+  useDatasetLoadTransaction,
+} from '../composables/useDatasetLoadTransaction.js';
 import { useDatasetSaveTransaction } from '../composables/useDatasetSaveTransaction.js';
 import { getJsonActionLabel, useJsonHistory } from '../composables/useJsonHistory.js';
 import { usePointSelectionHistory } from '../composables/usePointSelectionHistory.js';
 import { useToastNotifications } from '../composables/useToastNotifications.js';
 import {
   applyQuadLocationToImagesWithHistory,
-  clearDatasetProcess,
-  commitPreparedJsonProcess,
   copyPreviousQuadLocationWithHistory,
   getAdjacentJsonImageTarget,
   getCurrentAnnotationView,
@@ -484,7 +486,6 @@ import {
   resolveFollowingImageIndexes,
   translateQuadWithHistory,
 } from '../state/DatasetState.js';
-import { DATASET_LOAD_STATUS, normalizeDatasetTarget, prepareDatasetLoad } from '../services/DatasetLoadService.js';
 import {
   IMAGE_FAILURE_ACTION,
   IMAGE_REQUEST_SOURCE,
@@ -529,7 +530,6 @@ import {
   canChangeQuadSelection,
   canEdit as canEditWorkflow,
   canStartOperation,
-  commitDataset,
   completeOperation,
   createWorkflowState,
   failOperation,
@@ -537,13 +537,9 @@ import {
   isOperationActive,
   isWorkflowBusy,
   operationReturnsTo,
-  rejectDataset,
-  selectDatasetTarget,
-  startDatasetLoad,
   startImageLoad,
 } from '../state/WorkflowState.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
-import { DATASET_FILE_STATUS } from '../../../shared/DatasetFileResponse.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 const { save: saveJsonFileRequest } = createJsonFileService({
@@ -606,6 +602,13 @@ const { run: executeSaveTransaction } = useDatasetSaveTransaction({
   workflowState,
   getCurrentImageIndex: getCurrentJsonImageIndex,
   saveJsonFile,
+});
+const { run: executeDatasetLoadTransaction } = useDatasetLoadTransaction({
+  workflowState,
+  confirmLossyRepair: message => window.confirm(message),
+  resolveImagePaths: request => ipcRenderer.invoke('resolve-json-image-paths', request),
+  saveJsonFile: saveJsonFileInfo,
+  onDatasetTargetSelected: resetViewForDatasetSelection,
 });
 const {
   selectedDots,
@@ -1527,59 +1530,50 @@ function resetImageForDatasetChange() {
   clearCurrentAnnotations();
 }
 
-function resetWorkspaceForDatasetSelection() {
-  clearDatasetProcess();
+function resetViewForDatasetSelection() {
   loadedProductType.value = '';
+  datasetLoadError.value = null;
   resetImageForDatasetChange();
 }
 
-function beginDatasetLoadOperation() {
-  if (!canLoadDataset.value) {
-    outputMessage(USER_MESSAGES.WAIT_FOR_CURRENT_OPERATION);
-    return null;
+async function runDatasetLoad(requestDataset, { fallbackMessage } = {}) {
+  const result = await executeDatasetLoadTransaction(requestDataset, { fallbackMessage });
+  if (result.status === DATASET_LOAD_TRANSACTION_STATUS.STALE) return false;
+  if (result.status !== DATASET_LOAD_TRANSACTION_STATUS.READY) {
+    if (result.error) outputMessage(result.error);
+    if (result.target) {
+      datasetLoadError.value = {
+        path: result.target.path,
+        message: result.error || USER_MESSAGES.JSON_READ_FAILED,
+      };
+      selectInspectorPage(INSPECTOR_PAGE.DATASET);
+    }
+    return false;
   }
-  const started = startDatasetLoad(workflowState.value);
-  if (!applyWorkflowTransition(started)) {
-    outputMessage(started.error);
-    return null;
-  }
-  return started.operationId;
-}
 
-async function runDatasetLoad(requestResponse, { selectDatasetPage = false, fallbackMessage } = {}) {
-  const operationId = beginDatasetLoadOperation();
-  if (operationId === null) return false;
+  const { preparedJson } = result;
+  loadedProductType.value = preparedJson.productType;
+  datasetLoadError.value = null;
+  selectInspectorPage(INSPECTOR_PAGE.ANNOTATION);
+  if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
 
-  if (selectDatasetPage) selectInspectorPage(INSPECTOR_PAGE.DATASET);
-  let response;
-  try {
-    response = await requestResponse(operationId);
-  } catch (error) {
-    response = {
-      requestId: operationId,
-      status: DATASET_FILE_STATUS.FAILED,
-      target: null,
-      jsonInfo: null,
-      error: toUserErrorMessage(error, fallbackMessage),
-    };
+  if (preparedJson.data.Picture.length === 0) {
+    outputMessage('JSON 已加载，但数据集中没有有效的图片项。');
+    return true;
   }
-  if (!response || typeof response !== 'object') {
-    response = {
-      requestId: operationId,
-      status: DATASET_FILE_STATUS.FAILED,
-      target: null,
-      jsonInfo: null,
-      error: fallbackMessage || USER_MESSAGES.JSON_READ_FAILED,
-    };
-  } else if (response.requestId === undefined || response.requestId === null) {
-    response = { ...response, requestId: operationId };
+
+  const firstImageTarget = getJsonImageTarget(0);
+  if (!firstImageTarget.success) {
+    outputMessage(firstImageTarget.error);
+    return true;
   }
-  return processDatasetLoadResponse(response);
+  startDatasetImageRequest(firstImageTarget, KEYS.NEXT);
+  return true;
 }
 
 function chooseJsonFile() {
+  selectInspectorPage(INSPECTOR_PAGE.DATASET);
   void runDatasetLoad(requestId => ipcRenderer.invoke('open-json-file-dialog', { requestId }), {
-    selectDatasetPage: true,
     fallbackMessage: USER_MESSAGES.JSON_OPEN_FAILED,
   });
 }
@@ -1600,82 +1594,6 @@ function changeDatasetByDirection(direction) {
       }),
     { fallbackMessage: USER_MESSAGES.DATASET_SWITCH_FAILED },
   );
-}
-
-function selectDatasetForLoad(operationId, target) {
-  const transition = selectDatasetTarget(workflowState.value, operationId, target);
-  if (!transition.success) {
-    outputMessage(transition.error);
-    applyWorkflowTransition(failOperation(workflowState.value, operationId));
-    return false;
-  }
-
-  applyWorkflowTransition(transition);
-  datasetLoadError.value = null;
-  resetWorkspaceForDatasetSelection();
-  return true;
-}
-
-function finishDatasetLoadFailure(operationId, { target = null, error = '' } = {}) {
-  if (error) outputMessage(error);
-  if (target) {
-    datasetLoadError.value = {
-      path: target.path,
-      message: error || USER_MESSAGES.JSON_READ_FAILED,
-    };
-    selectInspectorPage(INSPECTOR_PAGE.DATASET);
-    applyWorkflowTransition(rejectDataset(workflowState.value, operationId));
-  } else {
-    applyWorkflowTransition(failOperation(workflowState.value, operationId));
-  }
-  return false;
-}
-
-// Dataset loading
-async function processDatasetLoadResponse(response) {
-  const operationId = response?.requestId;
-  if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return false;
-
-  const target = normalizeDatasetTarget(response?.target);
-  if (target && !selectDatasetForLoad(operationId, target)) return false;
-
-  const loadResult = await prepareDatasetLoad(response, {
-    confirmLossyRepair: message => window.confirm(message),
-    resolveImagePaths: request => ipcRenderer.invoke('resolve-json-image-paths', request),
-    saveJsonFile: saveJsonFileInfo,
-    isCurrent: () => isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET),
-  });
-  if (loadResult.status === DATASET_LOAD_STATUS.STALE) return false;
-  if (loadResult.status !== DATASET_LOAD_STATUS.READY) {
-    return finishDatasetLoadFailure(operationId, loadResult);
-  }
-
-  const { preparedJson } = loadResult;
-  if (!commitPreparedJsonProcess(preparedJson)) {
-    return finishDatasetLoadFailure(operationId, {
-      target: loadResult.target,
-      error: '加载 JSON 失败：无法提交处理后的数据集。',
-    });
-  }
-  if (!applyWorkflowTransition(commitDataset(workflowState.value, operationId))) return false;
-
-  loadedProductType.value = preparedJson.productType;
-  datasetLoadError.value = null;
-  selectInspectorPage(INSPECTOR_PAGE.ANNOTATION);
-  if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
-
-  if (preparedJson.data.Picture.length === 0) {
-    outputMessage('JSON 已加载，但数据集中没有有效的图片项。');
-    return true;
-  }
-
-  const firstImageTarget = getJsonImageTarget(0);
-  if (!firstImageTarget.success) {
-    outputMessage(firstImageTarget.error);
-    return true;
-  }
-  startDatasetImageRequest(firstImageTarget, KEYS.NEXT);
-  return true;
 }
 
 watch(selectedDots, () => {
