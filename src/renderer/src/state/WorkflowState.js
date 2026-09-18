@@ -1,3 +1,5 @@
+import { createDatasetTarget } from '../../../shared/DatasetFileResponse.js';
+
 export const WORKFLOW_PHASE = Object.freeze({
   EMPTY: 'empty',
   DATASET_ERROR: 'dataset-error',
@@ -30,7 +32,7 @@ const OPERATION_PHASES = Object.freeze({
 const ALLOWED_START_PHASES = Object.freeze({
   [WORKFLOW_OPERATION.LOAD_DATASET]: STABLE_PHASES,
   [WORKFLOW_OPERATION.LOAD_IMAGE]: new Set([WORKFLOW_PHASE.DATASET_READY, WORKFLOW_PHASE.READY]),
-  [WORKFLOW_OPERATION.SAVE]: new Set([WORKFLOW_PHASE.DATASET_READY, WORKFLOW_PHASE.READY]),
+  [WORKFLOW_OPERATION.SAVE]: new Set([WORKFLOW_PHASE.READY]),
 });
 
 const OPERATION_LABELS = Object.freeze({
@@ -49,14 +51,34 @@ const PHASE_LABELS = Object.freeze({
   [WORKFLOW_PHASE.SAVING]: '正在保存数据',
 });
 
-export function createWorkflowState(phase = WORKFLOW_PHASE.EMPTY) {
+function normalizeDatasetTarget(target) {
+  return createDatasetTarget(target?.path, target?.fileName);
+}
+
+export function createWorkflowState({ phase = WORKFLOW_PHASE.EMPTY, datasetTarget = null, datasetVersion } = {}) {
   if (!STABLE_PHASES.has(phase)) throw new Error(`初始工作流状态无效：${phase}`);
+  const normalizedTarget = normalizeDatasetTarget(datasetTarget);
+  if (phase === WORKFLOW_PHASE.EMPTY && normalizedTarget !== null) {
+    throw new Error('空工作区不能包含图集目标。');
+  }
+  if (phase !== WORKFLOW_PHASE.EMPTY && normalizedTarget === null) {
+    throw new Error(`${PHASE_LABELS[phase]}状态必须包含图集目标。`);
+  }
+
+  const resolvedDatasetVersion = datasetVersion ?? (normalizedTarget ? 1 : 0);
+  if (!Number.isSafeInteger(resolvedDatasetVersion) || resolvedDatasetVersion < 0) {
+    throw new Error('图集版本无效。');
+  }
+  if (normalizedTarget && resolvedDatasetVersion === 0) {
+    throw new Error('包含图集目标的工作区必须具有有效图集版本。');
+  }
+
   return {
     phase,
     operationId: 0,
     operation: null,
-    datasetVersion: 0,
-    datasetTarget: null,
+    datasetVersion: resolvedDatasetVersion,
+    datasetTarget: normalizedTarget,
   };
 }
 
@@ -132,26 +154,49 @@ export function operationReturnsTo(state, operationId, phase) {
   return isCurrentOperation(state, operationId) && STABLE_PHASES.has(phase) && state.operation.returnPhase === phase;
 }
 
+function getAllowedCompletionPhases(operation) {
+  if (operation.type === WORKFLOW_OPERATION.LOAD_DATASET) {
+    return operation.target
+      ? new Set([WORKFLOW_PHASE.DATASET_READY, WORKFLOW_PHASE.DATASET_ERROR])
+      : new Set([operation.returnPhase]);
+  }
+  if (operation.type === WORKFLOW_OPERATION.LOAD_IMAGE) {
+    return new Set([operation.returnPhase, WORKFLOW_PHASE.DATASET_READY, WORKFLOW_PHASE.READY]);
+  }
+  if (operation.type === WORKFLOW_OPERATION.SAVE) {
+    return new Set([WORKFLOW_PHASE.READY, WORKFLOW_PHASE.DATASET_READY]);
+  }
+  return new Set();
+}
+
 export function completeOperation(state, operationId, nextPhase = null) {
   if (!isCurrentOperation(state, operationId)) return failure(state, '该工作流操作已失效。');
   const completedPhase = nextPhase ?? state.operation.returnPhase;
   if (!STABLE_PHASES.has(completedPhase)) return failure(state, `工作流结束状态无效：${completedPhase}。`);
+  if (!getAllowedCompletionPhases(state.operation).has(completedPhase)) {
+    return failure(state, `${OPERATION_LABELS[state.operation.type]}不能结束到${PHASE_LABELS[completedPhase]}状态。`);
+  }
   return success({ ...state, phase: completedPhase, operation: null });
 }
 
 export function failOperation(state, operationId, fallbackPhase = null) {
-  return completeOperation(state, operationId, fallbackPhase);
+  if (!isCurrentOperation(state, operationId)) return failure(state, '该工作流操作已失效。');
+  const failedPhase =
+    fallbackPhase ??
+    (state.operation.type === WORKFLOW_OPERATION.LOAD_DATASET && state.operation.target
+      ? WORKFLOW_PHASE.DATASET_ERROR
+      : state.operation.returnPhase);
+  return completeOperation(state, operationId, failedPhase);
 }
 
 export function selectDatasetTarget(state, operationId, target) {
   if (!isCurrentOperation(state, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) {
     return failure(state, '图集加载操作已失效。');
   }
-  if (typeof target?.path !== 'string' || target.path.length === 0) {
-    return failure(state, '图集目标无效。');
-  }
+  const normalizedTarget = normalizeDatasetTarget(target);
+  if (normalizedTarget === null) return failure(state, '图集目标无效。');
   if (state.operation.target) {
-    return state.operation.target.path === target.path
+    return state.operation.target.path === normalizedTarget.path
       ? success(state, operationId)
       : failure(state, '图集加载操作已绑定其他目标。');
   }
@@ -161,10 +206,10 @@ export function selectDatasetTarget(state, operationId, target) {
     {
       ...state,
       datasetVersion,
-      datasetTarget: target,
+      datasetTarget: normalizedTarget,
       operation: {
         ...state.operation,
-        target,
+        target: normalizedTarget,
         datasetVersion,
       },
     },
@@ -185,11 +230,7 @@ export function commitDataset(state, operationId) {
     return failure(state, '图集加载操作已失效。');
   }
   if (!state.operation.target) return failure(state, '图集加载操作尚未选择目标。');
-  return success({
-    ...state,
-    phase: WORKFLOW_PHASE.DATASET_READY,
-    operation: null,
-  });
+  return completeOperation(state, operationId, WORKFLOW_PHASE.DATASET_READY);
 }
 
 export function canApplyOperationResult(state, operationId) {

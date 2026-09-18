@@ -13,9 +13,10 @@ import {
   resetPicJson,
   updateJsonWithHistory,
 } from '../src/renderer/src/state/DatasetState.js';
-import { WORKFLOW_PHASE, createWorkflowState } from '../src/renderer/src/state/WorkflowState.js';
+import { WORKFLOW_PHASE } from '../src/renderer/src/state/WorkflowState.js';
 import { KEYS } from '../src/renderer/src/utils/BasicFuncs.js';
 import { createPicture } from './fixtures/DatasetFixtures.js';
+import { createDatasetWorkflowState } from './fixtures/WorkflowFixtures.js';
 
 function loadDataset() {
   const prepared = prepareJsonProcess({
@@ -47,7 +48,7 @@ function loadCopyDataset() {
 }
 
 function createTransaction(saveJsonFile) {
-  const workflowState = ref(createWorkflowState(WORKFLOW_PHASE.READY));
+  const workflowState = ref(createDatasetWorkflowState());
   const transaction = useDatasetSaveTransaction({
     workflowState,
     getCurrentImageIndex: getCurrentJsonImageIndex,

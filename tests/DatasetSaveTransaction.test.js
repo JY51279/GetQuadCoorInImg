@@ -4,7 +4,8 @@ import {
   SAVE_TRANSACTION_STATUS,
   useDatasetSaveTransaction,
 } from '../src/renderer/src/composables/useDatasetSaveTransaction.js';
-import { WORKFLOW_PHASE, createWorkflowState, startSave } from '../src/renderer/src/state/WorkflowState.js';
+import { WORKFLOW_PHASE, startSave } from '../src/renderer/src/state/WorkflowState.js';
+import { createDatasetWorkflowState } from './fixtures/WorkflowFixtures.js';
 
 function createMutationResult(id = 'mutation') {
   return {
@@ -15,7 +16,7 @@ function createMutationResult(id = 'mutation') {
 }
 
 function createTransaction(overrides = {}) {
-  const workflowState = overrides.workflowState ?? ref(createWorkflowState(WORKFLOW_PHASE.READY));
+  const workflowState = overrides.workflowState ?? ref(createDatasetWorkflowState());
   const imageIndex = overrides.imageIndex ?? ref(0);
   const saveJsonFile = overrides.saveJsonFile ?? vi.fn(async () => true);
   const rollbackMutation = overrides.rollbackMutation ?? vi.fn(() => ({ success: true }));
@@ -203,7 +204,7 @@ describe('Dataset save transaction', () => {
   });
 
   it('rejects a new save while another workflow operation is active', async () => {
-    const activeSave = startSave(createWorkflowState(WORKFLOW_PHASE.READY));
+    const activeSave = startSave(createDatasetWorkflowState());
     const context = createTransaction({ workflowState: ref(activeSave.state) });
     const mutate = vi.fn(() => createMutationResult());
 
