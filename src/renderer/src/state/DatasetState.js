@@ -170,7 +170,7 @@ export function resetPicJson(imgFilePath, requestedImgIndex = null) {
 }
 
 function findImageIndex(imgPath, requestedImgIndex = null) {
-  if (imgPath === '') return -1;
+  if (imgPath === '' || !Array.isArray(datasetState.dataset[ROOT_KEY])) return -1;
 
   const normalizedImgPath = imgPath.replace(/[\\/]/g, '/');
   if (
@@ -749,6 +749,16 @@ function createJsonImageTarget(index) {
 
 export function getJsonImageTarget(index) {
   return createJsonImageTarget(index);
+}
+
+export function getJsonImageTargetByPath(imagePath, preferredIndex = null) {
+  if (typeof imagePath !== 'string' || imagePath.length === 0) {
+    return { success: false, error: 'JSON 图片路径无效。' };
+  }
+  const imageIndex = findImageIndex(imagePath, preferredIndex);
+  return imageIndex >= 0
+    ? createJsonImageTarget(imageIndex)
+    : { success: false, error: 'JSON 数据集中没有记录的图片。' };
 }
 
 export function getAdjacentJsonImageTarget(direction, baseIndex = datasetState.currentImageIndex) {

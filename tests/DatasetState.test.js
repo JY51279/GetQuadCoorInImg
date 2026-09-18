@@ -9,6 +9,7 @@ import {
   getJsonFileInfo,
   getJsonImagePosition,
   getJsonImageTarget,
+  getJsonImageTargetByPath,
   prepareJsonProcess,
   resetPicJson,
 } from '../src/renderer/src/state/DatasetState.js';
@@ -81,6 +82,20 @@ describe('Dataset state operations', () => {
       path: 'C:/images/one.png',
     });
     expect(getJsonImageTarget(2)).toEqual({ success: false, error: 'JSON 图片序号无效。' });
+  });
+
+  it('restores an image by path when its saved index has changed', () => {
+    loadDbrDataset();
+
+    expect(getJsonImageTargetByPath('c:/IMAGES/TWO.PNG', 0)).toEqual({
+      success: true,
+      index: 1,
+      path: 'C:/images/two.png',
+    });
+    expect(getJsonImageTargetByPath('C:/images/missing.png', 1)).toEqual({
+      success: false,
+      error: 'JSON 数据集中没有记录的图片。',
+    });
   });
 
   it('starts a replacement dataset from its first image instead of the previous high index', () => {

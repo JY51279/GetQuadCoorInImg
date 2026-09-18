@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset';
 import { initializeFileOperations } from './FileOperations.js';
 import { registerIpcHandlers } from './IpcHandlers.js';
 import { IMAGE_PROTOCOL_SCHEME, initializeImageFileReader, registerImageProtocol } from './ImageFileReader.js';
+import { initializeWorkspaceSessionStore } from './WorkspaceSessionStore.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -71,6 +72,7 @@ function createWindow() {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
   await initializeFileOperations(app);
+  initializeWorkspaceSessionStore(app);
   await initializeImageFileReader(app, nativeImage);
   registerImageProtocol(protocol, net);
   // Set app user model id for windows

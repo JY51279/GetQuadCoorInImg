@@ -477,6 +477,7 @@ import {
   getCurrentJsonImageIndex,
   getJsonImageDialogContext,
   getJsonImageTarget,
+  getJsonImageTargetByPath,
   applyJsonHistoryEntriesWithReceipt,
   updateQuadPointWithHistory,
   updateJsonWithHistory,
@@ -493,6 +494,7 @@ import {
   createImageRequestService,
 } from '../services/ImageRequestService.js';
 import { createJsonFileService } from '../services/JsonFileService.js';
+import { createWorkspaceSessionService } from '../services/WorkspaceSessionService.js';
 import {
   HISTORY_DIRECTION,
   commitHistoryEntries,
@@ -543,6 +545,9 @@ import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.
 
 const ipcRenderer = window.electron.ipcRenderer;
 const { save: saveJsonFileRequest } = createJsonFileService({
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+});
+const workspaceSessionService = createWorkspaceSessionService({
   invoke: (channel, request) => ipcRenderer.invoke(channel, request),
 });
 
@@ -608,7 +613,7 @@ const { run: executeDatasetLoadTransaction } = useDatasetLoadTransaction({
   confirmLossyRepair: message => window.confirm(message),
   resolveImagePaths: request => ipcRenderer.invoke('resolve-json-image-paths', request),
   saveJsonFile: saveJsonFileInfo,
-  onDatasetTargetSelected: resetViewForDatasetSelection,
+  onDatasetTargetSelected: handleDatasetTargetSelected,
 });
 const {
   selectedDots,
@@ -759,6 +764,7 @@ function selectInspectorPage(pageId) {
 onMounted(() => {
   syncZoomCanvasPixelRatio();
   window.addEventListener('keydown', handleKeyDown);
+  void restoreWorkspaceSession();
 });
 
 onUnmounted(() => {
@@ -1507,7 +1513,13 @@ async function handleImageRequestResult(result) {
     ),
   );
   resetImageRequestState();
-  if (imageOperationCompleted && isReady) synchronizeQuadFocusSelection({ forceFocus: true });
+  if (imageOperationCompleted && isReady) {
+    synchronizeQuadFocusSelection({ forceFocus: true });
+    persistWorkspaceSession(selectedDataset.value.path, {
+      path: imageInfo.path,
+      index: getCurrentJsonImageIndex(),
+    });
+  }
   outputMessage(isReady ? '图片加载成功。' : '图片已加载，但没有找到匹配的 JSON 数据。');
 }
 
@@ -1536,7 +1548,47 @@ function resetViewForDatasetSelection() {
   resetImageForDatasetChange();
 }
 
-async function runDatasetLoad(requestDataset, { fallbackMessage } = {}) {
+function persistWorkspaceSession(datasetPath, image = null) {
+  void workspaceSessionService.save(datasetPath, image).then(result => {
+    if (!result.success) console.error(result.error);
+  });
+}
+
+function handleDatasetTargetSelected(target) {
+  resetViewForDatasetSelection();
+  persistWorkspaceSession(target.path);
+}
+
+function getRestoredImageTarget(session) {
+  if (session?.imagePath) {
+    const restoredTarget = getJsonImageTargetByPath(session.imagePath, session.imageIndex);
+    if (restoredTarget.success) return restoredTarget;
+  }
+  return getJsonImageTarget(0);
+}
+
+async function restoreWorkspaceSession() {
+  const loaded = await workspaceSessionService.load();
+  if (!loaded.success) {
+    console.error(loaded.error);
+    return false;
+  }
+  if (!loaded.session || !canLoadDataset.value) return false;
+
+  return runDatasetLoad(
+    requestId =>
+      ipcRenderer.invoke('read-json-file', {
+        filePath: loaded.session.datasetPath,
+        requestId,
+      }),
+    {
+      fallbackMessage: '恢复上次图集失败。',
+      getInitialImageTarget: () => getRestoredImageTarget(loaded.session),
+    },
+  );
+}
+
+async function runDatasetLoad(requestDataset, { fallbackMessage, getInitialImageTarget = null } = {}) {
   const result = await executeDatasetLoadTransaction(requestDataset, { fallbackMessage });
   if (result.status === DATASET_LOAD_TRANSACTION_STATUS.STALE) return false;
   if (result.status !== DATASET_LOAD_TRANSACTION_STATUS.READY) {
@@ -1562,7 +1614,7 @@ async function runDatasetLoad(requestDataset, { fallbackMessage } = {}) {
     return true;
   }
 
-  const firstImageTarget = getJsonImageTarget(0);
+  const firstImageTarget = getInitialImageTarget?.() ?? getJsonImageTarget(0);
   if (!firstImageTarget.success) {
     outputMessage(firstImageTarget.error);
     return true;

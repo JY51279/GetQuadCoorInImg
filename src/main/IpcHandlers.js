@@ -9,6 +9,7 @@ import {
   saveJsonFileAtomically,
 } from './FileOperations.js';
 import { IMAGE_EXTENSIONS, prepareImageFile } from './ImageFileReader.js';
+import { loadWorkspaceSession, saveWorkspaceSession } from './WorkspaceSessionStore.js';
 import { DATASET_FILE_STATUS, createDatasetTarget } from '../shared/DatasetFileResponse.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../shared/UserMessages.js';
 
@@ -165,6 +166,25 @@ export async function handleSaveJsonFile(_event, data) {
   }
 }
 
+export async function handleLoadWorkspaceSession() {
+  try {
+    return { success: true, session: await loadWorkspaceSession() };
+  } catch (error) {
+    console.error('Failed to load workspace session:', error.message);
+    return { success: false, session: null, error: '读取上次工作区记录失败。' };
+  }
+}
+
+export async function handleSaveWorkspaceSession(_event, session) {
+  try {
+    await saveWorkspaceSession(session);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to save workspace session:', error.message);
+    return { success: false, error: '保存工作区记录失败。' };
+  }
+}
+
 export function registerIpcHandlers() {
   ipcMain.handle('open-image-file-dialog', handleOpenImageDialog);
   ipcMain.handle('prepare-image', handlePrepareImage);
@@ -174,4 +194,6 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('resolve-json-image-paths', handleResolveJsonImagePaths);
   ipcMain.handle('save-json-file', handleSaveJsonFile);
+  ipcMain.handle('load-workspace-session', handleLoadWorkspaceSession);
+  ipcMain.handle('save-workspace-session', handleSaveWorkspaceSession);
 }

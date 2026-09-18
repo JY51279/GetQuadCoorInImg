@@ -21,6 +21,11 @@ const imageReaderMocks = vi.hoisted(() => ({
   prepareImageFile: vi.fn(),
 }));
 
+const workspaceSessionMocks = vi.hoisted(() => ({
+  loadWorkspaceSession: vi.fn(),
+  saveWorkspaceSession: vi.fn(),
+}));
+
 vi.mock('electron', () => ({
   dialog: { showOpenDialog: electronMocks.showOpenDialog },
   ipcMain: { on: electronMocks.on, handle: electronMocks.handle },
@@ -31,6 +36,7 @@ vi.mock('../src/main/ImageFileReader.js', () => ({
   IMAGE_EXTENSIONS: ['png'],
   prepareImageFile: imageReaderMocks.prepareImageFile,
 }));
+vi.mock('../src/main/WorkspaceSessionStore.js', () => workspaceSessionMocks);
 
 import {
   handleOpenAdjacentJson,
@@ -40,6 +46,8 @@ import {
   handleReadJsonFile,
   handleResolveJsonImagePaths,
   handleSaveJsonFile,
+  handleLoadWorkspaceSession,
+  handleSaveWorkspaceSession,
   registerIpcHandlers,
 } from '../src/main/IpcHandlers.js';
 
@@ -51,6 +59,8 @@ describe('Main-process IPC handlers', () => {
     fileOperationMocks.getImageDialogDefaultDirectory.mockReturnValue('C:/images');
     fileOperationMocks.rememberJsonDirectory.mockResolvedValue(undefined);
     fileOperationMocks.resolveJsonImagePath.mockImplementation(path => path);
+    workspaceSessionMocks.loadWorkspaceSession.mockResolvedValue(null);
+    workspaceSessionMocks.saveWorkspaceSession.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -272,6 +282,35 @@ describe('Main-process IPC handlers', () => {
     });
   });
 
+  it('loads and saves workspace session records through structured responses', async () => {
+    const session = {
+      schemaVersion: 1,
+      datasetPath: 'C:/datasets/A.json',
+      imagePath: 'C:/images/one.png',
+      imageIndex: 0,
+    };
+    workspaceSessionMocks.loadWorkspaceSession.mockResolvedValue(session);
+
+    await expect(handleLoadWorkspaceSession()).resolves.toEqual({ success: true, session });
+    await expect(handleSaveWorkspaceSession(null, session)).resolves.toEqual({ success: true });
+    expect(workspaceSessionMocks.saveWorkspaceSession).toHaveBeenCalledWith(session);
+  });
+
+  it('contains workspace session storage failures at the IPC boundary', async () => {
+    workspaceSessionMocks.loadWorkspaceSession.mockRejectedValue(new Error('read failed'));
+    workspaceSessionMocks.saveWorkspaceSession.mockRejectedValue(new Error('write failed'));
+
+    await expect(handleLoadWorkspaceSession()).resolves.toEqual({
+      success: false,
+      session: null,
+      error: '读取上次工作区记录失败。',
+    });
+    await expect(handleSaveWorkspaceSession(null, {})).resolves.toEqual({
+      success: false,
+      error: '保存工作区记录失败。',
+    });
+  });
+
   it('registers every request-response handler on its intended channel', () => {
     registerIpcHandlers();
 
@@ -282,6 +321,8 @@ describe('Main-process IPC handlers', () => {
     expect(electronMocks.handle).toHaveBeenCalledWith('read-json-file', handleReadJsonFile);
     expect(electronMocks.handle).toHaveBeenCalledWith('resolve-json-image-paths', handleResolveJsonImagePaths);
     expect(electronMocks.handle).toHaveBeenCalledWith('save-json-file', handleSaveJsonFile);
+    expect(electronMocks.handle).toHaveBeenCalledWith('load-workspace-session', handleLoadWorkspaceSession);
+    expect(electronMocks.handle).toHaveBeenCalledWith('save-workspace-session', handleSaveWorkspaceSession);
     expect(electronMocks.on).not.toHaveBeenCalled();
   });
 });

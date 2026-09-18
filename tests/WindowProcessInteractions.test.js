@@ -22,6 +22,11 @@ beforeAll(async () => {
 describe('WindowProcess interactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ipcRenderer.invoke.mockImplementation(async channel => {
+      if (channel === 'load-workspace-session') return { success: true, session: null };
+      if (channel === 'save-workspace-session') return { success: true };
+      throw new Error(`Unexpected IPC channel: ${channel}`);
+    });
     vi.stubGlobal(
       'matchMedia',
       vi.fn(query => ({
@@ -48,7 +53,11 @@ describe('WindowProcess interactions', () => {
   });
 
   it('shows the current dataset name in the toolbar and opens the dataset page before the file dialog', async () => {
-    ipcRenderer.invoke.mockImplementation(() => new Promise(() => {}));
+    ipcRenderer.invoke.mockImplementation(channel => {
+      if (channel === 'load-workspace-session') return Promise.resolve({ success: true, session: null });
+      if (channel === 'save-workspace-session') return Promise.resolve({ success: true });
+      return new Promise(() => {});
+    });
     const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
     await nextTick();
 
@@ -68,12 +77,16 @@ describe('WindowProcess interactions', () => {
   });
 
   it('shows a dataset failure state with the attempted path', async () => {
-    ipcRenderer.invoke.mockResolvedValue({
-      requestId: 1,
-      status: DATASET_FILE_STATUS.FAILED,
-      target: { path: 'C:/datasets/broken.json', fileName: 'broken.json' },
-      jsonInfo: null,
-      error: '读取 JSON 文件失败。',
+    ipcRenderer.invoke.mockImplementation(async (channel, request) => {
+      if (channel === 'load-workspace-session') return { success: true, session: null };
+      if (channel === 'save-workspace-session') return { success: true };
+      return {
+        requestId: request.requestId,
+        status: DATASET_FILE_STATUS.FAILED,
+        target: { path: 'C:/datasets/broken.json', fileName: 'broken.json' },
+        jsonInfo: null,
+        error: '读取 JSON 文件失败。',
+      };
     });
     const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
 
@@ -93,6 +106,8 @@ describe('WindowProcess interactions', () => {
   it('navigates from a rejected dataset target instead of the last valid dataset', async () => {
     const adjacentRequests = [];
     ipcRenderer.invoke.mockImplementation(async (channel, request) => {
+      if (channel === 'load-workspace-session') return { success: true, session: null };
+      if (channel === 'save-workspace-session') return { success: true };
       if (channel === 'open-json-file-dialog') {
         return {
           requestId: request.requestId,
@@ -157,6 +172,68 @@ describe('WindowProcess interactions', () => {
       expect.objectContaining({ currentFilePath: 'C:/datasets/B.json', direction: 'next' }),
       expect.objectContaining({ currentFilePath: 'C:/datasets/B.json', direction: 'previous' }),
     ]);
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith(
+      'save-workspace-session',
+      expect.objectContaining({
+        schemaVersion: 1,
+        datasetPath: 'C:/datasets/B.json',
+        imagePath: '',
+        imageIndex: null,
+      }),
+    );
+    wrapper.unmount();
+  });
+
+  it('restores the saved dataset and image through the normal loading flows', async () => {
+    const pendingImage = new Promise(() => {});
+    ipcRenderer.invoke.mockImplementation(async (channel, request) => {
+      if (channel === 'load-workspace-session') {
+        return {
+          success: true,
+          session: {
+            schemaVersion: 1,
+            datasetPath: 'C:/datasets/A.json',
+            imagePath: 'C:/datasets/images/two.png',
+            imageIndex: 1,
+          },
+        };
+      }
+      if (channel === 'read-json-file') {
+        return {
+          requestId: request.requestId,
+          status: DATASET_FILE_STATUS.READY,
+          target: { path: request.filePath, fileName: 'A.json' },
+          jsonInfo: {
+            str: JSON.stringify({
+              Picture: [createDbrPicture(), createDbrPicture({ 'Image Source': 'images\\two.png', 'No.': '2' })],
+            }),
+          },
+          error: '',
+        };
+      }
+      if (channel === 'resolve-json-image-paths') {
+        return {
+          success: true,
+          imagePaths: ['C:/datasets/images/one.png', 'C:/datasets/images/two.png'],
+        };
+      }
+      if (channel === 'save-workspace-session') return { success: true };
+      if (channel === 'prepare-image') return pendingImage;
+      throw new Error(`Unexpected IPC channel: ${channel}`);
+    });
+
+    const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    await flushPromises();
+
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('read-json-file', {
+      filePath: 'C:/datasets/A.json',
+      requestId: 1,
+    });
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith(
+      'prepare-image',
+      expect.objectContaining({ imagePath: 'C:/datasets/images/two.png' }),
+    );
+    expect(wrapper.find('.toolbar-dataset-name').text()).toBe('图集：A.json');
     wrapper.unmount();
   });
 });
