@@ -58,6 +58,15 @@ export function formatShortcut(shortcut) {
   return keys;
 }
 
+export function formatShortcutList(shortcuts) {
+  if (!Array.isArray(shortcuts)) return '';
+  return shortcuts
+    .map(formatShortcut)
+    .filter(keys => keys.length > 0)
+    .map(keys => keys.join('+'))
+    .join(' / ');
+}
+
 export function createShortcutHelpGroups(commands, groups) {
   if (!Array.isArray(commands) || !Array.isArray(groups)) return [];
 

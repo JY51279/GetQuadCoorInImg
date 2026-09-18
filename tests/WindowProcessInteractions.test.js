@@ -1,12 +1,10 @@
 /* @vitest-environment jsdom */
-import { shallowMount } from '@vue/test-utils';
+import { flushPromises, shallowMount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ipcRenderer = {
   invoke: vi.fn(),
-  on: vi.fn(() => vi.fn()),
-  send: vi.fn(),
 };
 
 let WindowProcess;
@@ -48,6 +46,7 @@ describe('WindowProcess interactions', () => {
   });
 
   it('shows the current dataset name in the toolbar and opens the dataset page before the file dialog', async () => {
+    ipcRenderer.invoke.mockImplementation(() => new Promise(() => {}));
     const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
     await nextTick();
 
@@ -62,7 +61,29 @@ describe('WindowProcess interactions', () => {
     expect(datasetTab.attributes('aria-pressed')).toBe('true');
     expect(annotationTab.attributes('aria-pressed')).toBe('false');
     expect(wrapper.find('.toolbar-dataset-name').text()).toBe('图集：未加载');
-    expect(ipcRenderer.send).toHaveBeenCalledWith('open-json-file-dialog', { requestId: 1 });
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('open-json-file-dialog', { requestId: 1 });
+    wrapper.unmount();
+  });
+
+  it('shows a dataset failure state with the attempted path', async () => {
+    ipcRenderer.invoke.mockResolvedValue({
+      success: false,
+      requestId: 1,
+      path: 'C:/datasets/broken.json',
+      error: '读取 JSON 文件失败。',
+    });
+    const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+
+    await wrapper.find('button[title="打开或更换图集（Ctrl+O）"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+
+    const failure = wrapper.find('.dataset-load-error');
+    expect(failure.exists()).toBe(true);
+    expect(failure.text()).toContain('图集加载失败');
+    expect(failure.text()).toContain('读取 JSON 文件失败。');
+    expect(failure.text()).toContain('C:/datasets/broken.json');
+    expect(wrapper.find('button[aria-label="图集与图片"]').attributes('aria-pressed')).toBe('true');
     wrapper.unmount();
   });
 });

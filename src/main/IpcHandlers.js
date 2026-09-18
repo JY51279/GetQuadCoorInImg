@@ -2,7 +2,7 @@ import { dialog, ipcMain } from 'electron';
 import {
   getDefaultDialogDirectory,
   getImageDialogDefaultDirectory,
-  readAdjacentJsonFile,
+  getAdjacentJsonFilePath,
   readJsonFile,
   rememberJsonDirectory,
   resolveJsonImagePath,
@@ -61,7 +61,26 @@ export async function handlePrepareImage(_event, request) {
   }
 }
 
-export async function handleOpenJsonDialog(event, context) {
+async function createJsonFileResponse(filePath, requestId, fallbackMessage = USER_MESSAGES.JSON_READ_FAILED) {
+  try {
+    const jsonInfo = await readJsonFile(filePath);
+    return { success: true, requestId, jsonInfo };
+  } catch (error) {
+    console.error('Failed to read JSON file:', error);
+    return {
+      success: false,
+      requestId,
+      path: filePath,
+      error: toUserErrorMessage(error, fallbackMessage),
+    };
+  }
+}
+
+export async function handleReadJsonFile(_event, request) {
+  return createJsonFileResponse(request?.filePath, request?.requestId ?? null);
+}
+
+export async function handleOpenJsonDialog(_event, context) {
   const requestId = context?.requestId ?? null;
   try {
     const result = await dialog.showOpenDialog({
@@ -71,46 +90,36 @@ export async function handleOpenJsonDialog(event, context) {
     });
 
     if (result.canceled || result.filePaths.length === 0) {
-      event.reply('choose-json-file-response', { success: false, canceled: true, requestId });
-      return;
+      return { success: false, canceled: true, requestId };
     }
 
     const filePath = result.filePaths[0];
     rememberJsonDirectory(filePath).catch(error => {
       console.error('Failed to save dialog path settings:', error.message);
     });
-
-    try {
-      const jsonInfo = await readJsonFile(filePath);
-      event.reply('choose-json-file-response', { success: true, requestId, jsonInfo });
-    } catch (error) {
-      console.error('Failed to read JSON file:', error);
-      event.reply('choose-json-file-response', {
-        success: false,
-        requestId,
-        error: toUserErrorMessage(error, USER_MESSAGES.JSON_READ_FAILED),
-      });
-    }
+    return createJsonFileResponse(filePath, requestId);
   } catch (error) {
     console.error('Error while opening JSON file dialog:', error);
-    event.reply('choose-json-file-response', {
+    return {
       success: false,
       requestId,
       error: toUserErrorMessage(error, USER_MESSAGES.JSON_OPEN_FAILED),
-    });
+    };
   }
 }
 
 export async function handleOpenAdjacentJson(_event, request) {
   const requestId = request?.requestId ?? null;
+  let targetPath = '';
   try {
-    const jsonInfo = await readAdjacentJsonFile(request?.currentFilePath, request?.direction);
-    return { success: true, requestId, jsonInfo };
+    targetPath = await getAdjacentJsonFilePath(request?.currentFilePath, request?.direction);
+    return createJsonFileResponse(targetPath, requestId, USER_MESSAGES.DATASET_SWITCH_FAILED);
   } catch (error) {
     console.error('Failed to open adjacent JSON file:', error);
     return {
       success: false,
       requestId,
+      path: targetPath,
       error: toUserErrorMessage(error, USER_MESSAGES.DATASET_SWITCH_FAILED),
     };
   }
@@ -142,9 +151,9 @@ export async function handleSaveJsonFile(_event, data) {
 export function registerIpcHandlers() {
   ipcMain.handle('open-image-file-dialog', handleOpenImageDialog);
   ipcMain.handle('prepare-image', handlePrepareImage);
+  ipcMain.handle('open-json-file-dialog', handleOpenJsonDialog);
   ipcMain.handle('open-adjacent-json-file', handleOpenAdjacentJson);
-
-  ipcMain.on('open-json-file-dialog', handleOpenJsonDialog);
+  ipcMain.handle('read-json-file', handleReadJsonFile);
 
   ipcMain.handle('resolve-json-image-paths', handleResolveJsonImagePaths);
   ipcMain.handle('save-json-file', handleSaveJsonFile);

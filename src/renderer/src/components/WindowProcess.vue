@@ -18,7 +18,7 @@
       <div class="toolbar-group toolbar-files">
         <button
           class="toolbar-button primary"
-          title="打开或更换图集（Ctrl+O）"
+          :title="datasetOpenTitle"
           :disabled="!canLoadDataset"
           @click="chooseJsonFile"
         >
@@ -26,7 +26,7 @@
         </button>
         <button
           class="toolbar-button compact"
-          title="上一图集（Shift+A / Shift+←）"
+          :title="previousDatasetTitle"
           :disabled="!canNavigateDataset"
           @click="changeDatasetByDirection(KEYS.PREVIOUS)"
         >
@@ -34,7 +34,7 @@
         </button>
         <button
           class="toolbar-button compact"
-          title="下一图集（Shift+D / Shift+→）"
+          :title="nextDatasetTitle"
           :disabled="!canNavigateDataset"
           @click="changeDatasetByDirection(KEYS.NEXT)"
         >
@@ -323,6 +323,21 @@
             <header class="panel-header">
               <h2>图集与图片</h2>
             </header>
+            <div v-if="datasetLoadError" class="dataset-load-error" role="alert">
+              <strong>图集加载失败</strong>
+              <p>{{ datasetLoadError.message }}</p>
+              <dl>
+                <div v-if="datasetLoadError.path">
+                  <dt>失败目标</dt>
+                  <dd :title="datasetLoadError.path">{{ datasetLoadError.path }}</dd>
+                </div>
+                <div v-if="currentDataset.path">
+                  <dt>当前保留</dt>
+                  <dd :title="currentDataset.path">{{ currentDataset.fileName }}</dd>
+                </div>
+              </dl>
+              <small v-if="currentDataset.path">无效文件未覆盖最后一次成功加载的图集。</small>
+            </div>
             <dl class="metadata-list">
               <div>
                 <dt>产品类型</dt>
@@ -468,7 +483,6 @@ import {
   updateJsonWithHistory,
   getJsonImagePosition,
   getJsonFileInfo,
-  getJsonFilePath,
   resetPicJson,
   resolveFollowingImageIndexes,
   translateQuadWithHistory,
@@ -492,7 +506,11 @@ import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { QUAD_TRANSLATION_TARGET } from '../utils/QuadGeometry.js';
 import { createShortcutHelpGroups, dispatchShortcut } from '../utils/KeyboardShortcuts.js';
-import { WORKSPACE_SHORTCUT_HELP_GROUPS, createWorkspaceShortcutCommands } from '../shortcuts/WorkspaceShortcuts.js';
+import {
+  WORKSPACE_SHORTCUT_HELP_GROUPS,
+  createWorkspaceShortcutCommands,
+  getWorkspaceShortcutTitle,
+} from '../shortcuts/WorkspaceShortcuts.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import { getAdjacentQuadIndex, normalizeQuadIndex } from '../state/QuadSelection.js';
 import {
@@ -565,7 +583,8 @@ const isQuadLocationPropagationOpen = ref(false);
 const quadLocationPropagationCount = ref(0);
 const imageObj = ref(new Image());
 const imgFileName = ref(null);
-const jsonFileName = ref(null);
+const currentDataset = ref({ path: '', fileName: '' });
+const jsonFileName = computed(() => currentDataset.value.fileName);
 const loadedProductType = ref('');
 let imgFilePath = '';
 const imageCoordinateScale = ref({ x: 1, y: 1 });
@@ -600,7 +619,7 @@ const {
   reset: resetDots,
 } = usePointSelectionHistory({ canEdit: canOperate });
 const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
-const canNavigateDataset = computed(() => canLoadDataset.value && Boolean(jsonFileName.value));
+const canNavigateDataset = computed(() => canLoadDataset.value && Boolean(currentDataset.value.path));
 const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(imageObj.value?.src));
@@ -652,6 +671,7 @@ const workflowStatusText = computed(() => {
   return labels[workflowState.value.phase] ?? '未知状态';
 });
 const imageLoadError = ref(null);
+const datasetLoadError = ref(null);
 const {
   getActiveRequest,
   beginManualRequest,
@@ -681,7 +701,6 @@ const {
   outputMessage,
 });
 
-let removeChooseJsonFileResponseListener = null;
 let zoomCanvasPixelRatio = null;
 let activeQuadFocusScheduled = false;
 
@@ -736,13 +755,10 @@ function selectInspectorPage(pageId) {
 onMounted(() => {
   syncZoomCanvasPixelRatio();
   window.addEventListener('keydown', handleKeyDown);
-  removeChooseJsonFileResponseListener = ipcRenderer.on('choose-json-file-response', handleChooseJsonFileResponse);
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
-  removeChooseJsonFileResponseListener?.();
-  removeChooseJsonFileResponseListener = null;
   clearNotifications();
 });
 
@@ -792,6 +808,9 @@ const shortcutCommands = createWorkspaceShortcutCommands({
   'help.close': () => selectInspectorPage(previousInspectorPage),
 });
 const shortcutHelpGroups = Object.freeze(createShortcutHelpGroups(shortcutCommands, WORKSPACE_SHORTCUT_HELP_GROUPS));
+const datasetOpenTitle = getWorkspaceShortcutTitle('dataset.open');
+const previousDatasetTitle = getWorkspaceShortcutTitle('dataset.previous');
+const nextDatasetTitle = getWorkspaceShortcutTitle('dataset.next');
 
 function handleKeyDown(e) {
   if (isQuadSelectionLocked.value) {
@@ -1519,52 +1538,84 @@ function beginDatasetLoadOperation() {
   return started.operationId;
 }
 
-function chooseJsonFile() {
-  const operationId = beginDatasetLoadOperation();
-  if (operationId === null) return;
-
-  selectInspectorPage(INSPECTOR_PAGE.DATASET);
-  try {
-    ipcRenderer.send('open-json-file-dialog', { requestId: operationId });
-  } catch (error) {
-    console.error('Error while sending IPC message open-json-file-dialog:', error);
-    outputMessage(toUserErrorMessage(error, USER_MESSAGES.JSON_OPEN_FAILED));
-    applyWorkflowTransition(failOperation(workflowState.value, operationId));
-  }
+function getFileNameFromPath(filePath) {
+  return typeof filePath === 'string' ? filePath.split(/[\\/]/).at(-1) || '' : '';
 }
 
-async function changeDatasetByDirection(direction) {
-  const currentFilePath = getJsonFilePath();
+function createDatasetLoadError(response, message) {
+  const path = response?.path || response?.jsonInfo?.path || '';
+  return {
+    path,
+    message: message || USER_MESSAGES.JSON_READ_FAILED,
+  };
+}
+
+async function runDatasetLoad(requestResponse, { selectDatasetPage = false, fallbackMessage } = {}) {
+  const operationId = beginDatasetLoadOperation();
+  if (operationId === null) return false;
+
+  datasetLoadError.value = null;
+  if (selectDatasetPage) selectInspectorPage(INSPECTOR_PAGE.DATASET);
+  let response;
+  try {
+    response = await requestResponse(operationId);
+  } catch (error) {
+    response = {
+      success: false,
+      requestId: operationId,
+      error: toUserErrorMessage(error, fallbackMessage),
+    };
+  }
+  if (!response || typeof response !== 'object') {
+    response = {
+      success: false,
+      requestId: operationId,
+      error: fallbackMessage || USER_MESSAGES.JSON_READ_FAILED,
+    };
+  } else if (response.requestId === undefined || response.requestId === null) {
+    response = { ...response, requestId: operationId };
+  }
+  return processDatasetLoadResponse(response);
+}
+
+function chooseJsonFile() {
+  void runDatasetLoad(requestId => ipcRenderer.invoke('open-json-file-dialog', { requestId }), {
+    selectDatasetPage: true,
+    fallbackMessage: USER_MESSAGES.JSON_OPEN_FAILED,
+  });
+}
+
+function changeDatasetByDirection(direction) {
+  const currentFilePath = currentDataset.value.path;
   if (!currentFilePath) {
     outputMessage(USER_MESSAGES.NO_DATASET);
     return;
   }
 
-  const operationId = beginDatasetLoadOperation();
-  if (operationId === null) return;
-
-  try {
-    const response = await ipcRenderer.invoke('open-adjacent-json-file', {
-      currentFilePath,
-      direction,
-      requestId: operationId,
-    });
-    await handleChooseJsonFileResponse(null, response);
-  } catch (error) {
-    if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return;
-    failDatasetLoad(operationId, toUserErrorMessage(error, USER_MESSAGES.DATASET_SWITCH_FAILED));
-  }
+  void runDatasetLoad(
+    requestId =>
+      ipcRenderer.invoke('open-adjacent-json-file', {
+        currentFilePath,
+        direction,
+        requestId,
+      }),
+    { fallbackMessage: USER_MESSAGES.DATASET_SWITCH_FAILED },
+  );
 }
 
-function failDatasetLoad(operationId, message = '') {
+function failDatasetLoad(operationId, message = '', response = null) {
   if (message) outputMessage(message);
+  if (response) {
+    datasetLoadError.value = createDatasetLoadError(response, message);
+    selectInspectorPage(INSPECTOR_PAGE.DATASET);
+  }
   applyWorkflowTransition(failOperation(workflowState.value, operationId));
 }
 
 // Dataset loading
-async function handleChooseJsonFileResponse(_event, response) {
+async function processDatasetLoadResponse(response) {
   const operationId = response?.requestId;
-  if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return;
+  if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return false;
 
   const loadResult = await prepareDatasetLoad(response, {
     confirmLossyRepair: message => window.confirm(message),
@@ -1572,36 +1623,45 @@ async function handleChooseJsonFileResponse(_event, response) {
     saveJsonFile: saveJsonFileInfo,
     isCurrent: () => isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET),
   });
-  if (loadResult.status === DATASET_LOAD_STATUS.STALE) return;
-  if (loadResult.status !== DATASET_LOAD_STATUS.READY) {
+  if (loadResult.status === DATASET_LOAD_STATUS.STALE) return false;
+  if (loadResult.status === DATASET_LOAD_STATUS.CANCELED) {
     failDatasetLoad(operationId, loadResult.error);
-    return;
+    return false;
+  }
+  if (loadResult.status === DATASET_LOAD_STATUS.FAILED) {
+    failDatasetLoad(operationId, loadResult.error, response);
+    return false;
   }
 
   const { preparedJson, jsonData } = loadResult;
   if (!commitPreparedJsonProcess(preparedJson)) {
-    failDatasetLoad(operationId, '加载 JSON 失败：无法提交处理后的数据集。');
-    return;
+    failDatasetLoad(operationId, '加载 JSON 失败：无法提交处理后的数据集。', response);
+    return false;
   }
-  if (!applyWorkflowTransition(commitDataset(workflowState.value, operationId))) return;
+  if (!applyWorkflowTransition(commitDataset(workflowState.value, operationId))) return false;
 
   loadedProductType.value = preparedJson.productType;
-  jsonFileName.value = jsonData.fileName;
+  currentDataset.value = {
+    path: jsonData.path,
+    fileName: jsonData.fileName || getFileNameFromPath(jsonData.path),
+  };
+  datasetLoadError.value = null;
   resetImageForDatasetChange();
   selectInspectorPage(INSPECTOR_PAGE.ANNOTATION);
   if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
 
   if (preparedJson.data.Picture.length === 0) {
     outputMessage('JSON 已加载，但数据集中没有有效的图片项。');
-    return;
+    return true;
   }
 
   const firstImageTarget = getJsonImageTarget(0);
   if (!firstImageTarget.success) {
     outputMessage(firstImageTarget.error);
-    return;
+    return true;
   }
   startDatasetImageRequest(firstImageTarget, KEYS.NEXT);
+  return true;
 }
 
 watch(selectedDots, () => {
@@ -2235,6 +2295,54 @@ function toggleQuadInteraction() {
   gap: 0;
   margin: 20px 0;
   border-top: 1px solid var(--border-subtle);
+}
+
+.dataset-load-error {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 4px;
+  padding: 12px;
+  border: 1px solid #edc5c7;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--text-primary);
+}
+
+.dataset-load-error > strong {
+  color: var(--danger);
+}
+
+.dataset-load-error p,
+.dataset-load-error dl {
+  margin: 0;
+}
+
+.dataset-load-error p,
+.dataset-load-error small {
+  line-height: 1.45;
+}
+
+.dataset-load-error dl {
+  display: grid;
+  gap: 5px;
+}
+
+.dataset-load-error dl > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.dataset-load-error dt,
+.dataset-load-error small {
+  color: var(--text-secondary);
+}
+
+.dataset-load-error dd {
+  min-width: 0;
+  margin: 0;
+  font: var(--font-size-code) / 1.4 var(--font-mono);
+  overflow-wrap: anywhere;
 }
 
 .metadata-list > div {

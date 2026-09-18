@@ -1,3 +1,5 @@
+import { formatShortcutList } from '../utils/KeyboardShortcuts.js';
+
 const SHORTCUT_GROUP = Object.freeze({
   NAVIGATION: 'navigation',
   ANNOTATION: 'annotation',
@@ -98,7 +100,7 @@ export const WORKSPACE_SHORTCUT_DEFINITIONS = Object.freeze([
   {
     id: 'dataset.open',
     group: SHORTCUT_GROUP.NAVIGATION,
-    label: '打开图集 JSON',
+    label: '打开或更换图集',
     shortcuts: [{ key: 'o', ctrl: true }],
   },
   {
@@ -225,4 +227,12 @@ export function createWorkspaceShortcutCommands(actions) {
     ...command,
     run: actions[command.id],
   }));
+}
+
+export function getWorkspaceShortcutTitle(commandId) {
+  const command = WORKSPACE_SHORTCUT_DEFINITIONS.find(candidate => candidate.id === commandId);
+  if (!command?.label) return '';
+
+  const shortcutText = formatShortcutList(command.shortcuts);
+  return shortcutText ? `${command.label}（${shortcutText}）` : command.label;
 }

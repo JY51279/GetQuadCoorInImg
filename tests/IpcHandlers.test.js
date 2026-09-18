@@ -7,9 +7,9 @@ const electronMocks = vi.hoisted(() => ({
 }));
 
 const fileOperationMocks = vi.hoisted(() => ({
+  getAdjacentJsonFilePath: vi.fn(),
   getDefaultDialogDirectory: vi.fn(),
   getImageDialogDefaultDirectory: vi.fn(),
-  readAdjacentJsonFile: vi.fn(),
   readJsonFile: vi.fn(),
   rememberJsonDirectory: vi.fn(),
   resolveJsonImagePath: vi.fn(),
@@ -36,6 +36,7 @@ import {
   handleOpenImageDialog,
   handleOpenJsonDialog,
   handlePrepareImage,
+  handleReadJsonFile,
   handleResolveJsonImagePaths,
   handleSaveJsonFile,
   registerIpcHandlers,
@@ -57,11 +58,8 @@ describe('Main-process IPC handlers', () => {
 
   it('returns the request id when the JSON dialog is canceled', async () => {
     electronMocks.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
-    const event = { reply: vi.fn() };
 
-    await handleOpenJsonDialog(event, { requestId: 41 });
-
-    expect(event.reply).toHaveBeenCalledWith('choose-json-file-response', {
+    await expect(handleOpenJsonDialog(null, { requestId: 41 })).resolves.toEqual({
       success: false,
       canceled: true,
       requestId: 41,
@@ -76,16 +74,13 @@ describe('Main-process IPC handlers', () => {
       filePaths: ['C:/datasets/sample.json'],
     });
     fileOperationMocks.readJsonFile.mockResolvedValue(jsonInfo);
-    const event = { reply: vi.fn() };
 
-    await handleOpenJsonDialog(event, { requestId: 42 });
-
-    expect(fileOperationMocks.rememberJsonDirectory).toHaveBeenCalledWith('C:/datasets/sample.json');
-    expect(event.reply).toHaveBeenCalledWith('choose-json-file-response', {
+    await expect(handleOpenJsonDialog(null, { requestId: 42 })).resolves.toEqual({
       success: true,
       requestId: 42,
       jsonInfo,
     });
+    expect(fileOperationMocks.rememberJsonDirectory).toHaveBeenCalledWith('C:/datasets/sample.json');
   });
 
   it('returns a structured response when the selected JSON file cannot be read', async () => {
@@ -94,24 +89,19 @@ describe('Main-process IPC handlers', () => {
       filePaths: ['C:/datasets/broken.json'],
     });
     fileOperationMocks.readJsonFile.mockRejectedValue(new Error('read failed'));
-    const event = { reply: vi.fn() };
 
-    await handleOpenJsonDialog(event, { requestId: 43 });
-
-    expect(event.reply).toHaveBeenCalledWith('choose-json-file-response', {
+    await expect(handleOpenJsonDialog(null, { requestId: 43 })).resolves.toEqual({
       success: false,
       requestId: 43,
+      path: 'C:/datasets/broken.json',
       error: '读取 JSON 文件失败。',
     });
   });
 
   it('returns the request id when opening the JSON dialog fails', async () => {
     electronMocks.showOpenDialog.mockRejectedValue(new Error('dialog failed'));
-    const event = { reply: vi.fn() };
 
-    await handleOpenJsonDialog(event, { requestId: 44 });
-
-    expect(event.reply).toHaveBeenCalledWith('choose-json-file-response', {
+    await expect(handleOpenJsonDialog(null, { requestId: 44 })).resolves.toEqual({
       success: false,
       requestId: 44,
       error: '打开 JSON 文件选择窗口失败。',
@@ -120,7 +110,8 @@ describe('Main-process IPC handlers', () => {
 
   it('returns the adjacent JSON file with the original request context', async () => {
     const jsonInfo = { path: 'C:/datasets/atlas10.json', str: '{}', fileName: 'atlas10.json' };
-    fileOperationMocks.readAdjacentJsonFile.mockResolvedValue(jsonInfo);
+    fileOperationMocks.getAdjacentJsonFilePath.mockResolvedValue(jsonInfo.path);
+    fileOperationMocks.readJsonFile.mockResolvedValue(jsonInfo);
 
     await expect(
       handleOpenAdjacentJson(null, {
@@ -129,11 +120,12 @@ describe('Main-process IPC handlers', () => {
         requestId: 45,
       }),
     ).resolves.toEqual({ success: true, requestId: 45, jsonInfo });
-    expect(fileOperationMocks.readAdjacentJsonFile).toHaveBeenCalledWith('C:/datasets/atlas1.json', 'next');
+    expect(fileOperationMocks.getAdjacentJsonFilePath).toHaveBeenCalledWith('C:/datasets/atlas1.json', 'next');
+    expect(fileOperationMocks.readJsonFile).toHaveBeenCalledWith(jsonInfo.path);
   });
 
   it('preserves a user-facing adjacent-JSON error', async () => {
-    fileOperationMocks.readAdjacentJsonFile.mockRejectedValue(new Error('当前目录没有其他图集。'));
+    fileOperationMocks.getAdjacentJsonFilePath.mockRejectedValue(new Error('当前目录没有其他图集。'));
 
     await expect(
       handleOpenAdjacentJson(null, {
@@ -144,7 +136,37 @@ describe('Main-process IPC handlers', () => {
     ).resolves.toEqual({
       success: false,
       requestId: 46,
+      path: '',
       error: '当前目录没有其他图集。',
+    });
+  });
+
+  it('reports the adjacent target path when that JSON file cannot be read', async () => {
+    fileOperationMocks.getAdjacentJsonFilePath.mockResolvedValue('C:/datasets/broken.json');
+    fileOperationMocks.readJsonFile.mockRejectedValue(new Error('read failed'));
+
+    await expect(
+      handleOpenAdjacentJson(null, {
+        currentFilePath: 'C:/datasets/current.json',
+        direction: 'next',
+        requestId: 47,
+      }),
+    ).resolves.toEqual({
+      success: false,
+      requestId: 47,
+      path: 'C:/datasets/broken.json',
+      error: '切换图集失败。',
+    });
+  });
+
+  it('uses the same JSON reader response for a known file path', async () => {
+    const jsonInfo = { path: 'C:/datasets/restored.json', str: '{}', fileName: 'restored.json' };
+    fileOperationMocks.readJsonFile.mockResolvedValue(jsonInfo);
+
+    await expect(handleReadJsonFile(null, { filePath: jsonInfo.path, requestId: 48 })).resolves.toEqual({
+      success: true,
+      requestId: 48,
+      jsonInfo,
     });
   });
 
@@ -237,10 +259,11 @@ describe('Main-process IPC handlers', () => {
 
     expect(electronMocks.handle).toHaveBeenCalledWith('open-image-file-dialog', handleOpenImageDialog);
     expect(electronMocks.handle).toHaveBeenCalledWith('prepare-image', handlePrepareImage);
+    expect(electronMocks.handle).toHaveBeenCalledWith('open-json-file-dialog', handleOpenJsonDialog);
     expect(electronMocks.handle).toHaveBeenCalledWith('open-adjacent-json-file', handleOpenAdjacentJson);
+    expect(electronMocks.handle).toHaveBeenCalledWith('read-json-file', handleReadJsonFile);
     expect(electronMocks.handle).toHaveBeenCalledWith('resolve-json-image-paths', handleResolveJsonImagePaths);
     expect(electronMocks.handle).toHaveBeenCalledWith('save-json-file', handleSaveJsonFile);
-    expect(electronMocks.on).toHaveBeenCalledWith('open-json-file-dialog', handleOpenJsonDialog);
-    expect(electronMocks.on).not.toHaveBeenCalledWith('open-pic-file', expect.any(Function));
+    expect(electronMocks.on).not.toHaveBeenCalled();
   });
 });

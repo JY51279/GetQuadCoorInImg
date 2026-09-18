@@ -3,6 +3,7 @@ import {
   createShortcutHelpGroups,
   dispatchShortcut,
   formatShortcut,
+  formatShortcutList,
   matchesShortcut,
 } from '../src/renderer/src/utils/KeyboardShortcuts.js';
 
@@ -188,5 +189,11 @@ describe('keyboard shortcuts', () => {
       },
     ]);
     expect(formatShortcut({ key: 'ArrowUp', alt: true, meta: true })).toEqual(['Alt', 'Meta', '↑']);
+    expect(
+      formatShortcutList([
+        { key: 'd', shift: true },
+        { key: 'ArrowRight', shift: true },
+      ]),
+    ).toBe('Shift+D / Shift+→');
   });
 });

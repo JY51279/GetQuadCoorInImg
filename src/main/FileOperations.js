@@ -108,35 +108,51 @@ function getExistingDirectory(directoryPath) {
   }
 }
 
-function areFileNamesEquivalent(leftFileName, rightFileName) {
-  if (process.platform !== 'win32') return leftFileName === rightFileName;
-  return leftFileName.toLowerCase() === rightFileName.toLowerCase();
+const ADJACENT_FILE_STEPS = Object.freeze({ previous: -1, next: 1 });
+
+function normalizePathForComparison(filePath) {
+  const normalizedPath = path.resolve(filePath);
+  return process.platform === 'win32' ? normalizedPath.toLowerCase() : normalizedPath;
 }
 
-export async function readAdjacentJsonFile(currentFilePath, direction) {
+export function compareFileNames(leftFileName, rightFileName) {
+  if (leftFileName === rightFileName) return 0;
+  return leftFileName < rightFileName ? -1 : 1;
+}
+
+export async function listJsonFilePaths(directory) {
+  if (typeof directory !== 'string' || directory.length === 0) throw new Error('图集目录无效。');
+
+  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  return entries
+    .filter(entry => entry.isFile() && path.extname(entry.name).toLowerCase() === '.json')
+    .map(entry => path.join(directory, entry.name))
+    .sort((leftPath, rightPath) => compareFileNames(path.basename(leftPath), path.basename(rightPath)));
+}
+
+export function getAdjacentFilePath(filePaths, currentFilePath, direction) {
+  const step = ADJACENT_FILE_STEPS[direction];
+  if (!Number.isInteger(step)) throw new Error('文件切换方向无效。');
+  if (!Array.isArray(filePaths) || filePaths.length === 0) throw new Error('文件列表为空。');
+  if (typeof currentFilePath !== 'string' || currentFilePath.length === 0) throw new Error('当前文件路径无效。');
+
+  const currentPathKey = normalizePathForComparison(currentFilePath);
+  const currentIndex = filePaths.findIndex(filePath => normalizePathForComparison(filePath) === currentPathKey);
+  if (currentIndex < 0) throw new Error('当前文件不在文件列表中。');
+  if (filePaths.length <= 1) throw new Error('当前目录没有其他图集。');
+
+  const targetIndex = (currentIndex + step + filePaths.length) % filePaths.length;
+  return filePaths[targetIndex];
+}
+
+export async function getAdjacentJsonFilePath(currentFilePath, direction) {
   if (typeof currentFilePath !== 'string' || currentFilePath.length === 0) {
     throw new Error('当前图集路径无效。');
   }
-  if (direction !== 'previous' && direction !== 'next') {
-    throw new Error('图集切换方向无效。');
-  }
 
   const resolvedCurrentPath = path.resolve(currentFilePath);
-  const directory = path.dirname(resolvedCurrentPath);
-  const currentFileName = path.basename(resolvedCurrentPath);
-  const entries = await fs.promises.readdir(directory, { withFileTypes: true });
-  const jsonFileNames = entries
-    .filter(entry => entry.isFile() && path.extname(entry.name).toLowerCase() === '.json')
-    .map(entry => entry.name)
-    .sort();
-
-  const currentIndex = jsonFileNames.findIndex(fileName => areFileNamesEquivalent(fileName, currentFileName));
-  if (currentIndex < 0) throw new Error('当前图集不在所在目录的 JSON 文件列表中。');
-  if (jsonFileNames.length <= 1) throw new Error('当前目录没有其他图集。');
-
-  const step = direction === 'next' ? 1 : -1;
-  const targetIndex = (currentIndex + step + jsonFileNames.length) % jsonFileNames.length;
-  return readJsonFile(path.join(directory, jsonFileNames[targetIndex]));
+  const jsonFilePaths = await listJsonFilePaths(path.dirname(resolvedCurrentPath));
+  return getAdjacentFilePath(jsonFilePaths, resolvedCurrentPath, direction);
 }
 
 export async function initializeFileOperations(electronApp) {

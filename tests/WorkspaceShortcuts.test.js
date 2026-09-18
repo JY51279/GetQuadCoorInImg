@@ -3,6 +3,7 @@ import {
   WORKSPACE_SHORTCUT_DEFINITIONS,
   WORKSPACE_SHORTCUT_HELP_GROUPS,
   createWorkspaceShortcutCommands,
+  getWorkspaceShortcutTitle,
 } from '../src/renderer/src/shortcuts/WorkspaceShortcuts.js';
 import { createShortcutHelpGroups, dispatchShortcut } from '../src/renderer/src/utils/KeyboardShortcuts.js';
 
@@ -44,6 +45,12 @@ describe('workspace shortcut configuration', () => {
     delete actions['image.next'];
 
     expect(() => createWorkspaceShortcutCommands(actions)).toThrow('Missing shortcut actions: image.next');
+  });
+
+  it('derives toolbar titles from the command registry', () => {
+    expect(getWorkspaceShortcutTitle('dataset.open')).toBe('打开或更换图集（Ctrl+O）');
+    expect(getWorkspaceShortcutTitle('dataset.previous')).toBe('上一图集（Shift+A / Shift+←）');
+    expect(getWorkspaceShortcutTitle('missing')).toBe('');
   });
 
   it('keeps contextual help closing separate from generated help content', () => {

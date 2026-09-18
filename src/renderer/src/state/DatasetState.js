@@ -208,10 +208,6 @@ export function getJsonFileInfo() {
   };
 }
 
-export function getJsonFilePath() {
-  return datasetState.jsonFilePath;
-}
-
 function prepareDatasetQuad(realDots, coordinateScale, baseItem = null) {
   // 根据显示图相对原图的横纵缩放比例换算坐标，但不要修改工作图片中的原始点
   const jsonDots = realDots.map(dot => imagePointToDatasetPoint(dot, coordinateScale));

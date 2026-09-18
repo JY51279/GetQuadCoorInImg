@@ -4,10 +4,12 @@ import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   LOSSY_REPAIR_BACKUP_RETENTION_MS,
+  getAdjacentFilePath,
+  getAdjacentJsonFilePath,
   getDefaultDialogDirectory,
   getImageDialogDefaultDirectory,
   initializeFileOperations,
-  readAdjacentJsonFile,
+  listJsonFilePaths,
   readJsonFile,
   rememberJsonDirectory,
   resolveJsonImagePath,
@@ -87,12 +89,13 @@ describe('Main-process file operations', () => {
       fs.mkdir(path.join(root, 'ignored.json')),
     ]);
 
-    await expect(readAdjacentJsonFile(atlas1, 'next')).resolves.toMatchObject({
-      path: atlas10,
-      fileName: 'atlas10.json',
-    });
-    await expect(readAdjacentJsonFile(atlas2, 'next')).resolves.toMatchObject({ path: atlas1 });
-    await expect(readAdjacentJsonFile(atlas1, 'previous')).resolves.toMatchObject({ path: atlas2 });
+    const jsonFilePaths = await listJsonFilePaths(root);
+    expect(jsonFilePaths).toEqual([atlas1, atlas10, atlas2]);
+    expect(getAdjacentFilePath(jsonFilePaths, atlas10, 'next')).toBe(atlas2);
+
+    await expect(getAdjacentJsonFilePath(atlas1, 'next')).resolves.toBe(atlas10);
+    await expect(getAdjacentJsonFilePath(atlas2, 'next')).resolves.toBe(atlas1);
+    await expect(getAdjacentJsonFilePath(atlas1, 'previous')).resolves.toBe(atlas2);
   });
 
   it('rejects atlas navigation when the directory has no other JSON file', async () => {
@@ -100,7 +103,7 @@ describe('Main-process file operations', () => {
     const onlyAtlas = path.join(root, 'only.json');
     await fs.writeFile(onlyAtlas, '{}', 'utf-8');
 
-    await expect(readAdjacentJsonFile(onlyAtlas, 'next')).rejects.toThrow('当前目录没有其他图集。');
+    await expect(getAdjacentJsonFilePath(onlyAtlas, 'next')).rejects.toThrow('当前目录没有其他图集。');
   });
 
   it('backs up the original JSON before a lossy repair replaces it', async () => {
