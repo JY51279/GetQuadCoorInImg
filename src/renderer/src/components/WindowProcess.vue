@@ -328,15 +328,11 @@
               <p>{{ datasetLoadError.message }}</p>
               <dl>
                 <div v-if="datasetLoadError.path">
-                  <dt>失败目标</dt>
+                  <dt>当前图集</dt>
                   <dd :title="datasetLoadError.path">{{ datasetLoadError.path }}</dd>
                 </div>
-                <div v-if="currentDataset.path">
-                  <dt>当前保留</dt>
-                  <dd :title="currentDataset.path">{{ currentDataset.fileName }}</dd>
-                </div>
               </dl>
-              <small v-if="currentDataset.path">无效文件未覆盖最后一次成功加载的图集。</small>
+              <small>上一图集和下一图集将以该文件为切换基准。</small>
             </div>
             <dl class="metadata-list">
               <div>
@@ -471,6 +467,7 @@ import { usePointSelectionHistory } from '../composables/usePointSelectionHistor
 import { useToastNotifications } from '../composables/useToastNotifications.js';
 import {
   applyQuadLocationToImagesWithHistory,
+  clearDatasetProcess,
   commitPreparedJsonProcess,
   copyPreviousQuadLocationWithHistory,
   getAdjacentJsonImageTarget,
@@ -487,7 +484,7 @@ import {
   resolveFollowingImageIndexes,
   translateQuadWithHistory,
 } from '../state/DatasetState.js';
-import { DATASET_LOAD_STATUS, prepareDatasetLoad } from '../services/DatasetLoadService.js';
+import { DATASET_LOAD_STATUS, normalizeDatasetTarget, prepareDatasetLoad } from '../services/DatasetLoadService.js';
 import {
   IMAGE_FAILURE_ACTION,
   IMAGE_REQUEST_SOURCE,
@@ -540,10 +537,13 @@ import {
   isOperationActive,
   isWorkflowBusy,
   operationReturnsTo,
+  rejectDataset,
+  selectDatasetTarget,
   startDatasetLoad,
   startImageLoad,
 } from '../state/WorkflowState.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
+import { DATASET_FILE_STATUS } from '../../../shared/DatasetFileResponse.js';
 
 const ipcRenderer = window.electron.ipcRenderer;
 const { save: saveJsonFileRequest } = createJsonFileService({
@@ -583,8 +583,6 @@ const isQuadLocationPropagationOpen = ref(false);
 const quadLocationPropagationCount = ref(0);
 const imageObj = ref(new Image());
 const imgFileName = ref(null);
-const currentDataset = ref({ path: '', fileName: '' });
-const jsonFileName = computed(() => currentDataset.value.fileName);
 const loadedProductType = ref('');
 let imgFilePath = '';
 const imageCoordinateScale = ref({ x: 1, y: 1 });
@@ -600,6 +598,8 @@ const displayPixelRatio = computed(() => normalizeDevicePixelRatio(rawDisplayPix
 
 // Operation and image request state
 const workflowState = ref(createWorkflowState());
+const selectedDataset = computed(() => workflowState.value.datasetTarget ?? { path: '', fileName: '' });
+const jsonFileName = computed(() => selectedDataset.value.fileName);
 const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
 const canOperate = computed(() => canEditWorkflow(workflowState.value));
 const { run: executeSaveTransaction } = useDatasetSaveTransaction({
@@ -619,7 +619,7 @@ const {
   reset: resetDots,
 } = usePointSelectionHistory({ canEdit: canOperate });
 const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
-const canNavigateDataset = computed(() => canLoadDataset.value && Boolean(currentDataset.value.path));
+const canNavigateDataset = computed(() => canLoadDataset.value && Boolean(selectedDataset.value.path));
 const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(imageObj.value?.src));
@@ -662,6 +662,7 @@ const activeQuadLabel = computed(() =>
 const workflowStatusText = computed(() => {
   const labels = {
     [WORKFLOW_PHASE.EMPTY]: '等待打开图集',
+    [WORKFLOW_PHASE.DATASET_ERROR]: '图集加载失败',
     [WORKFLOW_PHASE.DATASET_READY]: '图集已加载',
     [WORKFLOW_PHASE.READY]: '可以编辑',
     [WORKFLOW_PHASE.LOADING_DATASET]: '正在打开图集…',
@@ -1284,6 +1285,7 @@ function renderAnnotationQuads({
   showQuadIndex = null,
   redrawOverlay = false,
 } = {}) {
+  if (typeof imgContainerRef.value?.resetQuadsArray !== 'function') return;
   imgContainerRef.value.resetQuadsArray(annotationView.value.quads, imageCoordinateScale.value, {
     deletedIndex: deletedQuadIndex,
     insertedIndex: insertedQuadIndex,
@@ -1521,8 +1523,14 @@ function resetImageForDatasetChange() {
   jumpImageIndex.value = '';
   resetDots();
   resetZoomPreview();
-  imgContainerRef.value.clearImage();
+  imgContainerRef.value?.clearImage?.();
   clearCurrentAnnotations();
+}
+
+function resetWorkspaceForDatasetSelection() {
+  clearDatasetProcess();
+  loadedProductType.value = '';
+  resetImageForDatasetChange();
 }
 
 function beginDatasetLoadOperation() {
@@ -1538,38 +1546,29 @@ function beginDatasetLoadOperation() {
   return started.operationId;
 }
 
-function getFileNameFromPath(filePath) {
-  return typeof filePath === 'string' ? filePath.split(/[\\/]/).at(-1) || '' : '';
-}
-
-function createDatasetLoadError(response, message) {
-  const path = response?.path || response?.jsonInfo?.path || '';
-  return {
-    path,
-    message: message || USER_MESSAGES.JSON_READ_FAILED,
-  };
-}
-
 async function runDatasetLoad(requestResponse, { selectDatasetPage = false, fallbackMessage } = {}) {
   const operationId = beginDatasetLoadOperation();
   if (operationId === null) return false;
 
-  datasetLoadError.value = null;
   if (selectDatasetPage) selectInspectorPage(INSPECTOR_PAGE.DATASET);
   let response;
   try {
     response = await requestResponse(operationId);
   } catch (error) {
     response = {
-      success: false,
       requestId: operationId,
+      status: DATASET_FILE_STATUS.FAILED,
+      target: null,
+      jsonInfo: null,
       error: toUserErrorMessage(error, fallbackMessage),
     };
   }
   if (!response || typeof response !== 'object') {
     response = {
-      success: false,
       requestId: operationId,
+      status: DATASET_FILE_STATUS.FAILED,
+      target: null,
+      jsonInfo: null,
       error: fallbackMessage || USER_MESSAGES.JSON_READ_FAILED,
     };
   } else if (response.requestId === undefined || response.requestId === null) {
@@ -1586,7 +1585,7 @@ function chooseJsonFile() {
 }
 
 function changeDatasetByDirection(direction) {
-  const currentFilePath = currentDataset.value.path;
+  const currentFilePath = selectedDataset.value.path;
   if (!currentFilePath) {
     outputMessage(USER_MESSAGES.NO_DATASET);
     return;
@@ -1603,19 +1602,42 @@ function changeDatasetByDirection(direction) {
   );
 }
 
-function failDatasetLoad(operationId, message = '', response = null) {
-  if (message) outputMessage(message);
-  if (response) {
-    datasetLoadError.value = createDatasetLoadError(response, message);
-    selectInspectorPage(INSPECTOR_PAGE.DATASET);
+function selectDatasetForLoad(operationId, target) {
+  const transition = selectDatasetTarget(workflowState.value, operationId, target);
+  if (!transition.success) {
+    outputMessage(transition.error);
+    applyWorkflowTransition(failOperation(workflowState.value, operationId));
+    return false;
   }
-  applyWorkflowTransition(failOperation(workflowState.value, operationId));
+
+  applyWorkflowTransition(transition);
+  datasetLoadError.value = null;
+  resetWorkspaceForDatasetSelection();
+  return true;
+}
+
+function finishDatasetLoadFailure(operationId, { target = null, error = '' } = {}) {
+  if (error) outputMessage(error);
+  if (target) {
+    datasetLoadError.value = {
+      path: target.path,
+      message: error || USER_MESSAGES.JSON_READ_FAILED,
+    };
+    selectInspectorPage(INSPECTOR_PAGE.DATASET);
+    applyWorkflowTransition(rejectDataset(workflowState.value, operationId));
+  } else {
+    applyWorkflowTransition(failOperation(workflowState.value, operationId));
+  }
+  return false;
 }
 
 // Dataset loading
 async function processDatasetLoadResponse(response) {
   const operationId = response?.requestId;
   if (!isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) return false;
+
+  const target = normalizeDatasetTarget(response?.target);
+  if (target && !selectDatasetForLoad(operationId, target)) return false;
 
   const loadResult = await prepareDatasetLoad(response, {
     confirmLossyRepair: message => window.confirm(message),
@@ -1624,29 +1646,21 @@ async function processDatasetLoadResponse(response) {
     isCurrent: () => isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET),
   });
   if (loadResult.status === DATASET_LOAD_STATUS.STALE) return false;
-  if (loadResult.status === DATASET_LOAD_STATUS.CANCELED) {
-    failDatasetLoad(operationId, loadResult.error);
-    return false;
-  }
-  if (loadResult.status === DATASET_LOAD_STATUS.FAILED) {
-    failDatasetLoad(operationId, loadResult.error, response);
-    return false;
+  if (loadResult.status !== DATASET_LOAD_STATUS.READY) {
+    return finishDatasetLoadFailure(operationId, loadResult);
   }
 
-  const { preparedJson, jsonData } = loadResult;
+  const { preparedJson } = loadResult;
   if (!commitPreparedJsonProcess(preparedJson)) {
-    failDatasetLoad(operationId, '加载 JSON 失败：无法提交处理后的数据集。', response);
-    return false;
+    return finishDatasetLoadFailure(operationId, {
+      target: loadResult.target,
+      error: '加载 JSON 失败：无法提交处理后的数据集。',
+    });
   }
   if (!applyWorkflowTransition(commitDataset(workflowState.value, operationId))) return false;
 
   loadedProductType.value = preparedJson.productType;
-  currentDataset.value = {
-    path: jsonData.path,
-    fileName: jsonData.fileName || getFileNameFromPath(jsonData.path),
-  };
   datasetLoadError.value = null;
-  resetImageForDatasetChange();
   selectInspectorPage(INSPECTOR_PAGE.ANNOTATION);
   if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
 
@@ -2491,6 +2505,11 @@ function toggleQuadInteraction() {
 .status-dot.ready {
   background: #28a06b;
   box-shadow: 0 0 0 3px rgba(40, 160, 107, 0.12);
+}
+
+.status-dot.dataset-error {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(196, 53, 58, 0.12);
 }
 
 .status-dot.loading-dataset,

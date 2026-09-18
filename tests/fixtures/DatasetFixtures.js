@@ -1,4 +1,5 @@
 import { PRODUCT_SCHEMAS } from '../../src/renderer/src/utils/DatasetSchema.js';
+import { DATASET_FILE_STATUS } from '../../src/shared/DatasetFileResponse.js';
 
 export function createPicture(productType, imageSource, location = '0 0 10 0 10 10 0 10') {
   const schema = PRODUCT_SCHEMAS[productType];
@@ -23,13 +24,13 @@ export function createDbrPicture(overrides = {}) {
 }
 
 export function createJsonResponse(pictures, overrides = {}) {
+  const path = overrides.path ?? 'C:\\datasets\\sample.json';
+  const fileName = overrides.fileName ?? 'sample.json';
   return {
-    success: true,
-    jsonInfo: {
-      str: JSON.stringify({ Picture: pictures }),
-      path: 'C:\\datasets\\sample.json',
-      fileName: 'sample.json',
-      ...overrides,
-    },
+    requestId: overrides.requestId ?? 1,
+    status: DATASET_FILE_STATUS.READY,
+    target: { path, fileName },
+    jsonInfo: { str: overrides.str ?? JSON.stringify({ Picture: pictures }) },
+    error: '',
   };
 }

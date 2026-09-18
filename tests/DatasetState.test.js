@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   areImagePathsEquivalent,
+  clearDatasetProcess,
   commitPreparedJsonProcess,
   getAdjacentJsonImageTarget,
   getCurrentAnnotationView,
@@ -120,6 +121,16 @@ describe('Dataset state operations', () => {
     expect(invalid.success).toBe(false);
     expect(commitPreparedJsonProcess(invalid)).toBe(false);
     expect(getJsonFileInfo()).toEqual(before);
+  });
+
+  it('clears every committed dataset field when a new target is selected', () => {
+    loadDbrDataset();
+
+    clearDatasetProcess();
+
+    expect(getJsonFileInfo()).toEqual({ str: '{}', path: '' });
+    expect(getJsonImagePosition()).toEqual({ currentIndex: -1, total: 0 });
+    expect(getCurrentAnnotationView()).toEqual({ formattedItems: [], quads: [] });
   });
 
   it('requires explicit approval before preparing a dataset with lossy repairs', () => {

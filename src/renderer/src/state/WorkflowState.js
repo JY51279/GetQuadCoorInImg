@@ -1,5 +1,6 @@
 export const WORKFLOW_PHASE = Object.freeze({
   EMPTY: 'empty',
+  DATASET_ERROR: 'dataset-error',
   DATASET_READY: 'dataset-ready',
   READY: 'ready',
   LOADING_DATASET: 'loading-dataset',
@@ -13,7 +14,12 @@ export const WORKFLOW_OPERATION = Object.freeze({
   SAVE: 'save',
 });
 
-const STABLE_PHASES = new Set([WORKFLOW_PHASE.EMPTY, WORKFLOW_PHASE.DATASET_READY, WORKFLOW_PHASE.READY]);
+const STABLE_PHASES = new Set([
+  WORKFLOW_PHASE.EMPTY,
+  WORKFLOW_PHASE.DATASET_ERROR,
+  WORKFLOW_PHASE.DATASET_READY,
+  WORKFLOW_PHASE.READY,
+]);
 
 const OPERATION_PHASES = Object.freeze({
   [WORKFLOW_OPERATION.LOAD_DATASET]: WORKFLOW_PHASE.LOADING_DATASET,
@@ -35,6 +41,7 @@ const OPERATION_LABELS = Object.freeze({
 
 const PHASE_LABELS = Object.freeze({
   [WORKFLOW_PHASE.EMPTY]: '未加载图集',
+  [WORKFLOW_PHASE.DATASET_ERROR]: '图集加载失败',
   [WORKFLOW_PHASE.DATASET_READY]: '图集已加载',
   [WORKFLOW_PHASE.READY]: '可编辑',
   [WORKFLOW_PHASE.LOADING_DATASET]: '正在加载图集',
@@ -49,6 +56,7 @@ export function createWorkflowState(phase = WORKFLOW_PHASE.EMPTY) {
     operationId: 0,
     operation: null,
     datasetVersion: 0,
+    datasetTarget: null,
   };
 }
 
@@ -135,15 +143,52 @@ export function failOperation(state, operationId, fallbackPhase = null) {
   return completeOperation(state, operationId, fallbackPhase);
 }
 
+export function selectDatasetTarget(state, operationId, target) {
+  if (!isCurrentOperation(state, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) {
+    return failure(state, '图集加载操作已失效。');
+  }
+  if (typeof target?.path !== 'string' || target.path.length === 0) {
+    return failure(state, '图集目标无效。');
+  }
+  if (state.operation.target) {
+    return state.operation.target.path === target.path
+      ? success(state, operationId)
+      : failure(state, '图集加载操作已绑定其他目标。');
+  }
+
+  const datasetVersion = state.datasetVersion + 1;
+  return success(
+    {
+      ...state,
+      datasetVersion,
+      datasetTarget: target,
+      operation: {
+        ...state.operation,
+        target,
+        datasetVersion,
+      },
+    },
+    operationId,
+  );
+}
+
+export function rejectDataset(state, operationId) {
+  if (!isCurrentOperation(state, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) {
+    return failure(state, '图集加载操作已失效。');
+  }
+  if (!state.operation.target) return failure(state, '图集加载操作尚未选择目标。');
+  return completeOperation(state, operationId, WORKFLOW_PHASE.DATASET_ERROR);
+}
+
 export function commitDataset(state, operationId) {
   if (!isCurrentOperation(state, operationId, WORKFLOW_OPERATION.LOAD_DATASET)) {
     return failure(state, '图集加载操作已失效。');
   }
+  if (!state.operation.target) return failure(state, '图集加载操作尚未选择目标。');
   return success({
     ...state,
     phase: WORKFLOW_PHASE.DATASET_READY,
     operation: null,
-    datasetVersion: state.datasetVersion + 1,
   });
 }
 

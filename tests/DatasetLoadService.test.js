@@ -1,8 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DATASET_LOAD_STATUS, prepareDatasetLoad } from '../src/renderer/src/services/DatasetLoadService.js';
+import { DATASET_FILE_STATUS } from '../src/shared/DatasetFileResponse.js';
 import { createDbrPicture, createJsonResponse } from './fixtures/DatasetFixtures.js';
 
+const datasetTarget = Object.freeze({ path: 'C:/datasets/sample.json', fileName: 'sample.json' });
+
 describe('Dataset load service', () => {
+  it('keeps dialog cancellation distinct from selecting a dataset target', async () => {
+    await expect(
+      prepareDatasetLoad({
+        status: DATASET_FILE_STATUS.CANCELED,
+        target: null,
+        jsonInfo: null,
+        error: '',
+      }),
+    ).resolves.toEqual({
+      status: DATASET_LOAD_STATUS.CANCELED,
+      target: null,
+      error: '',
+    });
+  });
+
   it('prepares a dataset and normalizes resolved image paths', async () => {
     const resolveImagePaths = vi.fn(async () => ({
       success: true,
@@ -37,6 +55,7 @@ describe('Dataset load service', () => {
 
     expect(result).toEqual({
       status: DATASET_LOAD_STATUS.CANCELED,
+      target: datasetTarget,
       error: '已取消加载，原始数据未执行任何有损修复。',
     });
     expect(confirmLossyRepair).toHaveBeenCalledOnce();
@@ -81,7 +100,7 @@ describe('Dataset load service', () => {
       isCurrent: () => false,
     });
 
-    expect(result).toEqual({ status: DATASET_LOAD_STATUS.STALE });
+    expect(result).toEqual({ status: DATASET_LOAD_STATUS.STALE, target: datasetTarget });
     expect(saveJsonFile).not.toHaveBeenCalled();
   });
 
@@ -95,6 +114,7 @@ describe('Dataset load service', () => {
 
     expect(result).toEqual({
       status: DATASET_LOAD_STATUS.FAILED,
+      target: datasetTarget,
       error: '解析图片路径失败。',
     });
     expect(saveJsonFile).not.toHaveBeenCalled();
@@ -113,14 +133,22 @@ describe('Dataset load service', () => {
 
     expect(result).toEqual({
       status: DATASET_LOAD_STATUS.FAILED,
+      target: datasetTarget,
       error: '保存规范化后的 JSON 文件失败。',
     });
     expect(saveJsonFile).toHaveBeenCalledOnce();
   });
 
   it('returns a stable error for a failed file response', async () => {
-    await expect(prepareDatasetLoad({ success: false, error: 'denied' })).resolves.toEqual({
+    await expect(
+      prepareDatasetLoad({
+        status: DATASET_FILE_STATUS.FAILED,
+        target: { path: 'C:\\datasets\\broken.json', fileName: 'broken.json' },
+        error: 'denied',
+      }),
+    ).resolves.toEqual({
       status: DATASET_LOAD_STATUS.FAILED,
+      target: { path: 'C:/datasets/broken.json', fileName: 'broken.json' },
       error: '读取 JSON 文件失败。',
     });
   });

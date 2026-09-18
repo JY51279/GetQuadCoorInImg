@@ -9,6 +9,7 @@ import {
   saveJsonFileAtomically,
 } from './FileOperations.js';
 import { IMAGE_EXTENSIONS, prepareImageFile } from './ImageFileReader.js';
+import { DATASET_FILE_STATUS, createDatasetTarget } from '../shared/DatasetFileResponse.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../shared/UserMessages.js';
 
 export async function handleOpenImageDialog(_event, context) {
@@ -62,15 +63,23 @@ export async function handlePrepareImage(_event, request) {
 }
 
 async function createJsonFileResponse(filePath, requestId, fallbackMessage = USER_MESSAGES.JSON_READ_FAILED) {
+  const target = createDatasetTarget(filePath);
   try {
     const jsonInfo = await readJsonFile(filePath);
-    return { success: true, requestId, jsonInfo };
+    return {
+      requestId,
+      status: DATASET_FILE_STATUS.READY,
+      target: createDatasetTarget(jsonInfo.path, jsonInfo.fileName),
+      jsonInfo: { str: jsonInfo.str },
+      error: '',
+    };
   } catch (error) {
     console.error('Failed to read JSON file:', error);
     return {
-      success: false,
       requestId,
-      path: filePath,
+      status: DATASET_FILE_STATUS.FAILED,
+      target,
+      jsonInfo: null,
       error: toUserErrorMessage(error, fallbackMessage),
     };
   }
@@ -90,7 +99,13 @@ export async function handleOpenJsonDialog(_event, context) {
     });
 
     if (result.canceled || result.filePaths.length === 0) {
-      return { success: false, canceled: true, requestId };
+      return {
+        requestId,
+        status: DATASET_FILE_STATUS.CANCELED,
+        target: null,
+        jsonInfo: null,
+        error: '',
+      };
     }
 
     const filePath = result.filePaths[0];
@@ -101,8 +116,10 @@ export async function handleOpenJsonDialog(_event, context) {
   } catch (error) {
     console.error('Error while opening JSON file dialog:', error);
     return {
-      success: false,
       requestId,
+      status: DATASET_FILE_STATUS.FAILED,
+      target: null,
+      jsonInfo: null,
       error: toUserErrorMessage(error, USER_MESSAGES.JSON_OPEN_FAILED),
     };
   }
@@ -110,16 +127,16 @@ export async function handleOpenJsonDialog(_event, context) {
 
 export async function handleOpenAdjacentJson(_event, request) {
   const requestId = request?.requestId ?? null;
-  let targetPath = '';
   try {
-    targetPath = await getAdjacentJsonFilePath(request?.currentFilePath, request?.direction);
+    const targetPath = await getAdjacentJsonFilePath(request?.currentFilePath, request?.direction);
     return createJsonFileResponse(targetPath, requestId, USER_MESSAGES.DATASET_SWITCH_FAILED);
   } catch (error) {
     console.error('Failed to open adjacent JSON file:', error);
     return {
-      success: false,
       requestId,
-      path: targetPath,
+      status: DATASET_FILE_STATUS.FAILED,
+      target: null,
+      jsonInfo: null,
       error: toUserErrorMessage(error, USER_MESSAGES.DATASET_SWITCH_FAILED),
     };
   }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DATASET_FILE_STATUS } from '../src/shared/DatasetFileResponse.js';
 
 const electronMocks = vi.hoisted(() => ({
   showOpenDialog: vi.fn(),
@@ -60,9 +61,11 @@ describe('Main-process IPC handlers', () => {
     electronMocks.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
 
     await expect(handleOpenJsonDialog(null, { requestId: 41 })).resolves.toEqual({
-      success: false,
-      canceled: true,
       requestId: 41,
+      status: DATASET_FILE_STATUS.CANCELED,
+      target: null,
+      jsonInfo: null,
+      error: '',
     });
     expect(fileOperationMocks.readJsonFile).not.toHaveBeenCalled();
   });
@@ -76,9 +79,11 @@ describe('Main-process IPC handlers', () => {
     fileOperationMocks.readJsonFile.mockResolvedValue(jsonInfo);
 
     await expect(handleOpenJsonDialog(null, { requestId: 42 })).resolves.toEqual({
-      success: true,
       requestId: 42,
-      jsonInfo,
+      status: DATASET_FILE_STATUS.READY,
+      target: { path: jsonInfo.path, fileName: jsonInfo.fileName },
+      jsonInfo: { str: jsonInfo.str },
+      error: '',
     });
     expect(fileOperationMocks.rememberJsonDirectory).toHaveBeenCalledWith('C:/datasets/sample.json');
   });
@@ -91,9 +96,10 @@ describe('Main-process IPC handlers', () => {
     fileOperationMocks.readJsonFile.mockRejectedValue(new Error('read failed'));
 
     await expect(handleOpenJsonDialog(null, { requestId: 43 })).resolves.toEqual({
-      success: false,
       requestId: 43,
-      path: 'C:/datasets/broken.json',
+      status: DATASET_FILE_STATUS.FAILED,
+      target: { path: 'C:/datasets/broken.json', fileName: 'broken.json' },
+      jsonInfo: null,
       error: '读取 JSON 文件失败。',
     });
   });
@@ -102,8 +108,10 @@ describe('Main-process IPC handlers', () => {
     electronMocks.showOpenDialog.mockRejectedValue(new Error('dialog failed'));
 
     await expect(handleOpenJsonDialog(null, { requestId: 44 })).resolves.toEqual({
-      success: false,
       requestId: 44,
+      status: DATASET_FILE_STATUS.FAILED,
+      target: null,
+      jsonInfo: null,
       error: '打开 JSON 文件选择窗口失败。',
     });
   });
@@ -119,7 +127,13 @@ describe('Main-process IPC handlers', () => {
         direction: 'next',
         requestId: 45,
       }),
-    ).resolves.toEqual({ success: true, requestId: 45, jsonInfo });
+    ).resolves.toEqual({
+      requestId: 45,
+      status: DATASET_FILE_STATUS.READY,
+      target: { path: jsonInfo.path, fileName: jsonInfo.fileName },
+      jsonInfo: { str: jsonInfo.str },
+      error: '',
+    });
     expect(fileOperationMocks.getAdjacentJsonFilePath).toHaveBeenCalledWith('C:/datasets/atlas1.json', 'next');
     expect(fileOperationMocks.readJsonFile).toHaveBeenCalledWith(jsonInfo.path);
   });
@@ -134,9 +148,10 @@ describe('Main-process IPC handlers', () => {
         requestId: 46,
       }),
     ).resolves.toEqual({
-      success: false,
       requestId: 46,
-      path: '',
+      status: DATASET_FILE_STATUS.FAILED,
+      target: null,
+      jsonInfo: null,
       error: '当前目录没有其他图集。',
     });
   });
@@ -152,9 +167,10 @@ describe('Main-process IPC handlers', () => {
         requestId: 47,
       }),
     ).resolves.toEqual({
-      success: false,
       requestId: 47,
-      path: 'C:/datasets/broken.json',
+      status: DATASET_FILE_STATUS.FAILED,
+      target: { path: 'C:/datasets/broken.json', fileName: 'broken.json' },
+      jsonInfo: null,
       error: '切换图集失败。',
     });
   });
@@ -164,9 +180,11 @@ describe('Main-process IPC handlers', () => {
     fileOperationMocks.readJsonFile.mockResolvedValue(jsonInfo);
 
     await expect(handleReadJsonFile(null, { filePath: jsonInfo.path, requestId: 48 })).resolves.toEqual({
-      success: true,
       requestId: 48,
-      jsonInfo,
+      status: DATASET_FILE_STATUS.READY,
+      target: { path: jsonInfo.path, fileName: jsonInfo.fileName },
+      jsonInfo: { str: jsonInfo.str },
+      error: '',
     });
   });
 

@@ -121,6 +121,15 @@ export function commitPreparedJsonProcess(preparedJson) {
   return true;
 }
 
+export function clearDatasetProcess() {
+  datasetState.dataset = {};
+  datasetState.jsonFilePath = '';
+  datasetState.imagePaths = [];
+  datasetState.productSchema = {};
+  datasetState.currentImageIndex = -1;
+  clearCurrentAnnotationState();
+}
+
 export function getJsonImageDialogContext() {
   const contextIndex = datasetState.currentImageIndex >= 0 ? datasetState.currentImageIndex : 0;
   return {
