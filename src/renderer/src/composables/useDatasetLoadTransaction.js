@@ -38,6 +38,7 @@ export function useDatasetLoadTransaction({
   prepareLoad = prepareDatasetLoad,
   clearDataset = clearDatasetProcess,
   commitPreparedDataset = commitPreparedJsonProcess,
+  isActive = () => true,
 } = {}) {
   function applyWorkflowTransition(result) {
     if (!result.success) return false;
@@ -46,7 +47,7 @@ export function useDatasetLoadTransaction({
   }
 
   function isCurrent(operationId) {
-    return isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET);
+    return isActive() && isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_DATASET);
   }
 
   function closeFailedOperation(operationId, target) {

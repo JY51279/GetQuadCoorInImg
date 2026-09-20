@@ -37,7 +37,7 @@
           <div class="image-error-path">{{ imageLoadError.path || '未知路径' }}</div>
         </div>
       </div>
-      <div v-else-if="!canInteract" class="empty-image-state">请先在“图集与图片”页打开图集</div>
+      <div v-else-if="!hasImage" class="empty-image-state">请先在“图集与图片”页打开图集</div>
 
       <div
         v-if="indices2Show"
@@ -91,7 +91,7 @@
         @pointerdown.stop.prevent="startQuadEdgeTranslation($event, handle.edgeIndex)"
         @pointermove.stop.prevent="moveQuadTranslation"
         @pointerup.stop.prevent="finishQuadTranslation"
-        @pointercancel.stop.prevent="cancelQuadTranslation('pointer-cancel')"
+        @pointercancel.stop.prevent="cancelQuadTranslation('pointer-cancel', $event)"
         @lostpointercapture="handleQuadTranslationLostPointerCapture"
         @click.stop.prevent
       ></button>
@@ -107,7 +107,7 @@
         @pointerdown.stop.prevent="startWholeQuadTranslation"
         @pointermove.stop.prevent="moveQuadTranslation"
         @pointerup.stop.prevent="finishQuadTranslation"
-        @pointercancel.stop.prevent="cancelQuadTranslation('pointer-cancel')"
+        @pointercancel.stop.prevent="cancelQuadTranslation('pointer-cancel', $event)"
         @lostpointercapture="handleQuadTranslationLostPointerCapture"
         @click.stop.prevent
       >
@@ -132,7 +132,7 @@
         <span>P{{ handle.pointIndex + 1 }}</span>
       </button>
       <div
-        v-show="scale < gridLimit"
+        v-show="hasImage && canInteract && scale < gridLimit && realDot2GetZoom.x >= 0 && realDot2GetZoom.y >= 0"
         ref="zoomRectangle"
         class="rectangle"
         :style="{ transform: `scale(${scale})` }"
@@ -176,8 +176,15 @@
 </template>
 
 <script setup>
-import { computed, ref, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { computed, ref, shallowRef, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useResizeObserver } from '@vueuse/core';
+import {
+  POINTER_PHASE,
+  createPointerGestureState,
+  matchesGesturePointer,
+  transitionPointerGesture,
+} from '../state/PointerGestureState.js';
+import { capturePointer, releasePointer } from '../utils/PointerCapture.js';
 import { useCanvasPanGesture } from '../composables/useCanvasPanGesture.js';
 import { useImageViewport } from '../composables/useImageViewport.js';
 import { isValidQuadPoints, useQuadOverlay } from '../composables/useQuadOverlay.js';
@@ -205,10 +212,6 @@ const emits = defineEmits([
 ]);
 
 const props = defineProps({
-  imageObj: {
-    type: Object, // 指定类型为对象
-    default: null, // 默认值为 null
-  },
   canEdit: {
     type: Boolean,
     default: true,
@@ -298,8 +301,12 @@ const scaleTicks = Object.freeze(
     position: scaleToSliderPosition(value),
   })),
 );
-let imageSrc = '';
+const presentedSession = shallowRef(null);
+const presentedImage = computed(() => presentedSession.value?.image ?? null);
+const hasImage = computed(() => presentedSession.value !== null);
+let disposed = false;
 let viewportDrawFrameId = null;
+let drawGeneration = 0;
 
 // Annotation state
 const dotsCanvasCoord = ref([]);
@@ -312,8 +319,10 @@ const highlightQuadIndex = computed(() => props.activeQuadIndex);
 const mouseIsOverContainer = ref(false);
 const mouseCoord = reactive({ x: 0, y: 0 });
 const quadPointDrag = reactive({
-  active: false,
-  pointerId: null,
+  ...createPointerGestureState(),
+  get active() {
+    return this.phase !== POINTER_PHASE.IDLE;
+  },
   quadIndex: -1,
   pointIndex: -1,
   originalPoint: null,
@@ -379,7 +388,11 @@ const {
   handleLostPointerCapture: handleQuadTranslationLostPointerCapture,
 } = useQuadTranslationGesture({
   canStart: target =>
-    props.canEdit && props.canInteract && isQuadTranslationTargetEnabled(target) && !quadPointDrag.active,
+    props.canEdit &&
+    props.canInteract &&
+    isQuadTranslationTargetEnabled(target) &&
+    !quadPointDrag.active &&
+    !canvasPointerGesture.active,
   getQuad,
   getImageSize: () => ({ width: initImgWidth.value, height: initImgHeight.value }),
   getPointerImagePoint: getDraggedImagePoint,
@@ -429,13 +442,12 @@ const {
 
 defineExpose({
   resetPosition,
-  initImgInfo,
+  presentImageSession,
   toggleShowQuadIndex,
   addShowQuadIndex,
   clearShowQuadIndex,
   resetQuadsArray,
   redrawQuadOverlay: drawCanvasForShowQuads,
-  clearImage,
   focusQuad,
   focusPixelAtMouse,
   cancelQuadTranslation,
@@ -474,7 +486,7 @@ function deletePt(ptIndex) {
 }
 
 function deleteDot(index) {
-  if (!props.canEdit || canvasPointerGesture.dragging) return;
+  if (!props.canEdit || !props.canInteract || canvasPointerGesture.suppressClick) return;
   if (!deletePt(index)) {
     outputMessage('删除画布标点失败。');
   }
@@ -496,21 +508,20 @@ function getDotInfo(e) {
 
 function resetQuadPointDragState() {
   const pointerId = quadPointDrag.pointerId;
-  if (quadPointCaptureElement?.hasPointerCapture?.(pointerId)) {
-    quadPointCaptureElement.releasePointerCapture(pointerId);
-  }
+  const captureElement = quadPointCaptureElement;
   quadPointCaptureElement = null;
   Object.assign(quadPointDrag, {
-    active: false,
-    pointerId: null,
+    ...createPointerGestureState(),
     quadIndex: -1,
     pointIndex: -1,
     originalPoint: null,
     currentPoint: null,
   });
+  releasePointer(captureElement, pointerId);
 }
 
 function getDraggedImagePoint(event) {
+  if (!Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) return null;
   const localPoint = syncMouseCoord(event.clientX, event.clientY);
   if (localPoint === null || initImgWidth.value <= 0 || initImgHeight.value <= 0) return null;
 
@@ -528,6 +539,9 @@ function startQuadPointDrag(event, pointIndex) {
     !props.canInteract ||
     !props.quadInteractionCapabilities.pointDrag ||
     quadTranslation.active ||
+    quadPointDrag.active ||
+    canvasPointerGesture.active ||
+    !Number.isInteger(event.pointerId) ||
     event.button !== 0
   ) {
     return;
@@ -539,33 +553,39 @@ function startQuadPointDrag(event, pointIndex) {
 
   const originalPoint = { ...quad[pointIndex] };
   Object.assign(quadPointDrag, {
-    active: true,
-    pointerId: event.pointerId,
+    ...transitionPointerGesture(quadPointDrag, { type: 'start', pointerId: event.pointerId, immediate: true }),
     quadIndex,
     pointIndex,
     originalPoint,
     currentPoint: { ...originalPoint },
   });
   quadPointCaptureElement = event.currentTarget;
-  quadPointCaptureElement.setPointerCapture?.(event.pointerId);
+  if (!capturePointer(quadPointCaptureElement, event.pointerId)) resetQuadPointDragState();
 }
 
 function moveQuadPointDrag(event) {
-  if (!quadPointDrag.active || event.pointerId !== quadPointDrag.pointerId) return;
-
+  if (!matchesGesturePointer(quadPointDrag, event)) return false;
+  if (!props.canEdit || !props.canInteract || !props.quadInteractionCapabilities.pointDrag) {
+    cancelQuadPointDrag();
+    return false;
+  }
   const nextPoint = getDraggedImagePoint(event);
   const quad = getQuad(quadPointDrag.quadIndex);
-  if (nextPoint === null || !isValidQuadPoints(quad)) return;
-  if (nextPoint.x === quadPointDrag.currentPoint.x && nextPoint.y === quadPointDrag.currentPoint.y) return;
+  if (nextPoint === null || !isValidQuadPoints(quad)) return false;
+  if (nextPoint.x === quadPointDrag.currentPoint.x && nextPoint.y === quadPointDrag.currentPoint.y) return true;
 
-  setQuadPoint(quadPointDrag.quadIndex, quadPointDrag.pointIndex, nextPoint);
+  if (!setQuadPoint(quadPointDrag.quadIndex, quadPointDrag.pointIndex, nextPoint)) return false;
   quadPointDrag.currentPoint = { ...nextPoint };
   drawCanvasForShowQuads();
+  return true;
 }
 
 function finishQuadPointDrag(event) {
   if (!quadPointDrag.active || event.pointerId !== quadPointDrag.pointerId) return;
-  moveQuadPointDrag(event);
+  if (!moveQuadPointDrag(event)) {
+    cancelQuadPointDrag();
+    return;
+  }
 
   const payload = {
     quadIndex: quadPointDrag.quadIndex,
@@ -579,8 +599,8 @@ function finishQuadPointDrag(event) {
   if (changed) emits('commit-quad-point-drag', payload);
 }
 
-function cancelQuadPointDrag() {
-  if (!quadPointDrag.active) return;
+function cancelQuadPointDrag(event = null) {
+  if (!quadPointDrag.active || (event && !matchesGesturePointer(quadPointDrag, event))) return;
 
   setQuadPoint(quadPointDrag.quadIndex, quadPointDrag.pointIndex, quadPointDrag.originalPoint);
   resetQuadPointDragState();
@@ -589,20 +609,21 @@ function cancelQuadPointDrag() {
 
 function handleQuadDragKeyDown(event) {
   if (event.key !== 'Escape') return;
-  if (!quadPointDrag.active && !quadTranslation.active) return;
+  if (!quadPointDrag.active && !quadTranslation.active && !canvasPointerGesture.active) return;
   event.preventDefault();
   event.stopPropagation();
   if (quadPointDrag.active) cancelQuadPointDrag();
-  else cancelQuadTranslation('escape');
+  else if (quadTranslation.active) cancelQuadTranslation('escape');
+  else cancelCanvasPointerGesture();
 }
 
 // Base image rendering
 function isImageOutsideViewport() {
-  return isViewportImageOutside(imageSrc !== '');
+  return isViewportImageOutside(hasImage.value);
 }
 
 function drawCanvas() {
-  if (canvas.value === null || ctx.value === null || props.imageObj === null) {
+  if (canvas.value === null || ctx.value === null || presentedImage.value === null) {
     console.warn('Failed to draw the image canvas.');
     return false;
   }
@@ -626,7 +647,7 @@ function drawCanvas() {
   if (scale.value < gridLimit) {
     initCanvasSettings();
     ctx.value.drawImage(
-      props.imageObj,
+      presentedImage.value,
       sourceLTCoord.x,
       sourceLTCoord.y,
       sw,
@@ -670,7 +691,7 @@ function drawImgInGrid(sourceWidth, sourceHeight) {
   const space = pixelPitch.value;
   initCanvasSettings();
   ctx.value.drawImage(
-    props.imageObj,
+    presentedImage.value,
     sourceLTCoord.x,
     sourceLTCoord.y,
     sourceWidth,
@@ -707,13 +728,14 @@ watch(showQuadIndex, () => {
 
 // Viewport redraw scheduling
 function cancelScheduledViewPortDraw() {
+  drawGeneration += 1;
   if (viewportDrawFrameId === null) return;
   cancelAnimationFrame(viewportDrawFrameId);
   viewportDrawFrameId = null;
 }
 
 function drawViewPortNow() {
-  if (imageSrc === '') return;
+  if (disposed || !hasImage.value) return;
   drawCanvas();
   updateDotsCanvasCoord();
   drawCanvasForShowQuads();
@@ -721,9 +743,11 @@ function drawViewPortNow() {
 }
 
 function updateViewPortDraw() {
-  if (imageSrc === '' || viewportDrawFrameId !== null) return;
+  if (disposed || !hasImage.value || viewportDrawFrameId !== null) return;
 
+  const generation = drawGeneration;
   viewportDrawFrameId = requestAnimationFrame(() => {
+    if (disposed || generation !== drawGeneration) return;
     viewportDrawFrameId = null;
     drawViewPortNow();
   });
@@ -734,7 +758,7 @@ const { x, y } = useMouse();
 watch([x, y], ([newX, newY]) => {
   syncMouseCoord(newX, newY);
   if (!props.canInteract) {
-    endPanGesture();
+    cancelCanvasPointerGesture();
     return;
   }
   if (quadPointDrag.active || quadTranslation.active) return;
@@ -754,16 +778,19 @@ const mouseLeft = () => {
 function updateOffsetMoved(oldX, oldY, newX, newY) {
   const deltaX = newX - oldX;
   const deltaY = newY - oldY;
-  const result = panBy(deltaX, deltaY, { hasImage: imageSrc !== '' });
+  const result = panBy(deltaX, deltaY, { hasImage: hasImage.value });
   if (!result.changed) return;
   if (result.becameInvisible) outputMessage('图片已移出可见区域。');
   updateViewPortDraw();
 }
 
 function applyUserScale(newScale, { anchorAtPointer = false } = {}) {
+  if (!props.canInteract || !hasImage.value) return;
+  cancelQuadPointDrag();
+  cancelQuadTranslation('viewport-changed');
   const result = updateScale(newScale, {
     anchorPoint: anchorAtPointer ? mouseCoord : null,
-    hasImage: imageSrc !== '',
+    hasImage: hasImage.value,
   });
   if (!result.changed) return;
   if (result.becameInvisible) outputMessage('图片已移出可见区域。');
@@ -795,12 +822,24 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  disposed = true;
+  clearImage();
   window.removeEventListener('keydown', handleQuadDragKeyDown, true);
-  if (quadPointDrag.active) resetQuadPointDragState();
-  if (quadTranslation.active) cancelQuadTranslation('unmounted');
-  if (canvasPointerGesture.active) resetCanvasPointerGesture({ preserveDragResult: false });
-  cancelScheduledViewPortDraw();
 });
+
+function cancelAllGestures(reason) {
+  cancelQuadPointDrag();
+  cancelQuadTranslation(reason);
+  cancelCanvasPointerGesture();
+}
+
+watch(
+  () => props.canInteract,
+  canInteract => {
+    if (!canInteract) cancelAllGestures('interaction-disabled');
+  },
+  { flush: 'sync' },
+);
 
 watch(
   () => props.canEdit,
@@ -808,6 +847,7 @@ watch(
     if (!canEdit) cancelQuadPointDrag();
     if (!canEdit) cancelQuadTranslation('editing-disabled');
   },
+  { flush: 'sync' },
 );
 
 watch(
@@ -837,7 +877,7 @@ watch(canvasPixelRatio, () => {
 });
 
 function toggleDot(e) {
-  if (!props.canEdit || imageSrc === '' || canvasPointerGesture.dragging) {
+  if (!props.canEdit || !props.canInteract || !hasImage.value || canvasPointerGesture.suppressClick) {
     return;
   }
 
@@ -861,18 +901,20 @@ function toggleDot(e) {
 }
 
 function resetPosition() {
+  cancelAllGestures('viewport-reset');
   resetViewportPosition();
   updateViewPortDraw();
 }
 
 function applyViewTransform(transform) {
+  cancelAllGestures('viewport-changed');
   cancelScheduledViewPortDraw();
   applyTransform(transform);
   drawViewPortNow();
 }
 
 function focusQuad(quadIndex) {
-  if (imageSrc === '') return { success: false, error: '当前没有可用图片。' };
+  if (!hasImage.value) return { success: false, error: '当前没有可用图片。' };
   if (!Number.isInteger(quadIndex) || quadIndex < 0 || quadIndex >= getQuadCount()) {
     return { success: false, error: '当前没有激活的 Quad。' };
   }
@@ -888,7 +930,7 @@ function focusQuad(quadIndex) {
 }
 
 function focusPixelAtMouse() {
-  if (!props.canInteract || imageSrc === '') return { success: false, error: '当前没有可用图片。' };
+  if (!props.canInteract || !hasImage.value) return { success: false, error: '当前没有可用图片。' };
 
   syncMouseCoord(x.value, y.value);
   const mousePoint = { x: mouseCoord.x, y: mouseCoord.y };
@@ -930,10 +972,13 @@ function resetAnnotationOverlay() {
 }
 
 function clearImage() {
+  cancelAllGestures('image-cleared');
   cancelScheduledViewPortDraw();
-  imageSrc = '';
+  resetCanvasPointerGesture({ canceled: true });
+  presentedSession.value = null;
   clearViewport();
   resetAnnotationOverlay();
+  clearDots();
   realDot2GetZoom.value = { x: -1, y: -1 };
   hoveredPixelCanvasCoord.value = null;
 
@@ -945,38 +990,28 @@ function clearImage() {
   }
 }
 
-async function initImgInfo() {
-  cancelScheduledViewPortDraw();
-  clearViewport();
-  resetAnnotationOverlay();
-  clearDots();
+function presentImageSession(session) {
+  if (disposed) return false;
+  clearImage();
+  if (session === null) return true;
   try {
-    if (!props.imageObj?.src) {
-      console.warn('Failed to initialize image: the image source is unavailable.');
-      return false;
-    }
-
-    imageSrc = props.imageObj.src;
-    const img = props.imageObj;
-    setImageSize(img.naturalWidth || img.width, img.naturalHeight || img.height);
-    if (ctx.value !== null) {
-      ctx.value.clearRect(0, 0, ctx.value.canvas.width, ctx.value.canvas.height);
-    }
-    if (ctxQuad.value !== null) {
-      ctxQuad.value.clearRect(0, 0, ctxQuad.value.canvas.width, ctxQuad.value.canvas.height);
-    }
+    if (!session.image?.src || !session.displaySize) return false;
+    presentedSession.value = session;
+    setImageSize(session.displaySize.width, session.displaySize.height);
     ctx.value = canvas.value.getContext('2d');
     ctxQuad.value = canvasForShowQuads.value.getContext('2d');
+    if (!ctx.value || !ctxQuad.value) throw new Error('Canvas context is unavailable.');
     initCanvasSettings();
     fitImageToViewport();
     drawViewPortNow();
-    await nextTick();
     return true;
   } catch (error) {
-    console.error('Error in event handler:', error);
+    console.error('Failed to present image:', error);
+    clearImage();
     return false;
   }
 }
+
 const onWheel = event => {
   if (!props.canInteract) {
     return;
@@ -992,7 +1027,7 @@ function refreshZoomViewAtCurrentMouse() {
 }
 
 function updateZoomView(e) {
-  if (!props.canInteract || !props.imageObj || imageSrc === '') {
+  if (!props.canInteract || !presentedImage.value || !hasImage.value) {
     return;
   }
   const localPoint = syncMouseCoord(e.clientX, e.clientY);
@@ -1029,7 +1064,7 @@ function updateHoveredPixel(localPoint) {
 }
 
 function updateRealDots2GetZoom(localPoint) {
-  if (imageSrc === '') return;
+  if (!hasImage.value) return;
 
   let canvasCoord = { ...localPoint };
   transCanvas2RealInfo(realDot2GetZoom.value, canvasCoord);
@@ -1084,6 +1119,7 @@ async function updateViewSize() {
   if (imgContainerRef.value) {
     setViewportSize(imgContainerRef.value.clientWidth, imgContainerRef.value.clientHeight);
     await nextTick();
+    if (disposed) return;
 
     initCanvasSettings();
     updateViewPortDraw();

@@ -199,6 +199,10 @@ export function useImageViewport({ gridLimit = 10, scaleRange = 60, snapDistance
       );
     }
     scale.value = validScale;
+    if (panGestureActive) {
+      rawOffsetX = offsetX.value;
+      rawOffsetY = offsetY.value;
+    }
     return {
       changed: true,
       becameInvisible: !wasOutsideViewport && isImageOutsideViewport(hasImage),
@@ -209,6 +213,10 @@ export function useImageViewport({ gridLimit = 10, scaleRange = 60, snapDistance
     scale.value = transform.scale;
     offsetX.value = transform.offsetX;
     offsetY.value = transform.offsetY;
+    if (panGestureActive) {
+      rawOffsetX = offsetX.value;
+      rawOffsetY = offsetY.value;
+    }
   }
 
   function imageToCanvas(point, targetScale = scale.value) {

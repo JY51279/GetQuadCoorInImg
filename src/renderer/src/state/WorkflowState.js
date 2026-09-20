@@ -4,6 +4,7 @@ export const WORKFLOW_PHASE = Object.freeze({
   EMPTY: 'empty',
   DATASET_ERROR: 'dataset-error',
   DATASET_READY: 'dataset-ready',
+  RECOVERY_REQUIRED: 'recovery-required',
   READY: 'ready',
   LOADING_DATASET: 'loading-dataset',
   LOADING_IMAGE: 'loading-image',
@@ -20,6 +21,7 @@ const STABLE_PHASES = new Set([
   WORKFLOW_PHASE.EMPTY,
   WORKFLOW_PHASE.DATASET_ERROR,
   WORKFLOW_PHASE.DATASET_READY,
+  WORKFLOW_PHASE.RECOVERY_REQUIRED,
   WORKFLOW_PHASE.READY,
 ]);
 
@@ -45,6 +47,7 @@ const PHASE_LABELS = Object.freeze({
   [WORKFLOW_PHASE.EMPTY]: '未加载图集',
   [WORKFLOW_PHASE.DATASET_ERROR]: '图集加载失败',
   [WORKFLOW_PHASE.DATASET_READY]: '图集已加载',
+  [WORKFLOW_PHASE.RECOVERY_REQUIRED]: '需要重新加载图集',
   [WORKFLOW_PHASE.READY]: '可编辑',
   [WORKFLOW_PHASE.LOADING_DATASET]: '正在加载图集',
   [WORKFLOW_PHASE.LOADING_IMAGE]: '正在加载图片',
@@ -164,7 +167,7 @@ function getAllowedCompletionPhases(operation) {
     return new Set([operation.returnPhase, WORKFLOW_PHASE.DATASET_READY, WORKFLOW_PHASE.READY]);
   }
   if (operation.type === WORKFLOW_OPERATION.SAVE) {
-    return new Set([WORKFLOW_PHASE.READY, WORKFLOW_PHASE.DATASET_READY]);
+    return new Set([WORKFLOW_PHASE.READY, WORKFLOW_PHASE.RECOVERY_REQUIRED]);
   }
   return new Set();
 }

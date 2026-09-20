@@ -48,6 +48,7 @@ function createContext(overrides = {}) {
     clearDataset,
     onDatasetTargetSelected,
     commitPreparedDataset,
+    isActive: overrides.isActive,
   });
   return {
     transaction,
@@ -60,6 +61,24 @@ function createContext(overrides = {}) {
 }
 
 describe('Dataset load transaction', () => {
+  it('does not commit a prepared dataset after its owner is disposed', async () => {
+    let active = true;
+    let resolve;
+    const context = createContext({
+      isActive: () => active,
+      prepareLoad: () =>
+        new Promise(done => {
+          resolve = done;
+        }),
+    });
+    const pending = context.transaction.run(async () => createResponse());
+    await Promise.resolve();
+    active = false;
+    resolve({ status: DATASET_LOAD_STATUS.READY, preparedJson: PREPARED_DATASET });
+    await expect(pending).resolves.toMatchObject({ status: DATASET_LOAD_TRANSACTION_STATUS.STALE });
+    expect(context.commitPreparedDataset).not.toHaveBeenCalled();
+  });
+
   it('keeps the current dataset when selection is canceled before a target is chosen', async () => {
     const context = createContext({
       prepareLoad: vi.fn(async () => ({

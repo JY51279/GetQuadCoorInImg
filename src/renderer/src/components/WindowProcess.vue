@@ -104,7 +104,6 @@
     <main class="workspace-main">
       <ImageView
         ref="imgContainerRef"
-        :image-obj="imageObj"
         :can-edit="canOperate"
         :can-interact="canInteractWithImage"
         :is-loading="isImageLoading"
@@ -455,7 +454,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { computed, ref, shallowRef, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useDevicePixelRatio } from '@vueuse/core';
 import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
@@ -544,6 +543,9 @@ import {
 import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
 import { createCanceledDatasetFileResponse } from '../../../shared/DatasetFileResponse.js';
 
+import { belongsToDataset, createImageSession } from '../state/ImageSession.js';
+
+let disposed = false;
 const ipcRenderer = window.electron.ipcRenderer;
 const { save: saveJsonFileRequest } = createJsonFileService({
   invoke: (channel, request) => ipcRenderer.invoke(channel, request),
@@ -583,12 +585,12 @@ const imagePositionView = ref({ currentIndex: -1, total: 0 });
 const jumpImageIndex = ref('');
 const isQuadLocationPropagationOpen = ref(false);
 const quadLocationPropagationCount = ref(0);
-const imageObj = ref(new Image());
-const imgFileName = ref(null);
+const imageSession = shallowRef(null);
+const imageObj = computed(() => imageSession.value?.image ?? null);
+const imgFileName = computed(() => imageSession.value?.fileName ?? '');
 const loadedProductType = ref('');
-let imgFilePath = '';
-const imageCoordinateScale = ref({ x: 1, y: 1 });
-const currentImageOriginalSize = ref(null);
+const imageCoordinateScale = computed(() => imageSession.value?.coordinateScale ?? { x: 1, y: 1 });
+const currentImageOriginalSize = computed(() => imageSession.value?.originalSize ?? null);
 let zoomSourceOrigin = null;
 const quadInteractionMode = ref(QUAD_INTERACTION_MODE.DEFAULT);
 const quadInteractionCapabilities = computed(() => getQuadInteractionCapabilities(quadInteractionMode.value));
@@ -603,7 +605,14 @@ const workflowState = ref(createWorkflowState());
 const selectedDataset = computed(() => workflowState.value.datasetTarget ?? { path: '', fileName: '' });
 const jsonFileName = computed(() => selectedDataset.value.fileName);
 const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
-const canOperate = computed(() => canEditWorkflow(workflowState.value));
+const hasCurrentImageSession = computed(() => belongsToDataset(imageSession.value, workflowState.value.datasetVersion));
+const canOperate = computed(
+  () =>
+    canEditWorkflow(workflowState.value) &&
+    hasCurrentImageSession.value &&
+    imageSession.value.imageIndex >= 0 &&
+    imageSession.value.imageIndex === imagePositionView.value.currentIndex,
+);
 const { run: executeSaveTransaction } = useDatasetSaveTransaction({
   workflowState,
   getCurrentImageIndex: getCurrentJsonImageIndex,
@@ -615,6 +624,7 @@ const { run: executeDatasetLoadTransaction } = useDatasetLoadTransaction({
   resolveImagePaths: request => ipcRenderer.invoke('resolve-json-image-paths', request),
   saveJsonFile: saveJsonFileInfo,
   onDatasetTargetSelected: handleDatasetTargetSelected,
+  isActive: () => !disposed,
 });
 const {
   selectedDots,
@@ -631,7 +641,12 @@ const canLoadDataset = computed(() => canStartOperation(workflowState.value, WOR
 const canNavigateDataset = computed(() => canLoadDataset.value && Boolean(selectedDataset.value.path));
 const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
-const canInteractWithImage = computed(() => !isImageLoading.value && Boolean(imageObj.value?.src));
+const canInteractWithImage = computed(
+  () =>
+    !workflowBusy.value &&
+    hasCurrentImageSession.value &&
+    [WORKFLOW_PHASE.READY, WORKFLOW_PHASE.DATASET_READY].includes(workflowState.value.phase),
+);
 const canFocusQuad = computed(
   () => canInteractWithImage.value && activeQuadIndex.value >= 0 && activeQuadIndex.value < quadTotal.value,
 );
@@ -673,6 +688,7 @@ const workflowStatusText = computed(() => {
     [WORKFLOW_PHASE.EMPTY]: '等待打开图集',
     [WORKFLOW_PHASE.DATASET_ERROR]: '图集加载失败',
     [WORKFLOW_PHASE.DATASET_READY]: '图集已加载',
+    [WORKFLOW_PHASE.RECOVERY_REQUIRED]: '需要重新加载图集',
     [WORKFLOW_PHASE.READY]: '可以编辑',
     [WORKFLOW_PHASE.LOADING_DATASET]: '正在打开图集…',
     [WORKFLOW_PHASE.LOADING_IMAGE]: '正在加载图片…',
@@ -769,6 +785,9 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  disposed = true;
+  resetImageRequestState();
+  imageSession.value = null;
   window.removeEventListener('keydown', handleKeyDown);
   clearNotifications();
 });
@@ -896,8 +915,10 @@ function focusPixelAtMouse() {
 // JSON Operations
 async function runSaveTransaction(mutate, onCompleted = () => {}) {
   const result = await executeSaveTransaction(mutate);
+  if (disposed) return false;
   if (result.rollbackFailed) {
     outputMessage('操作失败后无法恢复 JSON 状态，请重新加载图集。');
+    clearCurrentImage();
     clearCurrentAnnotations('JSON 状态不可用，请重新加载图集。');
   }
   if (result.error) outputMessage(result.error);
@@ -1233,40 +1254,19 @@ function refreshImagePositionView() {
 }
 
 // Dataset and image initialization
-async function initProcessInfo(jsonImageIndex = null) {
-  try {
-    if (!imageObj.value || imageObj.value.src === '') {
-      outputMessage('图片初始化失败。');
-      return false;
-    } else {
-      await nextTick();
-      if (!(await imgContainerRef.value.initImgInfo())) return false;
-    }
-
-    const resetPictureResult = resetPicJson(imgFilePath, jsonImageIndex);
-    if (!resetPictureResult.success) {
-      clearCurrentAnnotations(
-        resetPictureResult.error ||
-          (imgFilePath
-            ? `找不到与以下图片路径匹配的 JSON 数据：\n${imgFilePath}`
-            : '找不到与当前图片匹配的 JSON 数据。'),
-      );
-      refreshImagePositionView();
-      jumpImageIndex.value = '';
-      return false;
-    }
-    refreshCurrentAnnotations({ resetSelection: true, resetVisibility: true });
-
-    const position = refreshImagePositionView();
-    jumpImageIndex.value = position.currentIndex + 1;
-    return true;
-  } catch (error) {
-    console.error(`Error name: ${error.name}`);
-    console.error(`Error message: ${error.message}`);
-    console.error(`Stack trace: ${error.stack}`);
-    outputMessage('初始化图片和标注数据失败。');
+function initProcessInfo(session, jsonImageIndex = null) {
+  const resetPictureResult = resetPicJson(session.path, jsonImageIndex);
+  imageSession.value = Object.freeze({ ...session, imageIndex: getCurrentJsonImageIndex() });
+  if (!resetPictureResult.success) {
+    clearCurrentAnnotations(resetPictureResult.error || '找不到与当前图片匹配的 JSON 数据。');
+    refreshImagePositionView();
+    jumpImageIndex.value = '';
     return false;
   }
+  refreshCurrentAnnotations({ resetSelection: true, resetVisibility: true });
+  const position = refreshImagePositionView();
+  jumpImageIndex.value = position.currentIndex + 1;
+  return true;
 }
 
 function renderAnnotationQuads({
@@ -1390,7 +1390,7 @@ function sendImageFileRequest(path, requestId) {
 async function requestPreparedImage(channel, request) {
   const result = await executeImageRequest(channel, request, {
     isOperationCurrent: operationId =>
-      isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_IMAGE),
+      !disposed && isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_IMAGE),
   });
   await handleImageRequestResult(result);
 }
@@ -1424,14 +1424,15 @@ function startDatasetImageRequest(target, direction, previousRequest = null) {
 
 function handleImageRequestFailure(errorMessage, failedPath = '') {
   const failedRequest = getActiveRequest();
+  if (!isCurrentImageRequest(failedRequest)) return;
   outputMessage(`打开图片失败${failedPath ? `：${failedPath}` : '。'}`);
   outputMessage(errorMessage || USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR);
 
-  const canRestorePreviousImage = operationReturnsTo(
-    workflowState.value,
-    failedRequest?.operationId,
-    WORKFLOW_PHASE.READY,
-  );
+  const canRestorePreviousImage =
+    hasCurrentImageSession.value &&
+    imageSession.value.imageIndex >= 0 &&
+    imageSession.value.imageIndex === getCurrentJsonImageIndex() &&
+    operationReturnsTo(workflowState.value, failedRequest.operationId, WORKFLOW_PHASE.READY);
   const failurePlan = planImageRequestFailure({ canRestorePreviousImage });
   if (failurePlan.action === IMAGE_FAILURE_ACTION.RETRY) {
     outputMessage(`正在跳过不可用图片，并尝试 JSON 中的第 ${failurePlan.target.index + 1} 项。`);
@@ -1444,30 +1445,40 @@ function handleImageRequestFailure(errorMessage, failedPath = '') {
     jumpImageIndex.value = position.currentIndex >= 0 ? position.currentIndex + 1 : '';
     imageLoadError.value = null;
   } else {
-    imageObj.value = null;
-    imgFileName.value = '';
-    imgFilePath = '';
-    currentImageOriginalSize.value = null;
-    refreshImagePositionView();
-    jumpImageIndex.value = '';
+    clearCurrentImage();
     imageLoadError.value = {
       path: failedPath,
       message: errorMessage || USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR,
     };
-    resetDots();
-    resetZoomPreview();
   }
   if (failedRequest?.operationId) {
-    applyWorkflowTransition(failOperation(workflowState.value, failedRequest.operationId));
+    applyWorkflowTransition(
+      failOperation(
+        workflowState.value,
+        failedRequest.operationId,
+        canRestorePreviousImage ? null : WORKFLOW_PHASE.DATASET_READY,
+      ),
+    );
   }
   resetImageRequestState();
 }
 
-async function handleImageRequestResult(result) {
-  if (result.status === IMAGE_REQUEST_STATUS.STALE) return;
+function isCurrentImageRequest(request) {
+  return (
+    !disposed &&
+    request &&
+    getActiveRequest()?.requestId === request.requestId &&
+    isCurrentOperation(workflowState.value, request.operationId, WORKFLOW_OPERATION.LOAD_IMAGE) &&
+    workflowState.value.operation.datasetVersion === workflowState.value.datasetVersion
+  );
+}
+
+function handleImageRequestResult(result) {
+  if (result.status === IMAGE_REQUEST_STATUS.STALE || !isCurrentImageRequest(result.request)) return;
+  const { request } = result;
   if (result.status === IMAGE_REQUEST_STATUS.CANCELED) {
-    applyWorkflowTransition(failOperation(workflowState.value, result.request.operationId));
-    resetImageRequestState();
+    applyWorkflowTransition(failOperation(workflowState.value, request.operationId));
+    resetImageRequestState(request.requestId);
     return;
   }
   if (result.status === IMAGE_REQUEST_STATUS.FAILED) {
@@ -1476,19 +1487,37 @@ async function handleImageRequestResult(result) {
   }
   if (result.status !== IMAGE_REQUEST_STATUS.READY) return;
 
-  const { request, image, imageInfo, coordinateScale } = result;
-  resetZoomPreview();
-  imageObj.value = image;
-  imageCoordinateScale.value = coordinateScale;
-  currentImageOriginalSize.value = {
-    width: imageInfo.originalWidth,
-    height: imageInfo.originalHeight,
-  };
-  imgFileName.value = imageInfo.fileName;
-  imgFilePath = imageInfo.path;
+  const previousSession = imageSession.value;
+  let presentationAttempted = false;
+  let isReady;
+  try {
+    const session = createImageSession({ ...result, datasetVersion: workflowState.value.datasetVersion });
+    // Synchronous presentation is the single canvas lifecycle boundary: no prop/nextTick ordering.
+    presentationAttempted = true;
+    if (imgContainerRef.value?.presentImageSession(session) !== true) throw new Error('图片画布初始化失败。');
+    resetDots();
+    resetZoomPreview();
+    isReady = initProcessInfo(
+      session,
+      request.source === IMAGE_REQUEST_SOURCE.DATASET ? request.targetImageIndex : null,
+    );
+  } catch (error) {
+    console.error('Failed to present image session:', error);
+    if (presentationAttempted) {
+      try {
+        if (!previousSession || imgContainerRef.value?.presentImageSession(previousSession) !== true) {
+          clearCurrentImage();
+        } else {
+          initProcessInfo(previousSession, previousSession.imageIndex);
+        }
+      } catch {
+        clearCurrentImage();
+      }
+    }
+    handleImageRequestFailure(toUserErrorMessage(error, '图片初始化失败。'), result.imageInfo?.path);
+    return;
+  }
   imageLoadError.value = null;
-  const requestedJsonImageIndex = request.source === IMAGE_REQUEST_SOURCE.DATASET ? request.targetImageIndex : null;
-  const isReady = await initProcessInfo(requestedJsonImageIndex);
   const imageOperationCompleted = applyWorkflowTransition(
     completeOperation(
       workflowState.value,
@@ -1496,37 +1525,38 @@ async function handleImageRequestResult(result) {
       isReady ? WORKFLOW_PHASE.READY : WORKFLOW_PHASE.DATASET_READY,
     ),
   );
-  resetImageRequestState();
+  resetImageRequestState(request.requestId);
   if (imageOperationCompleted && isReady) {
     synchronizeQuadFocusSelection({ forceFocus: true });
     reportWorkspaceSessionRecord(
       workspaceSessionService.recordImage({
         datasetPath: selectedDataset.value.path,
-        imagePath: imageInfo.path,
-        imageIndex: getCurrentJsonImageIndex(),
+        imagePath: imageSession.value.path,
+        imageIndex: imageSession.value.imageIndex,
       }),
     );
   }
   outputMessage(isReady ? '图片加载成功。' : '图片已加载，但没有找到匹配的 JSON 数据。');
 }
 
+function clearCurrentImage() {
+  imageSession.value = null;
+  imgContainerRef.value?.presentImageSession?.(null);
+  resetPicJson('');
+  resetDots();
+  resetZoomPreview();
+  clearCurrentAnnotations();
+  refreshImagePositionView();
+  jumpImageIndex.value = '';
+}
+
 function resetImageForDatasetChange() {
   viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.DATASET_CHANGED);
   clearJsonHistory();
-  imageObj.value = null;
-  imgFileName.value = '';
-  imgFilePath = '';
-  imageCoordinateScale.value = { x: 1, y: 1 };
-  currentImageOriginalSize.value = null;
   imageLoadError.value = null;
   resetImageRequestState();
-  refreshImagePositionView();
+  clearCurrentImage();
   quadLocationPropagationCount.value = imagePositionView.value.total;
-  jumpImageIndex.value = '';
-  resetDots();
-  resetZoomPreview();
-  imgContainerRef.value?.clearImage?.();
-  clearCurrentAnnotations();
 }
 
 function resetViewForDatasetSelection() {
@@ -1560,6 +1590,7 @@ async function restoreWorkspaceSession() {
   return runDatasetLoad(
     async requestId => {
       const loaded = await workspaceSessionService.get();
+      if (disposed) return createCanceledDatasetFileResponse(requestId);
       if (!loaded.success) {
         console.error(loaded.error);
         return createCanceledDatasetFileResponse(requestId);
@@ -1581,7 +1612,7 @@ async function restoreWorkspaceSession() {
 
 async function runDatasetLoad(requestDataset, { fallbackMessage, getInitialImageTarget = null } = {}) {
   const result = await executeDatasetLoadTransaction(requestDataset, { fallbackMessage });
-  if (result.status === DATASET_LOAD_TRANSACTION_STATUS.STALE) return false;
+  if (disposed || result.status === DATASET_LOAD_TRANSACTION_STATUS.STALE) return false;
   if (result.status !== DATASET_LOAD_TRANSACTION_STATUS.READY) {
     if (result.error) outputMessage(result.error);
     if (result.target) {

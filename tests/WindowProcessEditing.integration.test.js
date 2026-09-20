@@ -13,7 +13,7 @@ const ipcRenderer = { invoke: vi.fn() };
 const ImageViewStub = defineComponent({
   name: 'ImageView',
   props: ['canEdit', 'activeQuadIndex'],
-  methods: { initImgInfo: async () => true },
+  methods: { presentImageSession: () => true },
   render: () => h('div'),
 });
 const JsonViewStub = defineComponent({

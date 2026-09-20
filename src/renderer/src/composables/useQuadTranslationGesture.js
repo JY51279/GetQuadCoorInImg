@@ -1,10 +1,16 @@
 import { reactive } from 'vue';
+import {
+  POINTER_PHASE,
+  createPointerGestureState,
+  matchesGesturePointer,
+  transitionPointerGesture,
+} from '../state/PointerGestureState.js';
+import { capturePointer, releasePointer } from '../utils/PointerCapture.js';
 import { calculateClampedQuadTranslation, normalizeQuadTranslationTarget } from '../utils/QuadGeometry.js';
 
 function createIdleState() {
   return {
-    active: false,
-    pointerId: null,
+    ...createPointerGestureState(),
     quadIndex: -1,
     target: null,
     startPoint: null,
@@ -16,6 +22,7 @@ function createIdleState() {
 
 export function useQuadTranslationGesture({
   canStart = () => false,
+  canContinue = canStart,
   getQuad = () => null,
   getImageSize = () => null,
   getPointerImagePoint = () => null,
@@ -24,12 +31,18 @@ export function useQuadTranslationGesture({
   onCommit = () => {},
   onCancel = () => {},
 } = {}) {
-  const state = reactive(createIdleState());
+  const state = reactive({
+    ...createIdleState(),
+    get active() {
+      return this.phase !== POINTER_PHASE.IDLE;
+    },
+  });
   let captureElement = null;
 
   function releaseCapture(pointerId) {
-    if (captureElement?.hasPointerCapture?.(pointerId)) captureElement.releasePointerCapture(pointerId);
+    const element = captureElement;
     captureElement = null;
+    releasePointer(element, pointerId);
   }
 
   function resetState() {
@@ -43,6 +56,7 @@ export function useQuadTranslationGesture({
       normalizedTarget === null ||
       !canStart(normalizedTarget) ||
       event?.button !== 0 ||
+      !Number.isInteger(event.pointerId) ||
       !Number.isInteger(quadIndex) ||
       quadIndex < 0
     ) {
@@ -53,11 +67,10 @@ export function useQuadTranslationGesture({
     const startPoint = getPointerImagePoint(event);
     const imageSize = getImageSize();
     const initialTranslation = calculateClampedQuadTranslation(sourceQuad, { x: 0, y: 0 }, imageSize, normalizedTarget);
-    if (startPoint === null || initialTranslation === null) return false;
+    if (!Number.isFinite(startPoint?.x) || !Number.isFinite(startPoint?.y) || initialTranslation === null) return false;
 
     Object.assign(state, {
-      active: true,
-      pointerId: event.pointerId,
+      ...transitionPointerGesture(state, { type: 'start', pointerId: event.pointerId, immediate: true }),
       quadIndex,
       target: normalizedTarget,
       startPoint: { ...startPoint },
@@ -66,16 +79,24 @@ export function useQuadTranslationGesture({
       delta: { x: 0, y: 0 },
     });
     captureElement = event.currentTarget ?? null;
-    captureElement?.setPointerCapture?.(event.pointerId);
+    if (!capturePointer(captureElement, event.pointerId)) {
+      resetState();
+      captureElement = null;
+      return false;
+    }
     onStart({ quadIndex, target: { ...normalizedTarget } });
     return true;
   }
 
   function move(event) {
-    if (!state.active || event?.pointerId !== state.pointerId) return false;
+    if (!matchesGesturePointer(state, event)) return false;
 
+    if (!canContinue(state.target)) {
+      cancel('interaction-disabled');
+      return false;
+    }
     const currentPoint = getPointerImagePoint(event);
-    if (currentPoint === null) return false;
+    if (!Number.isFinite(currentPoint?.x) || !Number.isFinite(currentPoint?.y)) return false;
     const translation = calculateClampedQuadTranslation(
       state.originalPoints,
       {
@@ -95,8 +116,11 @@ export function useQuadTranslationGesture({
   }
 
   function finish(event) {
-    if (!state.active || event?.pointerId !== state.pointerId) return false;
-    move(event);
+    if (!matchesGesturePointer(state, event)) return false;
+    if (!move(event)) {
+      cancel('invalid-final-point');
+      return false;
+    }
 
     const payload = {
       quadIndex: state.quadIndex,
@@ -106,8 +130,9 @@ export function useQuadTranslationGesture({
     };
     const originalPoints = state.originalPoints.map(point => ({ ...point }));
     const changed = payload.imageDelta.x !== 0 || payload.imageDelta.y !== 0;
-    releaseCapture(state.pointerId);
+    const pointerId = state.pointerId;
     resetState();
+    releaseCapture(pointerId);
 
     if (changed) onCommit(payload);
     else {
@@ -117,15 +142,16 @@ export function useQuadTranslationGesture({
     return true;
   }
 
-  function cancel(reason = 'canceled') {
-    if (!state.active) return false;
+  function cancel(reason = 'canceled', event = null) {
+    if (!state.active || (event && !matchesGesturePointer(state, event))) return false;
 
     const quadIndex = state.quadIndex;
     const target = { ...state.target };
     const originalPoints = state.originalPoints.map(point => ({ ...point }));
-    previewQuad(quadIndex, originalPoints);
-    releaseCapture(state.pointerId);
+    const pointerId = state.pointerId;
     resetState();
+    releaseCapture(pointerId);
+    previewQuad(quadIndex, originalPoints);
     onCancel({ quadIndex, target, reason });
     return true;
   }

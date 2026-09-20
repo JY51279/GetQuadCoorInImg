@@ -66,7 +66,7 @@ export function useDatasetSaveTransaction({
         // A failed rollback is reported through the structured transaction result.
       }
       rollbackFailed = true;
-      completionPhase = WORKFLOW_PHASE.DATASET_READY;
+      completionPhase = WORKFLOW_PHASE.RECOVERY_REQUIRED;
       return false;
     }
 
@@ -76,7 +76,7 @@ export function useDatasetSaveTransaction({
         mutationResult = mutate();
       } catch (error) {
         rollbackFailed = true;
-        completionPhase = WORKFLOW_PHASE.DATASET_READY;
+        completionPhase = WORKFLOW_PHASE.RECOVERY_REQUIRED;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
           error: toUserErrorMessage(error, 'JSON 操作失败。'),
           rollbackFailed,
@@ -84,7 +84,7 @@ export function useDatasetSaveTransaction({
       }
       if (!mutationResult || mutationResult.success !== true) {
         rollbackFailed = mutationResult?.rollbackFailed === true;
-        if (rollbackFailed) completionPhase = WORKFLOW_PHASE.DATASET_READY;
+        if (rollbackFailed) completionPhase = WORKFLOW_PHASE.RECOVERY_REQUIRED;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
           error: mutationResult?.error || 'JSON 操作失败。',
           rollbackFailed,
@@ -92,7 +92,7 @@ export function useDatasetSaveTransaction({
       }
       if (typeof mutationResult.changed !== 'boolean') {
         rollbackFailed = true;
-        completionPhase = WORKFLOW_PHASE.DATASET_READY;
+        completionPhase = WORKFLOW_PHASE.RECOVERY_REQUIRED;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
           error: 'JSON 操作返回了无效的变更结果。',
           rollbackFailed,
@@ -104,7 +104,7 @@ export function useDatasetSaveTransaction({
       }
       if (!mutationResult.receipt) {
         rollbackFailed = true;
-        completionPhase = WORKFLOW_PHASE.DATASET_READY;
+        completionPhase = WORKFLOW_PHASE.RECOVERY_REQUIRED;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
           error: 'JSON 操作修改了数据，但没有返回可用于回滚的变更记录。',
           rollbackFailed,

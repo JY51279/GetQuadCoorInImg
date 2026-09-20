@@ -57,13 +57,6 @@ async function mountReadyImage(overrides = {}) {
   const wrapper = mount(ImageView, {
     attachTo: document.body,
     props: {
-      imageObj: {
-        src: 'prepared-image',
-        width: 100,
-        height: 100,
-        naturalWidth: 100,
-        naturalHeight: 100,
-      },
       canEdit: true,
       canInteract: true,
       activeQuadIndex: 0,
@@ -72,12 +65,147 @@ async function mountReadyImage(overrides = {}) {
       ...overrides,
     },
   });
-  expect(await wrapper.vm.initImgInfo()).toBe(true);
+  expect(
+    wrapper.vm.presentImageSession({
+      image: { src: 'prepared-image', naturalWidth: 100, naturalHeight: 100 },
+      displaySize: { width: 100, height: 100 },
+    }),
+  ).toBe(true);
   await nextTick();
   return wrapper;
 }
 
 describe('ImageView interactions', () => {
+  it.each(['.quad-point-handle', '.quad-translate-handle', '.quad-edge-handle'])(
+    'restores %s when all image interaction is disabled',
+    async selector => {
+      const wrapper = await mountReadyImage();
+      wrapper.vm.resetQuadsArray([QUAD], 1);
+      await nextTick();
+      const handle = wrapper.find(selector);
+      const startX = Number.parseFloat(handle.element.style.left);
+      const startY = Number.parseFloat(handle.element.style.top);
+      handle.element.setPointerCapture = vi.fn();
+      handle.element.hasPointerCapture = () => true;
+      handle.element.releasePointerCapture = vi.fn();
+      await handle.trigger('pointerdown', { button: 0, pointerId: 1, clientX: startX, clientY: startY });
+      await handle.trigger('pointermove', { pointerId: 1, clientX: startX + 20, clientY: startY + 10 });
+      await wrapper.setProps({ canInteract: false });
+      expect(handle.element.releasePointerCapture).toHaveBeenCalledWith(1);
+      expect(Number.parseFloat(handle.element.style.left)).toBe(startX);
+      expect(Number.parseFloat(handle.element.style.top)).toBe(startY);
+      await handle.trigger('pointerup', { pointerId: 1, clientX: startX + 20, clientY: startY + 10 });
+      expect(wrapper.emitted('commit-quad-point-drag')).toBeUndefined();
+      expect(wrapper.emitted('commit-quad-translation')).toBeUndefined();
+      wrapper.unmount();
+    },
+  );
+
+  it('does not commit a point preview if the release coordinates are invalid', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    await nextTick();
+    const handle = wrapper.find('.quad-point-handle');
+    const originalLeft = handle.element.style.left;
+    await handle.trigger('pointerdown', { button: 0, pointerId: 1, clientX: 20, clientY: 20 });
+    await handle.trigger('pointermove', { pointerId: 1, clientX: 40, clientY: 30 });
+    const previewLeft = handle.element.style.left;
+    await handle.trigger('pointercancel', { pointerId: 2 });
+    expect(handle.element.style.left).toBe(previewLeft);
+    expect(previewLeft).not.toBe(originalLeft);
+    await handle.trigger('pointerup', { pointerId: 1, clientX: NaN, clientY: 30 });
+    expect(handle.element.style.left).toBe(originalLeft);
+    expect(wrapper.emitted('commit-quad-point-drag')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('prevents editing gestures from taking ownership while a canvas press is active', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    await nextTick();
+    const container = wrapper.find('.image-container');
+    await container.trigger('pointerdown', { button: 0, pointerId: 1, clientX: 150, clientY: 150 });
+    for (const selector of ['.quad-point-handle', '.quad-translate-handle']) {
+      const handle = wrapper.find(selector);
+      await handle.trigger('pointerdown', { button: 0, pointerId: 2, clientX: 20, clientY: 20 });
+      await handle.trigger('pointerup', { pointerId: 2, clientX: 40, clientY: 30 });
+    }
+    expect(wrapper.emitted('quad-translation-start')).toBeUndefined();
+    expect(wrapper.emitted('commit-quad-point-drag')).toBeUndefined();
+    await wrapper.setProps({ canInteract: false });
+    await wrapper.setProps({ canInteract: true });
+    const handle = wrapper.find('.quad-translate-handle');
+    await handle.trigger('pointerdown', { button: 0, pointerId: 3, clientX: 50, clientY: 50 });
+    expect(wrapper.emitted('quad-translation-start')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('clears capture, overlays, selected dots and scheduled draws through one lifecycle entry', async () => {
+    const callbacks = [];
+    vi.stubGlobal('requestAnimationFrame', callback => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    await nextTick();
+    const canvas = wrapper.find('canvas');
+    const context = canvas.element.getContext('2d');
+    canvas.element.setPointerCapture = vi.fn();
+    canvas.element.hasPointerCapture = () => true;
+    canvas.element.releasePointerCapture = vi.fn();
+    await canvas.trigger('pointerdown', { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    await canvas.trigger('pointermove', { pointerId: 1, clientX: 120, clientY: 110 });
+    const drawCount = context.drawImage.mock.calls.length;
+    expect(wrapper.vm.presentImageSession(null)).toBe(true);
+    await nextTick();
+    callbacks.forEach(callback => callback());
+    expect(canvas.element.releasePointerCapture).toHaveBeenCalledWith(1);
+    expect(wrapper.find('.quad-point-handle').exists()).toBe(false);
+    expect(wrapper.emitted('update-selected-dots').at(-1)).toEqual([[]]);
+    expect(wrapper.find('.rectangle').isVisible()).toBe(false);
+    expect(context.drawImage).toHaveBeenCalledTimes(drawCount);
+    expect(wrapper.vm.presentImageSession(null)).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('does not convert a canceled old pan into a point on the newly presented image', async () => {
+    const wrapper = await mountReadyImage();
+    const canvas = wrapper.find('canvas');
+    await canvas.trigger('pointerdown', { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    wrapper.vm.presentImageSession({
+      image: { src: 'new', naturalWidth: 100, naturalHeight: 100 },
+      displaySize: { width: 100, height: 100 },
+    });
+    await nextTick();
+    const count = wrapper.emitted('update-selected-dots').length;
+    await canvas.trigger('pointerup', { pointerId: 1, clientX: 100, clientY: 100 });
+    await canvas.trigger('click', { clientX: 100, clientY: 100 });
+    expect(wrapper.emitted('update-selected-dots')).toHaveLength(count);
+    await canvas.trigger('pointerdown', { button: 0, pointerId: 2, clientX: 100, clientY: 100 });
+    await canvas.trigger('pointerup', { pointerId: 2, clientX: 100, clientY: 100 });
+    await canvas.trigger('click', { clientX: 100, clientY: 100 });
+    expect(wrapper.emitted('update-selected-dots')).toHaveLength(count + 1);
+    wrapper.unmount();
+  });
+
+  it('cancels an editing preview before changing its coordinate frame with zoom', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    await nextTick();
+    const handle = wrapper.find('.quad-translate-handle');
+    await handle.trigger('pointerdown', { button: 0, pointerId: 1, clientX: 50, clientY: 50 });
+    await handle.trigger('pointermove', { pointerId: 1, clientX: 70, clientY: 60 });
+    wrapper
+      .find('.image-container')
+      .element.dispatchEvent(new WheelEvent('wheel', { clientX: 80, clientY: 80, deltaY: -100, bubbles: true }));
+    await nextTick();
+    await handle.trigger('pointerup', { pointerId: 1, clientX: 70, clientY: 60 });
+    expect(wrapper.emitted('commit-quad-translation')).toBeUndefined();
+    expect(wrapper.emitted('quad-translation-cancel').at(-1)[0].reason).toBe('viewport-changed');
+    wrapper.unmount();
+  });
+
   beforeEach(() => {
     const contexts = new WeakMap();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function getContext() {

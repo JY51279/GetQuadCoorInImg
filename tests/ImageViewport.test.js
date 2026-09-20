@@ -2,6 +2,31 @@ import { describe, expect, it } from 'vitest';
 import { useImageViewport } from '../src/renderer/src/composables/useImageViewport.js';
 
 describe('Image viewport state', () => {
+  it('rebases ongoing pan movement after pointer-anchored zoom (R04)', () => {
+    const viewport = useImageViewport({ snapDistance: 0 });
+    viewport.setImageSize(1000, 1000);
+    viewport.setViewportSize(800, 600);
+    viewport.beginPanGesture();
+    viewport.panBy(20, 20);
+    viewport.updateScale(2, { anchorPoint: { x: 100, y: 100 } });
+    expect(viewport.offsetX.value).toBe(-60);
+    viewport.panBy(1, 1);
+    expect(viewport.offsetX.value).toBe(-59);
+    expect(viewport.offsetY.value).toBe(-59);
+  });
+
+  it('rebases ongoing pan movement after a direct viewport transform', () => {
+    const viewport = useImageViewport({ snapDistance: 0 });
+    viewport.setImageSize(1000, 1000);
+    viewport.setViewportSize(800, 600);
+    viewport.beginPanGesture();
+    viewport.panBy(20, 20);
+    viewport.applyTransform({ scale: 2, offsetX: -300, offsetY: -200 });
+    viewport.panBy(1, -1);
+    expect(viewport.offsetX.value).toBe(-299);
+    expect(viewport.offsetY.value).toBe(-201);
+  });
+
   it('fits an image and derives one visible region in pixel-grid mode', () => {
     const viewport = useImageViewport();
     viewport.setViewportSize(550, 550);

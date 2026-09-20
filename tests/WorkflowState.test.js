@@ -23,6 +23,20 @@ import {
 import { TEST_DATASET_TARGET, createDatasetWorkflowState } from './fixtures/WorkflowFixtures.js';
 
 describe('Workflow state', () => {
+  it('requires dataset reload after failed rollback and preserves recovery on canceled reload', () => {
+    const saving = startSave(createDatasetWorkflowState());
+    const recovery = completeOperation(saving.state, saving.operationId, WORKFLOW_PHASE.RECOVERY_REQUIRED);
+    expect(recovery.success).toBe(true);
+    expect(canEdit(recovery.state)).toBe(false);
+    expect(startImageLoad(recovery.state).success).toBe(false);
+    expect(startSave(recovery.state).success).toBe(false);
+    const reloading = startDatasetLoad(recovery.state);
+    expect(reloading.success).toBe(true);
+    expect(failOperation(reloading.state, reloading.operationId).state.phase).toBe(WORKFLOW_PHASE.RECOVERY_REQUIRED);
+    const selected = selectDatasetTarget(reloading.state, reloading.operationId, TEST_DATASET_TARGET);
+    expect(commitDataset(selected.state, reloading.operationId).state.phase).toBe(WORKFLOW_PHASE.DATASET_READY);
+  });
+
   it('moves from ready through saving and back to ready', () => {
     const initial = createDatasetWorkflowState();
     const started = startSave(initial, { sourceImageIndex: 2 });

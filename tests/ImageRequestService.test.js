@@ -24,6 +24,37 @@ function createImageResponse(requestId, overrides = {}) {
 }
 
 describe('Image request service', () => {
+  it.each([null, {}, { requestId: 999, success: true }])(
+    'fails malformed current invocation responses: %j',
+    async response => {
+      const service = createImageRequestService({ invoke: async () => response });
+      const request = service.beginManualRequest(1);
+      await expect(service.execute('prepare-image', { requestId: request.requestId })).resolves.toMatchObject({
+        status: IMAGE_REQUEST_STATUS.FAILED,
+        request,
+      });
+    },
+  );
+
+  it('does not let an old invocation borrow the newer response identity', async () => {
+    let resolve;
+    const loadImage = vi.fn();
+    const service = createImageRequestService({
+      invoke: () =>
+        new Promise(done => {
+          resolve = done;
+        }),
+      loadImage,
+    });
+    const first = service.beginManualRequest(1);
+    const pending = service.execute('prepare-image', { requestId: first.requestId });
+    const second = service.beginManualRequest(2);
+    resolve(createImageResponse(second.requestId));
+    await expect(pending).resolves.toEqual({ status: IMAGE_REQUEST_STATUS.STALE });
+    expect(service.getActiveRequest()).toBe(second);
+    expect(loadImage).not.toHaveBeenCalled();
+  });
+
   it('creates distinct manual and dataset request identities', () => {
     const service = createImageRequestService();
     const manualRequest = service.beginManualRequest(4);

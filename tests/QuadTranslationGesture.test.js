@@ -42,6 +42,38 @@ function createGesture(overrides = {}) {
 }
 
 describe('Quad translation gesture', () => {
+  it.each(['invalid-point', 'preview-rejected', 'permission-revoked'])(
+    'cancels rather than committing an earlier preview on %s',
+    failure => {
+      let allowed = true;
+      const { gesture, callbacks } = createGesture({ canContinue: () => allowed });
+      gesture.start(createPointerEvent(1, 5, 6), 0);
+      gesture.move(createPointerEvent(1, 9, 8));
+      if (failure === 'permission-revoked') allowed = false;
+      if (failure === 'preview-rejected') callbacks.previewQuad.mockReturnValueOnce(false);
+      const event = createPointerEvent(1, 10, 9, failure === 'invalid-point' ? { imagePoint: null } : {});
+      expect(gesture.finish(event)).toBe(false);
+      expect(gesture.state).toMatchObject({ phase: 'idle', pointerId: null });
+      expect(callbacks.onCommit).not.toHaveBeenCalled();
+      expect(callbacks.previewQuad).toHaveBeenLastCalledWith(0, QUAD);
+      expect(callbacks.onCancel).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('is idle before native capture release can reenter the lost-capture handler', () => {
+    const { gesture, callbacks } = createGesture();
+    const start = createPointerEvent(1, 5, 6);
+    start.currentTarget.releasePointerCapture.mockImplementation(pointerId =>
+      gesture.handleLostPointerCapture({ pointerId }),
+    );
+    gesture.start(start, 0);
+    expect(gesture.cancel('pointer-cancel', { pointerId: 2 })).toBe(false);
+    expect(gesture.finish(createPointerEvent(1, 8, 8))).toBe(true);
+    expect(callbacks.onCommit).toHaveBeenCalledTimes(1);
+    expect(callbacks.onCancel).not.toHaveBeenCalled();
+    expect(start.currentTarget.releasePointerCapture).toHaveBeenCalledTimes(1);
+  });
+
   it('previews and commits one uniform image-coordinate translation', () => {
     const { gesture, callbacks } = createGesture();
     const startEvent = createPointerEvent(7, 5, 6);

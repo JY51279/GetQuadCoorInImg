@@ -95,10 +95,10 @@ export function createImageRequestService({
     if (!isCurrentRequest(response?.requestId, isOperationCurrent)) return stale();
     const request = activeRequest;
 
-    if (response.canceled) {
+    if (response.canceled === true) {
       return { status: IMAGE_REQUEST_STATUS.CANCELED, request };
     }
-    if (!response.success) {
+    if (response.success !== true) {
       return failed(request, response.error, response.path);
     }
 
@@ -132,12 +132,20 @@ export function createImageRequestService({
   }
 
   async function execute(channel, payload, { isOperationCurrent = () => true } = {}) {
+    const requestId = payload?.requestId;
+    if (!isCurrentRequest(requestId, isOperationCurrent)) return stale();
+    const request = activeRequest;
     try {
       const response = await invoke(channel, payload);
+      // The invocation owns the response, not a request id supplied by that response.
+      if (!isCurrentRequest(requestId, isOperationCurrent)) return stale();
+      if (response?.requestId !== requestId) {
+        return failed(request, '图片加载响应缺少有效的请求标识。');
+      }
       return handleResponse(response, { isOperationCurrent });
     } catch (error) {
-      if (!isCurrentRequest(payload?.requestId, isOperationCurrent)) return stale();
-      return failed(activeRequest, error.message);
+      if (!isCurrentRequest(requestId, isOperationCurrent)) return stale();
+      return failed(request, error.message);
     }
   }
 

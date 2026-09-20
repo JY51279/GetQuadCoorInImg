@@ -98,7 +98,7 @@ describe('Dataset save transaction', () => {
     });
     expect(context.rollbackMutation).not.toHaveBeenCalled();
     expect(context.saveJsonFile).not.toHaveBeenCalled();
-    expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.DATASET_READY);
+    expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.RECOVERY_REQUIRED);
   });
 
   it('rolls back the mutation receipt after the file save fails', async () => {
@@ -189,7 +189,7 @@ describe('Dataset save transaction', () => {
       status: SAVE_TRANSACTION_STATUS.SAVE_FAILED,
       rollbackFailed: true,
     });
-    expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.DATASET_READY);
+    expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.RECOVERY_REQUIRED);
   });
 
   it('rejects changed data that does not provide a rollback receipt', async () => {
@@ -203,7 +203,7 @@ describe('Dataset save transaction', () => {
       rollbackFailed: true,
     });
     expect(context.saveJsonFile).not.toHaveBeenCalled();
-    expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.DATASET_READY);
+    expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.RECOVERY_REQUIRED);
   });
 
   it('rejects a new save while another workflow operation is active', async () => {
