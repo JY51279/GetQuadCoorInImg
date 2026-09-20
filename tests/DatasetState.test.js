@@ -1,3 +1,4 @@
+import { prepareJsonProcess } from '../src/renderer/src/utils/DatasetPreparation.js';
 import { describe, expect, it } from 'vitest';
 import {
   areImagePathsEquivalent,
@@ -10,7 +11,6 @@ import {
   getJsonImagePosition,
   getJsonImageTarget,
   getJsonImageTargetByPath,
-  prepareJsonProcess,
   resetPicJson,
 } from '../src/renderer/src/state/DatasetState.js';
 import { KEYS } from '../src/renderer/src/utils/BasicFuncs.js';
@@ -30,6 +30,18 @@ function loadDbrDataset() {
 }
 
 describe('Dataset state operations', () => {
+  it('owns committed data independently of the preparation result', () => {
+    const prepared = prepareJsonProcess({
+      str: JSON.stringify({ Picture: [createPicture('DBR', 'C:/images/one.png')] }),
+      path: 'C:/datasets/sample.json',
+    });
+    expect(commitPreparedJsonProcess(prepared)).toBe(true);
+    prepared.data.Picture[0]['Barcode Info'][0]['Barcode Location'] = 'invalid';
+    prepared.imagePaths[0] = 'C:/wrong.png';
+    expect(resetPicJson('C:/images/one.png', 0).success).toBe(true);
+    expect(getCurrentAnnotationView().quads[0][0]).toEqual({ x: 0, y: 0 });
+  });
+
   it('matches Windows image paths without case sensitivity', () => {
     loadDbrDataset();
 

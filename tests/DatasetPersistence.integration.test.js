@@ -1,3 +1,4 @@
+import { prepareJsonProcess } from '../src/renderer/src/utils/DatasetPreparation.js';
 import { ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -6,10 +7,10 @@ import {
 } from '../src/renderer/src/composables/useDatasetSaveTransaction.js';
 import {
   commitPreparedJsonProcess,
+  applyQuadLocationToImagesWithHistory,
   copyPreviousQuadLocationWithHistory,
   getCurrentJsonImageIndex,
   getJsonFileInfo,
-  prepareJsonProcess,
   resetPicJson,
   updateJsonWithHistory,
 } from '../src/renderer/src/state/DatasetState.js';
@@ -60,12 +61,45 @@ function createTransaction(saveJsonFile) {
 describe('Dataset persistence integration', () => {
   beforeEach(loadDataset);
 
+  it('restores all target images when a batch save throws', async () => {
+    const pictures = [
+      createPicture('DBR', 'C:/images/one.png'),
+      { ...createPicture('DBR', 'C:/images/two.png', '20 20 30 20 30 30 20 30'), 'No.': '2' },
+      { ...createPicture('DBR', 'C:/images/three.png', '40 40 50 40 50 50 40 50'), 'No.': '3' },
+    ];
+    expect(
+      commitPreparedJsonProcess(
+        prepareJsonProcess({ str: JSON.stringify({ Picture: pictures }), path: 'C:/datasets/sample.json' }),
+      ),
+    ).toBe(true);
+    expect(resetPicJson('C:/images/one.png', 0).success).toBe(true);
+    const before = getJsonFileInfo();
+    const { transaction } = createTransaction(async () => {
+      throw new Error('disk full');
+    });
+    const result = await transaction.run(() =>
+      applyQuadLocationToImagesWithHistory({
+        source: { imageIndex: 0, quadIndex: 0 },
+        targetImageIndexes: [1, 2],
+        sourceImageSize: { width: 100, height: 100 },
+      }),
+    );
+    expect(result).toMatchObject({
+      status: SAVE_TRANSACTION_STATUS.SAVE_FAILED,
+      rollbackFailed: false,
+      mutation: null,
+    });
+    expect(getJsonFileInfo()).toEqual(before);
+  });
+
   it('rolls back the real dataset mutation when persistence fails', async () => {
     const before = getJsonFileInfo().str;
     const saveJsonFile = vi.fn(async () => false);
     const { transaction, workflowState } = createTransaction(saveJsonFile);
 
-    const result = await transaction.run(() => updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }]));
+    const result = await transaction.run(() =>
+      updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }], { width: 1000, height: 1000 }),
+    );
 
     expect(result).toMatchObject({
       status: SAVE_TRANSACTION_STATUS.SAVE_FAILED,
@@ -82,7 +116,9 @@ describe('Dataset persistence integration', () => {
     const saveJsonFile = vi.fn(async () => true);
     const { transaction, workflowState } = createTransaction(saveJsonFile);
 
-    const result = await transaction.run(() => updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }]));
+    const result = await transaction.run(() =>
+      updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }], { width: 1000, height: 1000 }),
+    );
 
     expect(result.status).toBe(SAVE_TRANSACTION_STATUS.SAVED);
     expect(getJsonFileInfo().str).not.toBe(before);
@@ -97,7 +133,9 @@ describe('Dataset persistence integration', () => {
     const saveJsonFile = vi.fn(async () => true);
     const { transaction } = createTransaction(saveJsonFile);
 
-    const result = await transaction.run(() => updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 0, y: 0 }]));
+    const result = await transaction.run(() =>
+      updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 0, y: 0 }], { width: 1000, height: 1000 }),
+    );
 
     expect(result.status).toBe(SAVE_TRANSACTION_STATUS.UNCHANGED);
     expect(getJsonFileInfo().str).toBe(before);

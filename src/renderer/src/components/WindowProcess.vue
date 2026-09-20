@@ -503,7 +503,7 @@ import {
 } from '../state/UndoRedoHistory.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
-import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
+import { imageDeltaToDatasetDelta, imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import { QUAD_TRANSLATION_TARGET } from '../utils/QuadGeometry.js';
 import { createShortcutHelpGroups, dispatchShortcut } from '../utils/KeyboardShortcuts.js';
 import {
@@ -928,15 +928,12 @@ async function commitQuadPointDrag(payload) {
     return;
   }
 
-  let historyEntry = null;
   const saved = await runSaveTransaction(
     () => {
-      const updateResult = updateQuadPointWithHistory(quadIndex, pointIndex, datasetPoint);
-      historyEntry = updateResult.historyEntry ?? null;
-      return updateResult;
+      return updateQuadPointWithHistory(quadIndex, pointIndex, datasetPoint, currentImageOriginalSize.value);
     },
-    () => {
-      if (historyEntry) recordCurrentJsonHistory(historyEntry);
+    ({ mutation }) => {
+      if (mutation.historyEntry) recordCurrentJsonHistory(mutation.historyEntry);
       refreshCurrentAnnotations({ redrawOverlay: true });
       selectQuadIndex(quadIndex);
       outputMessage(`已更新 Quad ${quadIndex + 1} 的顶点。`);
@@ -964,7 +961,7 @@ async function commitQuadTranslation(payload) {
     return;
   }
 
-  const datasetDelta = imagePointToDatasetPoint(imageDelta, imageCoordinateScale.value);
+  const datasetDelta = imageDeltaToDatasetDelta(imageDelta, imageCoordinateScale.value);
   if (datasetDelta === null) {
     unlockQuadSelectionForTranslation({ quadIndex });
     refreshCurrentAnnotations({ redrawOverlay: true });
@@ -973,21 +970,18 @@ async function commitQuadTranslation(payload) {
   }
 
   const translationSubject = getQuadTranslationSubject(quadIndex, target);
-  let historyEntry = null;
   try {
     const saved = await runSaveTransaction(
       () => {
-        const updateResult = translateQuadWithHistory({
+        return translateQuadWithHistory({
           quadIndex,
           target,
           delta: datasetDelta,
           imageSize: currentImageOriginalSize.value,
         });
-        historyEntry = updateResult.historyEntry ?? null;
-        return updateResult;
       },
       result => {
-        if (historyEntry) recordCurrentJsonHistory(historyEntry);
+        if (result.mutation.historyEntry) recordCurrentJsonHistory(result.mutation.historyEntry);
         refreshCurrentAnnotations({ redrawOverlay: true });
         selectQuadIndex(quadIndex);
         resetDots();
@@ -1008,20 +1002,18 @@ async function performJsonAction(action) {
   }
 
   const affectedQuadIndex = activeQuadIndex.value;
-  let historyEntry = null;
   await runSaveTransaction(
     () => {
-      const updateResult = updateJsonWithHistory(
+      return updateJsonWithHistory(
         action,
         imageCoordinateScale.value,
         activeQuadIndex.value,
         selectedDots,
+        currentImageOriginalSize.value,
       );
-      historyEntry = updateResult.historyEntry ?? null;
-      return updateResult;
     },
-    () => {
-      if (historyEntry) recordCurrentJsonHistory(historyEntry);
+    ({ mutation }) => {
+      if (mutation.historyEntry) recordCurrentJsonHistory(mutation.historyEntry);
       if (action === KEYS.JSON_DELETE) {
         refreshCurrentAnnotations({ resetSelection: true, deletedQuadIndex: affectedQuadIndex });
       } else if (action === KEYS.JSON_ADD) {
@@ -1046,14 +1038,12 @@ async function moveJsonHistoryTo(targetPosition, { announceTarget = false } = {}
   }
   if (transition.entries.length === 0) return;
 
-  const mutationResults = [];
   await runSaveTransaction(
     () => {
-      const transitionResult = applyJsonHistoryEntriesWithReceipt(transition.entries, transition.direction);
-      mutationResults.push(...(transitionResult.mutationResults ?? []));
-      return transitionResult;
+      return applyJsonHistoryEntriesWithReceipt(transition.entries, transition.direction);
     },
-    () => {
+    ({ mutation }) => {
+      const mutationResults = mutation.mutationResults;
       if (!commitHistoryEntries(history, transition.direction, transition.entries)) {
         outputMessage('JSON 历史状态异常，请重新加载图集。');
         return;
@@ -1170,21 +1160,17 @@ async function applyQuadLocationForward() {
   }
 
   closeQuadLocationPropagation();
-  let historyEntry = null;
-  let summary = null;
   await runSaveTransaction(
     () => {
-      const updateResult = applyQuadLocationToImagesWithHistory({
+      return applyQuadLocationToImagesWithHistory({
         source: { imageIndex: sourceImageIndex, quadIndex },
         targetImageIndexes: rangeResult.imageIndexes,
+        sourceImageSize: currentImageOriginalSize.value,
       });
-      historyEntry = updateResult.historyEntry ?? null;
-      summary = updateResult.summary ?? null;
-      return updateResult;
     },
-    () => {
-      if (historyEntry) recordCurrentJsonHistory(historyEntry);
-      if (summary) outputMessage(formatQuadLocationPropagationSummary(quadIndex, summary));
+    ({ mutation }) => {
+      if (mutation.historyEntry) recordCurrentJsonHistory(mutation.historyEntry);
+      if (mutation.summary) outputMessage(formatQuadLocationPropagationSummary(quadIndex, mutation.summary));
     },
   );
 }
@@ -1204,15 +1190,12 @@ async function copyPreviousQuadLocation() {
     return;
   }
 
-  let historyEntry = null;
   const saved = await runSaveTransaction(
     () => {
-      const updateResult = copyPreviousQuadLocationWithHistory(quadIndex, currentImageOriginalSize.value);
-      historyEntry = updateResult.historyEntry ?? null;
-      return updateResult;
+      return copyPreviousQuadLocationWithHistory(quadIndex, currentImageOriginalSize.value);
     },
     result => {
-      if (historyEntry) recordCurrentJsonHistory(historyEntry);
+      if (result.mutation.historyEntry) recordCurrentJsonHistory(result.mutation.historyEntry);
       refreshCurrentAnnotations({ redrawOverlay: true });
       selectQuadIndex(quadIndex);
       resetDots();

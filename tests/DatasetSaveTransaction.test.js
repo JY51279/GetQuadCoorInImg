@@ -39,6 +39,7 @@ describe('Dataset save transaction', () => {
     expect(result).toEqual({
       success: true,
       status: SAVE_TRANSACTION_STATUS.SAVED,
+      mutation: mutationResult,
       error: '',
       rollbackFailed: false,
       changed: true,
@@ -56,6 +57,7 @@ describe('Dataset save transaction', () => {
     expect(result).toEqual({
       success: true,
       status: SAVE_TRANSACTION_STATUS.UNCHANGED,
+      mutation: { success: true, changed: false, receipt: null },
       error: '',
       rollbackFailed: false,
       changed: false,
@@ -112,6 +114,7 @@ describe('Dataset save transaction', () => {
       changed: true,
     });
     expect(context.rollbackMutation).toHaveBeenCalledWith(mutationResult.receipt);
+    expect(result.mutation).toBeNull();
     expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.READY);
   });
 

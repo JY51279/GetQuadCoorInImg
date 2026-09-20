@@ -19,9 +19,11 @@ export const SAVE_TRANSACTION_STATUS = Object.freeze({
   COMPLETION_FAILED: 'completion-failed',
 });
 
-function createResult(status, { error = '', rollbackFailed = false, changed = false } = {}) {
+// Publish mutation details only after a successful transaction (or a no-op).
+// Failed/stale saves must never expose a success-history payload to the caller.
+function createResult(status, { error = '', rollbackFailed = false, changed = false, mutation = null } = {}) {
   const success = status === SAVE_TRANSACTION_STATUS.SAVED || status === SAVE_TRANSACTION_STATUS.UNCHANGED;
-  return { success, status, error, rollbackFailed, changed };
+  return { success, status, error, rollbackFailed, changed, mutation };
 }
 
 export function useDatasetSaveTransaction({
@@ -98,7 +100,7 @@ export function useDatasetSaveTransaction({
       }
       if (!mutationResult.changed) {
         if (!finishOperation()) return createResult(SAVE_TRANSACTION_STATUS.COMPLETION_FAILED);
-        return createResult(SAVE_TRANSACTION_STATUS.UNCHANGED);
+        return createResult(SAVE_TRANSACTION_STATUS.UNCHANGED, { mutation: mutationResult });
       }
       if (!mutationResult.receipt) {
         rollbackFailed = true;
@@ -143,7 +145,7 @@ export function useDatasetSaveTransaction({
       if (!finishOperation()) {
         return createResult(SAVE_TRANSACTION_STATUS.COMPLETION_FAILED, { changed: true });
       }
-      return createResult(SAVE_TRANSACTION_STATUS.SAVED, { changed: true });
+      return createResult(SAVE_TRANSACTION_STATUS.SAVED, { changed: true, mutation: mutationResult });
     } finally {
       if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) finishOperation();
     }

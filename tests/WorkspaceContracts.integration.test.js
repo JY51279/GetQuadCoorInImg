@@ -1,3 +1,4 @@
+import { prepareJsonProcess } from '../src/renderer/src/utils/DatasetPreparation.js';
 import { ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -14,7 +15,6 @@ import {
   getCurrentJsonImageIndex,
   getJsonFileInfo,
   getJsonImagePosition,
-  prepareJsonProcess,
   resetPicJson,
   updateJsonWithHistory,
 } from '../src/renderer/src/state/DatasetState.js';
@@ -165,7 +165,9 @@ describe('Workspace behavior contracts across dataset, workflow and transactions
       getCurrentImageIndex: getCurrentJsonImageIndex,
       saveJsonFile,
     });
-    const pendingSave = saveTransaction.run(() => updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }]));
+    const pendingSave = saveTransaction.run(() =>
+      updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }], { width: 1000, height: 1000 }),
+    );
     const pendingData = getJsonFileInfo();
     const activeOperation = context.workflowState.value.operation;
 

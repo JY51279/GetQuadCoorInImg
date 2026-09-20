@@ -1,18 +1,6 @@
 import cloneDeep from 'lodash/cloneDeep';
-import {
-  KEYS,
-  getNearestOrFarthestPointIndex,
-  parsePointString2Array,
-  transJson2Str,
-  transStr2Json,
-} from '../utils/BasicFuncs.js';
-import {
-  DEFAULT_LOCATION,
-  formatLossyRepairSummary,
-  formatRepairSummary,
-  getProductSchema,
-  normalizeDataset,
-} from '../utils/DatasetSchema.js';
+import { KEYS, getNearestOrFarthestPointIndex, parsePointString2Array, transJson2Str } from '../utils/BasicFuncs.js';
+import { DEFAULT_LOCATION } from '../utils/DatasetSchema.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import {
   QUAD_TRANSLATION_TARGET,
@@ -22,18 +10,19 @@ import {
   prepareQuadPointUpdate,
 } from '../utils/QuadGeometry.js';
 import { HISTORY_DIRECTION } from './UndoRedoHistory.js';
-import { toUserErrorMessage } from '../../../shared/UserMessages.js';
 
 const ROOT_KEY = 'Picture';
-const IMAGE_SOURCE_KEY = 'Image Source';
-const NUMBER_KEY = 'No.';
 const POINT_SEPARATOR = ' ';
+const JSON_EDIT_ACTIONS = new Set([KEYS.JSON_MODIFY, KEYS.JSON_ADD, KEYS.JSON_DELETE]);
 const TRANSLATION_ACTION_BY_TARGET_TYPE = Object.freeze({
   [QUAD_TRANSLATION_TARGET.WHOLE]: KEYS.JSON_TRANSLATE_QUAD,
   [QUAD_TRANSLATION_TARGET.EDGE]: KEYS.JSON_TRANSLATE_QUAD_EDGE,
 });
 
 const datasetState = {
+  // Domain identity, not a second workflow version: invalidates old snapshots
+  // whenever committed data is replaced or cleared, including same-path reloads.
+  revision: 0,
   dataset: {},
   jsonFilePath: '',
   imagePaths: [],
@@ -57,50 +46,6 @@ export function areImagePathsEquivalent(leftPath, rightPath) {
   return normalizeImagePathForComparison(leftPath) === normalizeImagePathForComparison(rightPath);
 }
 
-// Special case: DBR "Barcode Type": "datamatrix"
-
-export function prepareJsonProcess(jsonData, { allowLossyRepairs = false } = {}) {
-  try {
-    if (!jsonData || typeof jsonData.str !== 'string' || typeof jsonData.path !== 'string') {
-      return { success: false, error: 'JSON 文件信息无效。' };
-    }
-
-    const parsedJson = transStr2Json(jsonData.str);
-    const normalizedResult = normalizeDataset(parsedJson, { allowLossyRepairs });
-    if (!normalizedResult.success) return normalizedResult;
-
-    if (normalizedResult.requiresLossyRepair) {
-      return {
-        ...normalizedResult,
-        success: true,
-        path: jsonData.path,
-        lossyRepairSummary: formatLossyRepairSummary(normalizedResult.lossyIssues),
-      };
-    }
-
-    const preparedClassKeys = getProductSchema(normalizedResult.productType);
-    const preparedImagePaths = normalizedResult.data[ROOT_KEY].map(picture =>
-      picture[IMAGE_SOURCE_KEY].replace(/[\\/]/g, '/'),
-    );
-
-    return {
-      ...normalizedResult,
-      success: true,
-      path: jsonData.path,
-      imagePaths: preparedImagePaths,
-      classKeys: preparedClassKeys,
-      fileInfo: {
-        str: transJson2Str(normalizedResult.data),
-        path: jsonData.path,
-      },
-      repairSummary: formatRepairSummary(normalizedResult.repairs),
-      lossyRepairsApplied: allowLossyRepairs && normalizedResult.lossyIssues.length > 0,
-    };
-  } catch (err) {
-    return { success: false, error: toUserErrorMessage(err, '解析 JSON 数据失败。') };
-  }
-}
-
 export function commitPreparedJsonProcess(preparedJson) {
   if (
     !preparedJson?.success ||
@@ -112,16 +57,18 @@ export function commitPreparedJsonProcess(preparedJson) {
     return false;
   }
 
-  datasetState.dataset = preparedJson.data;
+  datasetState.revision++;
+  datasetState.dataset = cloneDeep(preparedJson.data);
   datasetState.jsonFilePath = preparedJson.path;
-  datasetState.imagePaths = preparedJson.imagePaths;
-  datasetState.productSchema = preparedJson.classKeys;
+  datasetState.imagePaths = [...preparedJson.imagePaths];
+  datasetState.productSchema = cloneDeep(preparedJson.classKeys);
   datasetState.currentImageIndex = -1;
   clearCurrentAnnotationState();
   return true;
 }
 
 export function clearDatasetProcess() {
+  datasetState.revision++;
   datasetState.dataset = {};
   datasetState.jsonFilePath = '';
   datasetState.imagePaths = [];
@@ -217,7 +164,7 @@ export function getJsonFileInfo() {
   };
 }
 
-function prepareDatasetQuad(realDots, coordinateScale, baseItem = null) {
+function prepareDatasetQuad(realDots, coordinateScale, baseItem = null, imageSize = null) {
   // 根据显示图相对原图的横纵缩放比例换算坐标，但不要修改工作图片中的原始点
   const jsonDots = realDots.map(dot => imagePointToDatasetPoint(dot, coordinateScale));
   if (jsonDots.some(dot => dot === null)) {
@@ -235,29 +182,32 @@ function prepareDatasetQuad(realDots, coordinateScale, baseItem = null) {
     if (closestIndex === -1) {
       return { success: false, error: '无法找到最近的 Quad 顶点。' };
     }
-    return prepareQuadPointUpdate(currentPoints, closestIndex, newPoint, baseItem['Barcode Type'] ?? '');
+    return validatePreparedQuad(
+      prepareQuadPointUpdate(currentPoints, closestIndex, newPoint, baseItem['Barcode Type'] ?? ''),
+      imageSize,
+    );
   }
 
   const barcodeType = baseItem?.['Barcode Type'] ?? '';
-  return prepareQuad(jsonDots, barcodeType);
+  return validatePreparedQuad(prepareQuad(jsonDots, barcodeType), imageSize);
 }
 
 function serializePreparedQuad(points) {
   return points.map(point => `${point.x} ${point.y}`).join(POINT_SEPARATOR);
 }
 
-export function updateJson(action = KEYS.JSON_MODIFY, coordinateScale, activeQuadIndex = -1, realDots = []) {
+function updateJson(action, coordinateScale, activeQuadIndex, realDots, imageSize) {
   const selectedDots = Array.isArray(realDots) ? realDots.map(dot => ({ ...dot })) : [];
   let result;
   switch (action) {
     case KEYS.JSON_MODIFY:
-      result = modifyJsonContent(coordinateScale, activeQuadIndex, selectedDots);
+      result = modifyJsonContent(coordinateScale, activeQuadIndex, selectedDots, imageSize);
       break;
     case KEYS.JSON_DELETE:
       result = deleteJsonContent(activeQuadIndex);
       break;
     case KEYS.JSON_ADD:
-      result = addJsonContent(coordinateScale, selectedDots);
+      result = addJsonContent(coordinateScale, selectedDots, imageSize);
       break;
     default:
       console.log('Unknown action');
@@ -276,7 +226,12 @@ function isHistoryDirection(direction) {
 
 function createDatasetMutationReceipt(entries, direction) {
   if (!Array.isArray(entries) || entries.length === 0 || !isHistoryDirection(direction)) return null;
-  return Object.freeze({ entries: Object.freeze([...entries]), direction });
+  // A receipt must not share mutable snapshots with the UI's history entries.
+  return Object.freeze({
+    entries: Object.freeze(cloneDeep(entries)),
+    direction,
+    datasetRevision: datasetState.revision,
+  });
 }
 
 function getHistoryStepMutations(historyEntry, direction) {
@@ -284,9 +239,18 @@ function getHistoryStepMutations(historyEntry, direction) {
   return direction === HISTORY_DIRECTION.UNDO ? mutations.toReversed() : mutations;
 }
 
+// Successful commands return changed/historyEntry/receipt; rejected commands
+// leave data untouched. Only the save transaction may publish successful history.
 function runJsonMutationWithHistory(action, itemIndex, mutate) {
   if (datasetState.currentImageIndex < 0) {
     return { success: false, error: '当前没有激活的 JSON 图片。' };
+  }
+  if (
+    !Number.isInteger(itemIndex) ||
+    itemIndex < 0 ||
+    (action !== KEYS.JSON_ADD && itemIndex >= datasetState.currentItems.length)
+  ) {
+    return { success: false, error: '找不到对应的 JSON 标注项。' };
   }
 
   const beforeItem =
@@ -309,6 +273,7 @@ function runJsonMutationWithHistory(action, itemIndex, mutate) {
   const changed = !jsonValuesEqual(beforeItem, afterItem);
   const historyEntry = changed
     ? {
+        datasetRevision: datasetState.revision,
         action,
         imageIndex: datasetState.currentImageIndex,
         itemIndex,
@@ -325,14 +290,22 @@ function runJsonMutationWithHistory(action, itemIndex, mutate) {
   };
 }
 
-export function updateJsonWithHistory(action = KEYS.JSON_MODIFY, coordinateScale, activeQuadIndex = -1, realDots = []) {
+export function updateJsonWithHistory(
+  action = KEYS.JSON_MODIFY,
+  coordinateScale,
+  activeQuadIndex = -1,
+  realDots = [],
+  imageSize = null,
+) {
+  if (!JSON_EDIT_ACTIONS.has(action)) return { success: false, error: 'JSON 编辑操作无效。' };
+  if (!Array.isArray(realDots)) return { success: false, error: '所选点必须是数组。' };
   const itemIndex = action === KEYS.JSON_ADD ? datasetState.currentItems.length : activeQuadIndex;
   return runJsonMutationWithHistory(action, itemIndex, () =>
-    updateJson(action, coordinateScale, activeQuadIndex, realDots),
+    updateJson(action, coordinateScale, activeQuadIndex, realDots, imageSize),
   );
 }
 
-function updateQuadPoint(activeQuadIndex, pointIndex, nextPoint) {
+function updateQuadPoint(activeQuadIndex, pointIndex, nextPoint, imageSize) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return '找不到对应的 JSON 标注项。';
@@ -340,11 +313,9 @@ function updateQuadPoint(activeQuadIndex, pointIndex, nextPoint) {
 
     const targetItem = datasetState.currentItems[activeQuadIndex];
     const currentPoints = parsePointString2Array(targetItem[datasetState.productSchema.ItemKey], POINT_SEPARATOR);
-    const preparedPoints = prepareQuadPointUpdate(
-      currentPoints,
-      pointIndex,
-      nextPoint,
-      targetItem['Barcode Type'] ?? '',
+    const preparedPoints = validatePreparedQuad(
+      prepareQuadPointUpdate(currentPoints, pointIndex, nextPoint, targetItem['Barcode Type'] ?? ''),
+      imageSize,
     );
     if (!preparedPoints.success) return preparedPoints.error;
 
@@ -353,9 +324,9 @@ function updateQuadPoint(activeQuadIndex, pointIndex, nextPoint) {
   }, '更新拖动后的 Quad 顶点失败。');
 }
 
-export function updateQuadPointWithHistory(activeQuadIndex = -1, pointIndex = -1, nextPoint = null) {
+export function updateQuadPointWithHistory(activeQuadIndex = -1, pointIndex = -1, nextPoint = null, imageSize = null) {
   return runJsonMutationWithHistory(KEYS.JSON_MODIFY, activeQuadIndex, () =>
-    updateQuadPoint(activeQuadIndex, pointIndex, nextPoint),
+    updateQuadPoint(activeQuadIndex, pointIndex, nextPoint, imageSize),
   );
 }
 
@@ -366,26 +337,27 @@ function normalizeImageSize(imageSize) {
   return { width, height };
 }
 
+function validatePreparedQuad(preparedQuad, imageSize) {
+  if (!preparedQuad.success) return preparedQuad;
+  const size = normalizeImageSize(imageSize);
+  if (size === null) return { success: false, error: '当前图片的原始尺寸无效。' };
+  if (
+    preparedQuad.points.some(point => point.x < 0 || point.x >= size.width || point.y < 0 || point.y >= size.height)
+  ) {
+    return { success: false, error: 'Quad 坐标超出当前图片边界。' };
+  }
+  return preparedQuad;
+}
+
 function replaceQuadLocation(activeQuadIndex, points, imageSize) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return '找不到对应的 JSON 标注项。';
     }
 
-    const normalizedImageSize = normalizeImageSize(imageSize);
-    if (normalizedImageSize === null) return '当前图片的原始尺寸无效。';
-
     const targetItem = datasetState.currentItems[activeQuadIndex];
-    const preparedQuad = prepareQuad(points, targetItem['Barcode Type'] ?? '');
+    const preparedQuad = validatePreparedQuad(prepareQuad(points, targetItem['Barcode Type'] ?? ''), imageSize);
     if (!preparedQuad.success) return preparedQuad.error;
-    if (
-      preparedQuad.points.some(
-        point =>
-          point.x < 0 || point.x >= normalizedImageSize.width || point.y < 0 || point.y >= normalizedImageSize.height,
-      )
-    ) {
-      return 'Quad 坐标超出当前图片边界。';
-    }
 
     targetItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedQuad.points);
     return KEYS.OPERATE_SUCCESS;
@@ -481,7 +453,7 @@ function normalizeTargetImageIndexes(targetImageIndexes, sourceImageIndex, pictu
   return normalizedIndexes;
 }
 
-export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexes } = {}) {
+export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexes, sourceImageSize = null } = {}) {
   const sourceImageIndex = source?.imageIndex;
   const quadIndex = source?.quadIndex;
   const pictures = datasetState.dataset[ROOT_KEY];
@@ -509,6 +481,15 @@ export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexe
   if (typeof sourceLocation !== 'string') {
     return { success: false, error: '当前 Quad 的坐标无效。' };
   }
+  // Target dimensions are unknown until those images load. Validate the source
+  // and preserve its exact vertex order; never invent target image bounds.
+  const sourcePoints = parsePointString2Array(sourceLocation, POINT_SEPARATOR);
+  const preparedSource =
+    sourceLocation === DEFAULT_LOCATION
+      ? { success: true, points: sourcePoints }
+      : prepareQuad(sourcePoints, sourceItems[quadIndex]['Barcode Type'] ?? '');
+  const validatedSource = validatePreparedQuad(preparedSource, sourceImageSize);
+  if (!validatedSource.success) return validatedSource;
 
   const mutations = [];
   const skippedImageIndexes = [];
@@ -532,6 +513,7 @@ export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexe
     const afterItem = cloneDeep(targetItem);
     afterItem[datasetState.productSchema.ItemKey] = sourceLocation;
     mutations.push({
+      datasetRevision: datasetState.revision,
       action: KEYS.JSON_APPLY_QUAD_LOCATION,
       imageIndex,
       itemIndex: quadIndex,
@@ -556,6 +538,7 @@ export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexe
   return {
     ...mutationResult,
     historyEntry: {
+      datasetRevision: datasetState.revision,
       action: KEYS.JSON_APPLY_QUAD_LOCATION,
       imageIndex: sourceImageIndex,
       itemIndex: quadIndex,
@@ -566,11 +549,16 @@ export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexe
   };
 }
 
-export function applyJsonHistoryEntry(historyEntry, direction) {
+function applyJsonHistoryEntry(historyEntry, direction) {
+  // Replay restores exact snapshots (including imported legacy coordinates or
+  // placeholders), rather than applying new-edit geometry normalization again.
   const isUndo = direction === 'undo';
   const isRedo = direction === 'redo';
   if (!historyEntry || (!isUndo && !isRedo)) {
     return { success: false, error: 'JSON 历史操作无效。' };
+  }
+  if (historyEntry.datasetRevision !== datasetState.revision) {
+    return { success: false, error: 'JSON 历史记录不属于当前数据集。' };
   }
 
   const { imageIndex, itemIndex, beforeItem, afterItem } = historyEntry;
@@ -621,6 +609,9 @@ export function applyJsonHistoryEntry(historyEntry, direction) {
 export function rollbackDatasetMutation(receipt) {
   if (!receipt || !Array.isArray(receipt.entries) || !isHistoryDirection(receipt.direction)) {
     return { success: false, error: '数据集变更记录无效。' };
+  }
+  if (receipt.datasetRevision !== datasetState.revision) {
+    return { success: false, error: '数据集变更记录不属于当前数据集。' };
   }
 
   const rollbackDirection =
@@ -676,13 +667,13 @@ export function applyJsonHistoryEntriesWithReceipt(historyEntries, direction) {
   };
 }
 
-function modifyJsonContent(coordinateScale, activeQuadIndex, selectedDots) {
+function modifyJsonContent(coordinateScale, activeQuadIndex, selectedDots, imageSize) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return '找不到对应的 JSON 标注项。';
     }
     const targetItem = datasetState.currentItems[activeQuadIndex];
-    const preparedQuad = prepareDatasetQuad(selectedDots, coordinateScale, targetItem);
+    const preparedQuad = prepareDatasetQuad(selectedDots, coordinateScale, targetItem, imageSize);
     if (!preparedQuad.success) return preparedQuad.error;
     targetItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedQuad.points);
     return KEYS.OPERATE_SUCCESS;
@@ -699,11 +690,11 @@ function deleteJsonContent(activeQuadIndex) {
   }, '删除 JSON 标注项失败。');
 }
 
-function addJsonContent(coordinateScale, selectedDots) {
+function addJsonContent(coordinateScale, selectedDots, imageSize) {
   return operateJsonContent(() => {
     const newItem = createDefaultJsonItem();
     if (selectedDots.length > 0) {
-      const preparedQuad = prepareDatasetQuad(selectedDots, coordinateScale);
+      const preparedQuad = prepareDatasetQuad(selectedDots, coordinateScale, null, imageSize);
       if (!preparedQuad.success) return preparedQuad.error;
       newItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedQuad.points);
     }
@@ -778,17 +769,4 @@ export function getAdjacentJsonImageTarget(direction, baseIndex = datasetState.c
     return createJsonImageTarget(previousIndex);
   }
   return { success: false, error: 'JSON 图片导航方向无效。' };
-}
-
-export function resetJsonNoValue() {
-  if (Object.keys(datasetState.dataset).length === 0) {
-    return false;
-  }
-
-  let newNoValue = 0;
-  for (let i = 0; i < datasetState.dataset[ROOT_KEY].length; i++) {
-    newNoValue++;
-    datasetState.dataset[ROOT_KEY][i][NUMBER_KEY] = newNoValue.toString();
-  }
-  return true;
 }
