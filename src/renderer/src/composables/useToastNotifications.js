@@ -4,6 +4,7 @@ export function useToastNotifications({ duration = 3000, maximumVisible = 4 } = 
   const notifications = ref([]);
   const timers = new Map();
   let nextId = 0;
+  let disposed = false;
 
   function remove(id) {
     notifications.value = notifications.value.filter(notification => notification.id !== id);
@@ -13,6 +14,7 @@ export function useToastNotifications({ duration = 3000, maximumVisible = 4 } = 
   }
 
   function notify(message) {
+    if (disposed) return null;
     const notification = { id: ++nextId, message: String(message) };
     notifications.value.push(notification);
 
@@ -31,5 +33,11 @@ export function useToastNotifications({ duration = 3000, maximumVisible = 4 } = 
     notifications.value = [];
   }
 
-  return { notifications, notify, remove, clear };
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    clear();
+  }
+
+  return { notifications, notify, remove, clear, dispose };
 }

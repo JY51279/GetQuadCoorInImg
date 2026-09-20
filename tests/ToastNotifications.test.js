@@ -38,4 +38,30 @@ describe('Toast notifications', () => {
     expect(toasts.notifications.value).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('allows new notifications after an ordinary clear', () => {
+    vi.useFakeTimers();
+    const toasts = useToastNotifications();
+    toasts.notify('before clear');
+    toasts.clear();
+
+    const id = toasts.notify('after clear');
+
+    expect(toasts.notifications.value).toEqual([{ id, message: 'after clear' }]);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it('permanently stops notifications and timers after disposal', () => {
+    vi.useFakeTimers();
+    const toasts = useToastNotifications();
+    toasts.notify('before unmount');
+
+    toasts.dispose();
+    toasts.dispose();
+    toasts.clear();
+
+    expect(toasts.notify('late save result')).toBeNull();
+    expect(toasts.notifications.value).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

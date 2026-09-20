@@ -711,7 +711,7 @@ const {
 });
 
 // Notification state
-const { notifications, notify: outputMessage, clear: clearNotifications } = useToastNotifications();
+const { notifications, notify: outputMessage, dispose: disposeNotifications } = useToastNotifications();
 const {
   limits: jsonHistoryLimits,
   canUndo: canUndoJson,
@@ -762,6 +762,7 @@ function lockQuadSelectionForTranslation(payload) {
 }
 
 function unlockQuadSelectionForTranslation(payload = null) {
+  if (disposed) return;
   const quadIndex = payload?.quadIndex;
   if (quadIndex === undefined || quadIndex === quadSelectionLockIndex.value) {
     quadSelectionLockIndex.value = -1;
@@ -789,7 +790,7 @@ onUnmounted(() => {
   resetImageRequestState();
   imageSession.value = null;
   window.removeEventListener('keydown', handleKeyDown);
-  clearNotifications();
+  disposeNotifications();
 });
 
 function syncZoomCanvasPixelRatio() {
@@ -914,6 +915,7 @@ function focusPixelAtMouse() {
 
 // JSON Operations
 async function runSaveTransaction(mutate, onCompleted = () => {}) {
+  // Persistence and rollback must settle even when the page can no longer receive UI updates.
   const result = await executeSaveTransaction(mutate);
   if (disposed) return false;
   if (result.rollbackFailed) {
@@ -1297,6 +1299,7 @@ function renderAnnotationQuads({
 }
 
 function refreshCurrentAnnotations(options = {}) {
+  if (disposed) return;
   if (options.resetSelection) resetQuadSelection();
   annotationView.value = { ...getCurrentAnnotationView(), errorMessage: '' };
   renderAnnotationQuads(options);

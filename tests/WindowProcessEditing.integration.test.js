@@ -105,6 +105,7 @@ describe('Workspace editing through real domain and save transactions', () => {
     document.body.innerHTML = '';
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
     ipcRenderer.invoke.mockReset();
   });
 
@@ -207,5 +208,62 @@ describe('Workspace editing through real domain and save transactions', () => {
     await button('重做 JSON 操作（Ctrl+Shift+Y）').trigger('click');
     await flushPromises();
     expect(getJsonFileInfo()).toEqual(added);
+  });
+
+  describe.each(['point drag', 'translation'])('pending %s save after unmount', edit => {
+    it.each([
+      { outcome: 'success', response: { success: true } },
+      { outcome: 'success with backup', response: { success: true, backupPath: 'C:/backups/sample.json' } },
+      { outcome: 'failure', response: { success: false, error: 'disk unavailable' } },
+      { outcome: 'IPC rejection', error: new Error('IPC unavailable') },
+    ])('settles $outcome without reviving the disposed UI', async ({ response, error }) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const imageView = await mountEditor();
+      const before = getJsonFileInfo();
+      let resolveSave;
+      let rejectSave;
+      persist.mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            resolveSave = resolve;
+            rejectSave = reject;
+          }),
+      );
+
+      if (edit === 'point drag') {
+        imageView.vm.$emit('commit-quad-point-drag', { quadIndex: 0, pointIndex: 1, imagePoint: { x: 7.6, y: 4.4 } });
+      } else {
+        imageView.vm.$emit('quad-translation-start', { quadIndex: 0 });
+        imageView.vm.$emit('commit-quad-translation', {
+          quadIndex: 0,
+          target: { type: 'whole' },
+          imageDelta: { x: 1, y: 0 },
+        });
+      }
+      await flushPromises();
+      expect(persist).toHaveBeenCalledTimes(1);
+      const edited = getJsonFileInfo();
+      expect(edited.str).not.toBe(before.str);
+
+      // Retain the disposed instance only to observe otherwise invisible late UI writes.
+      const state = wrapper.vm.$.setupState;
+      wrapper.unmount();
+      wrapper = null;
+      const annotationsAfterUnmount = state.annotationView;
+      const selectionLockAfterUnmount = state.quadSelectionLockIndex;
+      expect(vi.getTimerCount()).toBe(0);
+
+      if (error) rejectSave(error);
+      else resolveSave(response);
+      await flushPromises();
+
+      expect(getJsonFileInfo()).toEqual(response?.success ? edited : before);
+      expect(state.annotationView).toBe(annotationsAfterUnmount);
+      expect(state.quadSelectionLockIndex).toBe(selectionLockAfterUnmount);
+      expect(state.canUndoJson).toBe(false);
+      expect(state.notifications).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 });
