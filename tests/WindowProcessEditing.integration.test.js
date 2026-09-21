@@ -33,7 +33,9 @@ beforeAll(async () => {
 async function mountEditor() {
   wrapper = shallowMount(WindowProcess, {
     attachTo: document.body,
-    global: { stubs: { ImageView: ImageViewStub, JsonView: JsonViewStub } },
+    global: {
+      stubs: { WorkspaceToolbar: false, DatasetInfoPanel: false, ImageView: ImageViewStub, JsonView: JsonViewStub },
+    },
   });
   await flushPromises();
   const imageView = wrapper.findComponent(ImageViewStub);

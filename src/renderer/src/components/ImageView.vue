@@ -178,16 +178,11 @@
 <script setup>
 import { computed, ref, shallowRef, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMouse, useResizeObserver } from '@vueuse/core';
-import {
-  POINTER_PHASE,
-  createPointerGestureState,
-  matchesGesturePointer,
-  transitionPointerGesture,
-} from '../state/PointerGestureState.js';
-import { capturePointer, releasePointer } from '../utils/PointerCapture.js';
+import { useQuadPointGesture } from '../composables/useQuadPointGesture.js';
+import { createViewportDrawScheduler } from '../utils/ViewportDrawScheduler.js';
 import { useCanvasPanGesture } from '../composables/useCanvasPanGesture.js';
 import { useImageViewport } from '../composables/useImageViewport.js';
-import { isValidQuadPoints, useQuadOverlay } from '../composables/useQuadOverlay.js';
+import { useQuadOverlay } from '../composables/useQuadOverlay.js';
 import { useQuadTranslationGesture } from '../composables/useQuadTranslationGesture.js';
 import { getCanvasBackingLength, normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { QUAD_TRANSLATION_TARGET } from '../utils/QuadGeometry.js';
@@ -305,8 +300,6 @@ const presentedSession = shallowRef(null);
 const presentedImage = computed(() => presentedSession.value?.image ?? null);
 const hasImage = computed(() => presentedSession.value !== null);
 let disposed = false;
-let viewportDrawFrameId = null;
-let drawGeneration = 0;
 
 // Annotation state
 const dotsCanvasCoord = ref([]);
@@ -318,17 +311,6 @@ const highlightQuadIndex = computed(() => props.activeQuadIndex);
 // Interaction and feedback state
 const mouseIsOverContainer = ref(false);
 const mouseCoord = reactive({ x: 0, y: 0 });
-const quadPointDrag = reactive({
-  ...createPointerGestureState(),
-  get active() {
-    return this.phase !== POINTER_PHASE.IDLE;
-  },
-  quadIndex: -1,
-  pointIndex: -1,
-  originalPoint: null,
-  currentPoint: null,
-});
-let quadPointCaptureElement = null;
 const {
   shownQuadIndices: showQuadIndex,
   activePointHandles: activeQuadPointHandles,
@@ -360,6 +342,30 @@ const {
   hoverActivationEnabled: () => props.quadInteractionCapabilities.hoverActivation,
   onSelectQuad: index => emits('select-quad-index', index),
 });
+const {
+  state: quadPointDrag,
+  start: startQuadPointDrag,
+  move: moveQuadPointDrag,
+  finish: finishQuadPointDrag,
+  cancel: cancelQuadPointDrag,
+  reset: resetQuadPointDragState,
+} = useQuadPointGesture({
+  canStart: () =>
+    props.canEdit &&
+    props.canInteract &&
+    props.quadInteractionCapabilities.pointDrag &&
+    !quadTranslation.active &&
+    !canvasPointerGesture.active,
+  canContinue: () => props.canEdit && props.canInteract && props.quadInteractionCapabilities.pointDrag,
+  getActiveQuadIndex: () => highlightQuadIndex.value,
+  getQuad,
+  getPointerImagePoint: getDraggedImagePoint,
+  setQuadPoint,
+  redraw: drawCanvasForShowQuads,
+  onFinish: updateActiveQuadPointHandles,
+  onCommit: payload => emits('commit-quad-point-drag', payload),
+});
+
 const draggableActiveQuadPointHandles = computed(() =>
   props.quadInteractionCapabilities.pointDrag ? activeQuadPointHandles.value : [],
 );
@@ -506,20 +512,6 @@ function getDotInfo(e) {
   return { canvasCoord, realCoord, existingDotIndex };
 }
 
-function resetQuadPointDragState() {
-  const pointerId = quadPointDrag.pointerId;
-  const captureElement = quadPointCaptureElement;
-  quadPointCaptureElement = null;
-  Object.assign(quadPointDrag, {
-    ...createPointerGestureState(),
-    quadIndex: -1,
-    pointIndex: -1,
-    originalPoint: null,
-    currentPoint: null,
-  });
-  releasePointer(captureElement, pointerId);
-}
-
 function getDraggedImagePoint(event) {
   if (!Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) return null;
   const localPoint = syncMouseCoord(event.clientX, event.clientY);
@@ -531,80 +523,6 @@ function getDraggedImagePoint(event) {
     x: Math.min(initImgWidth.value - 1, Math.max(0, imagePoint.x)),
     y: Math.min(initImgHeight.value - 1, Math.max(0, imagePoint.y)),
   };
-}
-
-function startQuadPointDrag(event, pointIndex) {
-  if (
-    !props.canEdit ||
-    !props.canInteract ||
-    !props.quadInteractionCapabilities.pointDrag ||
-    quadTranslation.active ||
-    quadPointDrag.active ||
-    canvasPointerGesture.active ||
-    !Number.isInteger(event.pointerId) ||
-    event.button !== 0
-  ) {
-    return;
-  }
-
-  const quadIndex = highlightQuadIndex.value;
-  const quad = getQuad(quadIndex);
-  if (!isValidQuadPoints(quad) || !Number.isInteger(pointIndex) || pointIndex < 0 || pointIndex >= 4) return;
-
-  const originalPoint = { ...quad[pointIndex] };
-  Object.assign(quadPointDrag, {
-    ...transitionPointerGesture(quadPointDrag, { type: 'start', pointerId: event.pointerId, immediate: true }),
-    quadIndex,
-    pointIndex,
-    originalPoint,
-    currentPoint: { ...originalPoint },
-  });
-  quadPointCaptureElement = event.currentTarget;
-  if (!capturePointer(quadPointCaptureElement, event.pointerId)) resetQuadPointDragState();
-}
-
-function moveQuadPointDrag(event) {
-  if (!matchesGesturePointer(quadPointDrag, event)) return false;
-  if (!props.canEdit || !props.canInteract || !props.quadInteractionCapabilities.pointDrag) {
-    cancelQuadPointDrag();
-    return false;
-  }
-  const nextPoint = getDraggedImagePoint(event);
-  const quad = getQuad(quadPointDrag.quadIndex);
-  if (nextPoint === null || !isValidQuadPoints(quad)) return false;
-  if (nextPoint.x === quadPointDrag.currentPoint.x && nextPoint.y === quadPointDrag.currentPoint.y) return true;
-
-  if (!setQuadPoint(quadPointDrag.quadIndex, quadPointDrag.pointIndex, nextPoint)) return false;
-  quadPointDrag.currentPoint = { ...nextPoint };
-  drawCanvasForShowQuads();
-  return true;
-}
-
-function finishQuadPointDrag(event) {
-  if (!quadPointDrag.active || event.pointerId !== quadPointDrag.pointerId) return;
-  if (!moveQuadPointDrag(event)) {
-    cancelQuadPointDrag();
-    return;
-  }
-
-  const payload = {
-    quadIndex: quadPointDrag.quadIndex,
-    pointIndex: quadPointDrag.pointIndex,
-    imagePoint: { ...quadPointDrag.currentPoint },
-  };
-  const changed =
-    payload.imagePoint.x !== quadPointDrag.originalPoint.x || payload.imagePoint.y !== quadPointDrag.originalPoint.y;
-  resetQuadPointDragState();
-  updateActiveQuadPointHandles();
-  if (changed) emits('commit-quad-point-drag', payload);
-}
-
-function cancelQuadPointDrag(event = null) {
-  if (!quadPointDrag.active || (event && !matchesGesturePointer(quadPointDrag, event))) return;
-
-  setQuadPoint(quadPointDrag.quadIndex, quadPointDrag.pointIndex, quadPointDrag.originalPoint);
-  resetQuadPointDragState();
-  drawCanvasForShowQuads();
 }
 
 function handleQuadDragKeyDown(event) {
@@ -727,31 +645,20 @@ watch(showQuadIndex, () => {
 });
 
 // Viewport redraw scheduling
-function cancelScheduledViewPortDraw() {
-  drawGeneration += 1;
-  if (viewportDrawFrameId === null) return;
-  cancelAnimationFrame(viewportDrawFrameId);
-  viewportDrawFrameId = null;
-}
-
-function drawViewPortNow() {
-  if (disposed || !hasImage.value) return;
-  drawCanvas();
-  updateDotsCanvasCoord();
-  drawCanvasForShowQuads();
-  refreshZoomViewAtCurrentMouse();
-}
-
-function updateViewPortDraw() {
-  if (disposed || !hasImage.value || viewportDrawFrameId !== null) return;
-
-  const generation = drawGeneration;
-  viewportDrawFrameId = requestAnimationFrame(() => {
-    if (disposed || generation !== drawGeneration) return;
-    viewportDrawFrameId = null;
-    drawViewPortNow();
-  });
-}
+const {
+  cancel: cancelScheduledViewPortDraw,
+  drawNow: drawViewPortNow,
+  schedule: updateViewPortDraw,
+  dispose: disposeViewportDrawing,
+} = createViewportDrawScheduler({
+  canDraw: () => hasImage.value,
+  draw: () => {
+    drawCanvas();
+    updateDotsCanvasCoord();
+    drawCanvasForShowQuads();
+    refreshZoomViewAtCurrentMouse();
+  },
+});
 
 // Pan and zoom interaction
 const { x, y } = useMouse();
@@ -823,6 +730,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   disposed = true;
+  disposeViewportDrawing();
   clearImage();
   window.removeEventListener('keydown', handleQuadDragKeyDown, true);
 });
@@ -965,19 +873,13 @@ function clearDots() {
 }
 
 // Image lifecycle
-function resetAnnotationOverlay() {
-  if (quadPointDrag.active) resetQuadPointDragState();
-  if (quadTranslation.active) cancelQuadTranslation('overlay-reset');
-  clearQuadOverlay();
-}
-
 function clearImage() {
   cancelAllGestures('image-cleared');
   cancelScheduledViewPortDraw();
   resetCanvasPointerGesture({ canceled: true });
   presentedSession.value = null;
   clearViewport();
-  resetAnnotationOverlay();
+  clearQuadOverlay();
   clearDots();
   realDot2GetZoom.value = { x: -1, y: -1 };
   hoveredPixelCanvasCoord.value = null;

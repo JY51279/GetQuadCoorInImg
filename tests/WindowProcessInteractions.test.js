@@ -62,7 +62,10 @@ describe('WindowProcess interactions', () => {
       }
       return new Promise(() => {});
     });
-    const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    const wrapper = shallowMount(WindowProcess, {
+      attachTo: document.body,
+      global: { stubs: { WorkspaceToolbar: false, DatasetInfoPanel: false } },
+    });
     await flushPromises();
     await nextTick();
 
@@ -99,7 +102,10 @@ describe('WindowProcess interactions', () => {
       }
       throw new Error(`Unexpected IPC channel: ${channel}`);
     });
-    const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    const wrapper = shallowMount(WindowProcess, {
+      attachTo: document.body,
+      global: { stubs: { WorkspaceToolbar: false, DatasetInfoPanel: false } },
+    });
     await nextTick();
 
     const openButton = wrapper.find('button[title="打开或更换图集（Ctrl+O）"]');
@@ -131,7 +137,10 @@ describe('WindowProcess interactions', () => {
         error: '读取 JSON 文件失败。',
       };
     });
-    const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    const wrapper = shallowMount(WindowProcess, {
+      attachTo: document.body,
+      global: { stubs: { WorkspaceToolbar: false, DatasetInfoPanel: false } },
+    });
     await flushPromises();
 
     await wrapper.find('button[title="打开或更换图集（Ctrl+O）"]').trigger('click');
@@ -195,7 +204,10 @@ describe('WindowProcess interactions', () => {
       }
       throw new Error(`Unexpected IPC channel: ${channel}`);
     });
-    const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    const wrapper = shallowMount(WindowProcess, {
+      attachTo: document.body,
+      global: { stubs: { WorkspaceToolbar: false, DatasetInfoPanel: false } },
+    });
     await flushPromises();
 
     await wrapper.find('button[title="打开或更换图集（Ctrl+O）"]').trigger('click');
@@ -263,7 +275,10 @@ describe('WindowProcess interactions', () => {
       throw new Error(`Unexpected IPC channel: ${channel}`);
     });
 
-    const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    const wrapper = shallowMount(WindowProcess, {
+      attachTo: document.body,
+      global: { stubs: { WorkspaceToolbar: false, DatasetInfoPanel: false } },
+    });
     await flushPromises();
 
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('read-json-file', {

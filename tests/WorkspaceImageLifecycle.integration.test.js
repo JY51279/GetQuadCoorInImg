@@ -48,7 +48,10 @@ beforeAll(async () => {
 });
 
 async function mountWorkspace() {
-  wrapper = shallowMount(WindowProcess, { attachTo: document.body, global: { stubs: { ImageView: ImageViewStub } } });
+  wrapper = shallowMount(WindowProcess, {
+    attachTo: document.body,
+    global: { stubs: { WorkspaceToolbar: false, DatasetInfoPanel: false, ImageView: ImageViewStub } },
+  });
   await flushPromises();
   return wrapper.findComponent(ImageViewStub);
 }

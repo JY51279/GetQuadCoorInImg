@@ -6,100 +6,19 @@
       </div>
     </TransitionGroup>
 
-    <header class="workspace-toolbar">
-      <div class="app-identity" aria-label="QuadTool">
-        <span class="app-mark">Q</span>
-        <div>
-          <strong>QuadTool</strong>
-          <span>像素级四边形标注</span>
-        </div>
-      </div>
-
-      <div class="toolbar-group toolbar-files">
-        <button
-          class="toolbar-button primary"
-          :title="datasetOpenTitle"
-          :disabled="!canLoadDataset"
-          @click="chooseJsonFile"
-        >
-          打开图集
-        </button>
-        <button
-          class="toolbar-button compact"
-          :title="previousDatasetTitle"
-          :disabled="!canNavigateDataset"
-          @click="changeDatasetByDirection(KEYS.PREVIOUS)"
-        >
-          上一图集
-        </button>
-        <button
-          class="toolbar-button compact"
-          :title="nextDatasetTitle"
-          :disabled="!canNavigateDataset"
-          @click="changeDatasetByDirection(KEYS.NEXT)"
-        >
-          下一图集
-        </button>
-        <button
-          class="toolbar-button"
-          title="手动匹配图片（Ctrl+I）"
-          :disabled="imagePositionView.total === 0 || !canLoadImage"
-          @click="chooseImgFile"
-        >
-          匹配图片
-        </button>
-        <div
-          class="toolbar-dataset-name"
-          :title="jsonFileName || '未加载图集'"
-          :aria-label="`当前图集：${jsonFileName || '未加载'}`"
-          aria-live="polite"
-        >
-          <span>图集：</span>
-          <strong>{{ jsonFileName || '未加载' }}</strong>
-        </div>
-      </div>
-
-      <div class="toolbar-group image-navigation" aria-label="图片导航">
-        <button
-          class="icon-button"
-          title="上一张图片（A / ←）"
-          :disabled="imagePositionView.total === 0 || !canLoadImage"
-          @click="changeImageByArrowKeys(KEYS.PREVIOUS)"
-        >
-          <span aria-hidden="true">‹</span>
-        </button>
-        <label class="image-position-control">
-          <span class="sr-only">图片序号</span>
-          <input
-            v-model="jumpImageIndex"
-            type="number"
-            min="1"
-            step="1"
-            :max="imagePositionView.total || undefined"
-            :placeholder="imagePositionView.total ? '1' : '—'"
-            :disabled="imagePositionView.total === 0 || !canLoadImage"
-            @keydown.enter.prevent="handleJumpToImageIndexKeyDown"
-          />
-          <span>/ {{ imagePositionView.total }}</span>
-        </label>
-        <button
-          class="icon-button"
-          title="下一张图片（D / →）"
-          :disabled="imagePositionView.total === 0 || !canLoadImage"
-          @click="changeImageByArrowKeys(KEYS.NEXT)"
-        >
-          <span aria-hidden="true">›</span>
-        </button>
-        <button
-          class="toolbar-button compact"
-          title="跳转到输入的图片序号（Enter）"
-          :disabled="imagePositionView.total === 0 || !canLoadImage"
-          @click="jumpToImageIndex"
-        >
-          跳转
-        </button>
-      </div>
-    </header>
+    <WorkspaceToolbar
+      v-model:jump-image-index="jumpImageIndex"
+      :can-load-dataset="canLoadDataset"
+      :can-navigate-dataset="canNavigateDataset"
+      :can-load-image="canLoadImage"
+      :image-position-view="imagePositionView"
+      :json-file-name="jsonFileName"
+      @open-dataset="chooseJsonFile"
+      @navigate-dataset="changeDatasetByDirection"
+      @match-image="chooseImgFile"
+      @navigate-image="changeImageByArrowKeys"
+      @jump-image="jumpToImageIndex"
+    />
 
     <main class="workspace-main">
       <ImageView
@@ -318,36 +237,13 @@
             </div>
           </section>
 
-          <section v-show="activeInspectorPage === INSPECTOR_PAGE.DATASET" class="inspector-page">
-            <header class="panel-header">
-              <h2>图集与图片</h2>
-            </header>
-            <div v-if="datasetLoadError" class="dataset-load-error" role="alert">
-              <strong>图集加载失败</strong>
-              <p>{{ datasetLoadError.message }}</p>
-              <dl>
-                <div v-if="datasetLoadError.path">
-                  <dt>当前图集</dt>
-                  <dd :title="datasetLoadError.path">{{ datasetLoadError.path }}</dd>
-                </div>
-              </dl>
-              <small>上一图集和下一图集将以该文件为切换基准。</small>
-            </div>
-            <dl class="metadata-list">
-              <div>
-                <dt>产品类型</dt>
-                <dd>{{ loadedProductType || '未加载' }}</dd>
-              </div>
-              <div>
-                <dt>图集 JSON</dt>
-                <dd :title="jsonFileName">{{ jsonFileName || '未加载' }}</dd>
-              </div>
-              <div>
-                <dt>图片</dt>
-                <dd :title="imgFileName">{{ imgFileName || '未加载' }}</dd>
-              </div>
-            </dl>
-          </section>
+          <DatasetInfoPanel
+            v-show="activeInspectorPage === INSPECTOR_PAGE.DATASET"
+            :dataset-load-error="datasetLoadError"
+            :loaded-product-type="loadedProductType"
+            :json-file-name="jsonFileName"
+            :img-file-name="imgFileName"
+          />
 
           <section v-show="activeInspectorPage === INSPECTOR_PAGE.DISPLAY" class="inspector-page">
             <header class="panel-header">
@@ -454,62 +350,26 @@
 </template>
 
 <script setup>
-import { computed, ref, shallowRef, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { useWorkspaceImages } from '../composables/useWorkspaceImages.js';
+import { useWorkspaceDataset } from '../composables/useWorkspaceDataset.js';
 import { useDevicePixelRatio } from '@vueuse/core';
 import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
+import WorkspaceToolbar from './WorkspaceToolbar.vue';
+import DatasetInfoPanel from './DatasetInfoPanel.vue';
 import Help from './Help.vue';
 import HistoryView from './HistoryView.vue';
-import {
-  DATASET_LOAD_TRANSACTION_STATUS,
-  useDatasetLoadTransaction,
-} from '../composables/useDatasetLoadTransaction.js';
-import { useDatasetSaveTransaction } from '../composables/useDatasetSaveTransaction.js';
-import { getJsonActionLabel, useJsonHistory } from '../composables/useJsonHistory.js';
+import { useWorkspaceEditing } from '../composables/useWorkspaceEditing.js';
 import { usePointSelectionHistory } from '../composables/usePointSelectionHistory.js';
 import { useToastNotifications } from '../composables/useToastNotifications.js';
-import {
-  applyQuadLocationToImagesWithHistory,
-  copyPreviousQuadLocationWithHistory,
-  getAdjacentJsonImageTarget,
-  getCurrentAnnotationView,
-  getCurrentJsonImageIndex,
-  getJsonImageDialogContext,
-  getJsonImageTarget,
-  getJsonImageTargetByPath,
-  applyJsonHistoryEntriesWithReceipt,
-  updateQuadPointWithHistory,
-  updateJsonWithHistory,
-  getJsonImagePosition,
-  getJsonFileInfo,
-  resetPicJson,
-  resolveFollowingImageIndexes,
-  translateQuadWithHistory,
-} from '../state/DatasetState.js';
-import {
-  IMAGE_FAILURE_ACTION,
-  IMAGE_REQUEST_SOURCE,
-  IMAGE_REQUEST_STATUS,
-  createImageRequestService,
-} from '../services/ImageRequestService.js';
+import { getCurrentAnnotationView, getJsonFileInfo } from '../state/DatasetState.js';
 import { createJsonFileService } from '../services/JsonFileService.js';
 import { createWorkspaceSessionService } from '../services/WorkspaceSessionService.js';
-import {
-  HISTORY_DIRECTION,
-  commitHistoryEntries,
-  getHistoryTimeline,
-  getHistoryTransition,
-} from '../state/UndoRedoHistory.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
-import { imageDeltaToDatasetDelta, imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
-import { QUAD_TRANSLATION_TARGET } from '../utils/QuadGeometry.js';
 import { createShortcutHelpGroups, dispatchShortcut } from '../utils/KeyboardShortcuts.js';
-import {
-  WORKSPACE_SHORTCUT_HELP_GROUPS,
-  createWorkspaceShortcutCommands,
-  getWorkspaceShortcutTitle,
-} from '../shortcuts/WorkspaceShortcuts.js';
+import { WORKSPACE_SHORTCUT_HELP_GROUPS, createWorkspaceShortcutCommands } from '../shortcuts/WorkspaceShortcuts.js';
 import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
 import { getAdjacentQuadIndex, normalizeQuadIndex } from '../state/QuadSelection.js';
 import {
@@ -531,19 +391,10 @@ import {
   canChangeQuadSelection,
   canEdit as canEditWorkflow,
   canStartOperation,
-  completeOperation,
   createWorkflowState,
-  failOperation,
-  isCurrentOperation,
-  isOperationActive,
   isWorkflowBusy,
-  operationReturnsTo,
-  startImageLoad,
 } from '../state/WorkflowState.js';
-import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
-import { createCanceledDatasetFileResponse } from '../../../shared/DatasetFileResponse.js';
-
-import { belongsToDataset, createImageSession } from '../state/ImageSession.js';
+import { USER_MESSAGES } from '../../../shared/UserMessages.js';
 
 let disposed = false;
 const ipcRenderer = window.electron.ipcRenderer;
@@ -581,16 +432,8 @@ const activeQuadIndex = ref(-1);
 const quadSelectionLockIndex = ref(-1);
 const annotationView = ref({ formattedItems: [], quads: [], errorMessage: '' });
 const quadTotal = computed(() => annotationView.value.formattedItems.length);
-const imagePositionView = ref({ currentIndex: -1, total: 0 });
-const jumpImageIndex = ref('');
 const isQuadLocationPropagationOpen = ref(false);
 const quadLocationPropagationCount = ref(0);
-const imageSession = shallowRef(null);
-const imageObj = computed(() => imageSession.value?.image ?? null);
-const imgFileName = computed(() => imageSession.value?.fileName ?? '');
-const loadedProductType = ref('');
-const imageCoordinateScale = computed(() => imageSession.value?.coordinateScale ?? { x: 1, y: 1 });
-const currentImageOriginalSize = computed(() => imageSession.value?.originalSize ?? null);
 let zoomSourceOrigin = null;
 const quadInteractionMode = ref(QUAD_INTERACTION_MODE.DEFAULT);
 const quadInteractionCapabilities = computed(() => getQuadInteractionCapabilities(quadInteractionMode.value));
@@ -602,10 +445,42 @@ const displayPixelRatio = computed(() => normalizeDevicePixelRatio(rawDisplayPix
 
 // Operation and image request state
 const workflowState = ref(createWorkflowState());
+const { notifications, notify: outputMessage, dispose: disposeNotifications } = useToastNotifications();
+const {
+  imageSession,
+  imagePositionView,
+  jumpImageIndex,
+  imageLoadError,
+  hasCurrentImageSession,
+  canLoadImage,
+  isImageLoading,
+  chooseImgFile,
+  changeImageByArrowKeys,
+  jumpToImageIndex,
+  startDatasetImageRequest,
+  clearCurrentImage,
+  resetForDatasetChange: resetImageSessionForDatasetChange,
+  dispose: disposeImages,
+} = useWorkspaceImages({
+  workflowState,
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+  isActive: () => !disposed,
+  outputMessage,
+  recordImage: checkpoint => reportWorkspaceSessionRecord(workspaceSessionService.recordImage(checkpoint)),
+  presentImageSession: session => imgContainerRef.value?.presentImageSession?.(session),
+  resetDots: () => resetDots(),
+  resetZoomPreview,
+  refreshCurrentAnnotations,
+  clearCurrentAnnotations,
+  synchronizeQuadFocusSelection,
+});
+const imageObj = computed(() => imageSession.value?.image ?? null);
+const imgFileName = computed(() => imageSession.value?.fileName ?? '');
+const imageCoordinateScale = computed(() => imageSession.value?.coordinateScale ?? { x: 1, y: 1 });
+const currentImageOriginalSize = computed(() => imageSession.value?.originalSize ?? null);
 const selectedDataset = computed(() => workflowState.value.datasetTarget ?? { path: '', fileName: '' });
 const jsonFileName = computed(() => selectedDataset.value.fileName);
 const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
-const hasCurrentImageSession = computed(() => belongsToDataset(imageSession.value, workflowState.value.datasetVersion));
 const canOperate = computed(
   () =>
     canEditWorkflow(workflowState.value) &&
@@ -613,19 +488,21 @@ const canOperate = computed(
     imageSession.value.imageIndex >= 0 &&
     imageSession.value.imageIndex === imagePositionView.value.currentIndex,
 );
-const { run: executeSaveTransaction } = useDatasetSaveTransaction({
-  workflowState,
-  getCurrentImageIndex: getCurrentJsonImageIndex,
-  saveJsonFile,
-});
-const { run: executeDatasetLoadTransaction } = useDatasetLoadTransaction({
-  workflowState,
-  confirmLossyRepair: message => window.confirm(message),
-  resolveImagePaths: request => ipcRenderer.invoke('resolve-json-image-paths', request),
-  saveJsonFile: saveJsonFileInfo,
-  onDatasetTargetSelected: handleDatasetTargetSelected,
-  isActive: () => !disposed,
-});
+const { loadedProductType, datasetLoadError, restoreWorkspaceSession, chooseJsonFile, changeDatasetByDirection } =
+  useWorkspaceDataset({
+    workflowState,
+    invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+    isActive: () => !disposed,
+    outputMessage,
+    saveJsonFile: saveJsonFileInfo,
+    confirmLossyRepair: message => window.confirm(message),
+    getWorkspaceSession: () => workspaceSessionService.get(),
+    recordDatasetTarget: path => reportWorkspaceSessionRecord(workspaceSessionService.recordDatasetTarget(path)),
+    onDatasetReset: resetImageForDatasetChange,
+    startDatasetImageRequest,
+    showDatasetPanel: () => selectInspectorPage(INSPECTOR_PAGE.DATASET),
+    showAnnotationPanel: () => selectInspectorPage(INSPECTOR_PAGE.ANNOTATION),
+  });
 const {
   selectedDots,
   canUndo: canUndoPoints,
@@ -639,8 +516,6 @@ const {
 } = usePointSelectionHistory({ canEdit: canOperate });
 const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
 const canNavigateDataset = computed(() => canLoadDataset.value && Boolean(selectedDataset.value.path));
-const canLoadImage = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
-const isImageLoading = computed(() => isOperationActive(workflowState.value, WORKFLOW_OPERATION.LOAD_IMAGE));
 const canInteractWithImage = computed(
   () =>
     !workflowBusy.value &&
@@ -696,45 +571,53 @@ const workflowStatusText = computed(() => {
   };
   return labels[workflowState.value.phase] ?? '未知状态';
 });
-const imageLoadError = ref(null);
-const datasetLoadError = ref(null);
+// Editing and history orchestration
 const {
-  getActiveRequest,
-  beginManualRequest,
-  beginDatasetRequest,
-  clear: resetImageRequestState,
-  execute: executeImageRequest,
-  planFailure: planImageRequestFailure,
-} = createImageRequestService({
-  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
-  getAdjacentTarget: getAdjacentJsonImageTarget,
-});
-
-// Notification state
-const { notifications, notify: outputMessage, dispose: disposeNotifications } = useToastNotifications();
-const {
-  limits: jsonHistoryLimits,
-  canUndo: canUndoJson,
-  canRedo: canRedoJson,
-  groups: jsonHistoryGroups,
-  getCurrentHistory: getCurrentJsonHistory,
-  recordCurrent: recordCurrentJsonHistory,
-  clear: clearJsonHistory,
-} = useJsonHistory({
-  canEdit: canOperate,
-  currentImageIndex: computed(() => imagePositionView.value.currentIndex),
-  getImageTarget: getJsonImageTarget,
+  jsonHistoryLimits,
+  canUndoJson,
+  canRedoJson,
+  jsonHistoryGroups,
+  clearJsonHistory,
+  commitQuadPointDrag,
+  commitQuadTranslation,
+  addJsonItem,
+  deleteJsonItem,
+  modifyJsonItem,
+  undoJsonEdit,
+  redoJsonEdit,
+  jumpJsonHistory,
+  copyPreviousQuadLocation,
+  applyQuadLocationForward,
+} = useWorkspaceEditing({
+  workflowState,
+  canOperate,
+  activeQuadIndex,
+  quadSelectionLockIndex,
+  quadTotal,
+  imagePositionView,
+  imageCoordinateScale,
+  currentImageOriginalSize,
+  selectedDots,
+  canApplyQuadLocationForward,
+  quadLocationPropagationCount,
+  isActive: () => !disposed,
+  saveJsonFile,
   outputMessage,
+  refreshCurrentAnnotations,
+  clearCurrentAnnotations,
+  clearCurrentImage,
+  selectQuadIndex,
+  unlockQuadSelectionForTranslation,
+  resetDots,
+  closeQuadLocationPropagation,
+  onAnnotationAdded: () =>
+    nextTick(() => {
+      if (!disposed) jsonView.value?.scrollToBottom();
+    }),
 });
 
 let zoomCanvasPixelRatio = null;
 let activeQuadFocusScheduled = false;
-
-function applyWorkflowTransition(result) {
-  if (!result.success) return false;
-  workflowState.value = result.state;
-  return true;
-}
 
 function selectQuadIndex(newIndex, { forceFocus = false } = {}) {
   if (!canChangeQuadSelection(workflowState.value)) return;
@@ -787,8 +670,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   disposed = true;
-  resetImageRequestState();
-  imageSession.value = null;
+  disposeImages();
   window.removeEventListener('keydown', handleKeyDown);
   disposeNotifications();
 });
@@ -839,9 +721,6 @@ const shortcutCommands = createWorkspaceShortcutCommands({
   'help.close': () => selectInspectorPage(previousInspectorPage),
 });
 const shortcutHelpGroups = Object.freeze(createShortcutHelpGroups(shortcutCommands, WORKSPACE_SHORTCUT_HELP_GROUPS));
-const datasetOpenTitle = getWorkspaceShortcutTitle('dataset.open');
-const previousDatasetTitle = getWorkspaceShortcutTitle('dataset.previous');
-const nextDatasetTitle = getWorkspaceShortcutTitle('dataset.next');
 
 function handleKeyDown(e) {
   if (isQuadSelectionLocked.value) {
@@ -913,231 +792,6 @@ function focusPixelAtMouse() {
   if (!result?.success) outputMessage(result?.error || '无法聚焦鼠标所在像素。');
 }
 
-// JSON Operations
-async function runSaveTransaction(mutate, onCompleted = () => {}) {
-  // Persistence and rollback must settle even when the page can no longer receive UI updates.
-  const result = await executeSaveTransaction(mutate);
-  if (disposed) return false;
-  if (result.rollbackFailed) {
-    outputMessage('操作失败后无法恢复 JSON 状态，请重新加载图集。');
-    clearCurrentImage();
-    clearCurrentAnnotations('JSON 状态不可用，请重新加载图集。');
-  }
-  if (result.error) outputMessage(result.error);
-  if (!result.success) return false;
-
-  onCompleted(result);
-  return true;
-}
-
-async function commitQuadPointDrag(payload) {
-  const { quadIndex, pointIndex, imagePoint } = payload ?? {};
-  if (
-    !canOperate.value ||
-    quadIndex !== activeQuadIndex.value ||
-    !Number.isInteger(pointIndex) ||
-    pointIndex < 0 ||
-    pointIndex >= 4
-  ) {
-    refreshCurrentAnnotations({ redrawOverlay: true });
-    outputMessage('拖动的 Quad 顶点已与当前标注不匹配。');
-    return;
-  }
-
-  const datasetPoint = imagePointToDatasetPoint(imagePoint, imageCoordinateScale.value);
-  if (datasetPoint === null) {
-    refreshCurrentAnnotations({ redrawOverlay: true });
-    outputMessage('无法将拖动后的点换算为数据集坐标。');
-    return;
-  }
-
-  const saved = await runSaveTransaction(
-    () => {
-      return updateQuadPointWithHistory(quadIndex, pointIndex, datasetPoint, currentImageOriginalSize.value);
-    },
-    ({ mutation }) => {
-      if (mutation.historyEntry) recordCurrentJsonHistory(mutation.historyEntry);
-      refreshCurrentAnnotations({ redrawOverlay: true });
-      selectQuadIndex(quadIndex);
-      outputMessage(`已更新 Quad ${quadIndex + 1} 的顶点。`);
-    },
-  );
-
-  if (!saved) refreshCurrentAnnotations({ redrawOverlay: true });
-}
-
-function getQuadTranslationSubject(quadIndex, target) {
-  const subjectFactories = {
-    [QUAD_TRANSLATION_TARGET.WHOLE]: () => `Quad ${quadIndex + 1}`,
-    [QUAD_TRANSLATION_TARGET.EDGE]: () =>
-      `Quad ${quadIndex + 1} 的边 P${target.edgeIndex + 1}–P${((target.edgeIndex + 1) % 4) + 1}`,
-  };
-  return subjectFactories[target?.type]?.() ?? `Quad ${quadIndex + 1}`;
-}
-
-async function commitQuadTranslation(payload) {
-  const { quadIndex, target, imageDelta } = payload ?? {};
-  if (!canOperate.value || quadIndex !== activeQuadIndex.value || quadIndex !== quadSelectionLockIndex.value) {
-    unlockQuadSelectionForTranslation();
-    refreshCurrentAnnotations({ redrawOverlay: true });
-    outputMessage('拖动的 Quad 已与当前标注不匹配。');
-    return;
-  }
-
-  const datasetDelta = imageDeltaToDatasetDelta(imageDelta, imageCoordinateScale.value);
-  if (datasetDelta === null) {
-    unlockQuadSelectionForTranslation({ quadIndex });
-    refreshCurrentAnnotations({ redrawOverlay: true });
-    outputMessage('无法将 Quad 位移换算为数据集坐标。');
-    return;
-  }
-
-  const translationSubject = getQuadTranslationSubject(quadIndex, target);
-  try {
-    const saved = await runSaveTransaction(
-      () => {
-        return translateQuadWithHistory({
-          quadIndex,
-          target,
-          delta: datasetDelta,
-          imageSize: currentImageOriginalSize.value,
-        });
-      },
-      result => {
-        if (result.mutation.historyEntry) recordCurrentJsonHistory(result.mutation.historyEntry);
-        refreshCurrentAnnotations({ redrawOverlay: true });
-        selectQuadIndex(quadIndex);
-        resetDots();
-        outputMessage(result.changed ? `已平移 ${translationSubject}。` : `${translationSubject} 的位置未改变。`);
-      },
-    );
-
-    if (!saved && canOperate.value) refreshCurrentAnnotations({ redrawOverlay: true });
-  } finally {
-    unlockQuadSelectionForTranslation({ quadIndex });
-  }
-}
-
-async function performJsonAction(action) {
-  if (!canOperate.value) {
-    outputMessage('当前图片尚未匹配数据集，不能执行 JSON 操作。');
-    return;
-  }
-
-  const affectedQuadIndex = activeQuadIndex.value;
-  await runSaveTransaction(
-    () => {
-      return updateJsonWithHistory(
-        action,
-        imageCoordinateScale.value,
-        activeQuadIndex.value,
-        selectedDots,
-        currentImageOriginalSize.value,
-      );
-    },
-    ({ mutation }) => {
-      if (mutation.historyEntry) recordCurrentJsonHistory(mutation.historyEntry);
-      if (action === KEYS.JSON_DELETE) {
-        refreshCurrentAnnotations({ resetSelection: true, deletedQuadIndex: affectedQuadIndex });
-      } else if (action === KEYS.JSON_ADD) {
-        refreshCurrentAnnotations({ showNewQuad: true });
-      } else {
-        refreshCurrentAnnotations({ redrawOverlay: true });
-      }
-      if (action === KEYS.JSON_ADD) nextTick(() => jsonView.value?.scrollToBottom());
-      resetDots();
-    },
-  );
-}
-
-async function moveJsonHistoryTo(targetPosition, { announceTarget = false } = {}) {
-  if (!canOperate.value) return;
-
-  const history = getCurrentJsonHistory();
-  const transition = getHistoryTransition(history, targetPosition);
-  if (!transition.success) {
-    outputMessage(transition.error);
-    return;
-  }
-  if (transition.entries.length === 0) return;
-
-  await runSaveTransaction(
-    () => {
-      return applyJsonHistoryEntriesWithReceipt(transition.entries, transition.direction);
-    },
-    ({ mutation }) => {
-      const mutationResults = mutation.mutationResults;
-      if (!commitHistoryEntries(history, transition.direction, transition.entries)) {
-        outputMessage('JSON 历史状态异常，请重新加载图集。');
-        return;
-      }
-
-      const finalMutation = mutationResults.at(-1);
-      const indexMutations = mutationResults
-        .filter(result => result.mutationType === 'insert' || result.mutationType === 'delete')
-        .map(result => ({ type: result.mutationType, index: result.itemIndex }));
-      const refreshOptions = {
-        resetSelection: true,
-        indexMutations,
-        redrawOverlay: indexMutations.length === 0,
-      };
-      if (finalMutation.mutationType === 'insert') {
-        refreshOptions.showQuadIndex = finalMutation.itemIndex;
-      }
-      refreshCurrentAnnotations(refreshOptions);
-      selectQuadIndex(finalMutation.activeQuadIndex);
-
-      if (announceTarget || transition.entries.length > 1) {
-        const targetLabel = targetPosition === 0 ? '历史起点' : `第 ${targetPosition} 条记录`;
-        outputMessage(`已回到图片 ${getCurrentJsonImageIndex() + 1} 的${targetLabel}。`);
-      } else {
-        const historyEntry = transition.entries[0];
-        outputMessage(
-          `${transition.direction === HISTORY_DIRECTION.UNDO ? '已撤销' : '已重做'}：${getJsonActionLabel(historyEntry.action)}。`,
-        );
-      }
-    },
-  );
-}
-
-function applyJsonHistory(direction) {
-  const history = getCurrentJsonHistory();
-  const { entries, currentPosition } = getHistoryTimeline(history);
-  if (
-    (direction === HISTORY_DIRECTION.UNDO && currentPosition === 0) ||
-    (direction === HISTORY_DIRECTION.REDO && currentPosition === entries.length)
-  ) {
-    return;
-  }
-  const targetPosition = currentPosition + (direction === HISTORY_DIRECTION.UNDO ? -1 : 1);
-  void moveJsonHistoryTo(targetPosition);
-}
-
-function jumpJsonHistory(imageIndex, targetPosition) {
-  if (imageIndex !== getCurrentJsonImageIndex()) return;
-  void moveJsonHistoryTo(targetPosition, { announceTarget: true });
-}
-
-function undoJsonEdit() {
-  void applyJsonHistory(HISTORY_DIRECTION.UNDO);
-}
-
-function redoJsonEdit() {
-  void applyJsonHistory(HISTORY_DIRECTION.REDO);
-}
-
-function addJsonItem() {
-  performJsonAction(KEYS.JSON_ADD);
-}
-
-function deleteJsonItem() {
-  performJsonAction(KEYS.JSON_DELETE);
-}
-
-function modifyJsonItem() {
-  performJsonAction(KEYS.JSON_MODIFY);
-}
-
 function closeQuadLocationPropagation() {
   isQuadLocationPropagationOpen.value = false;
 }
@@ -1155,84 +809,6 @@ function toggleQuadLocationPropagation() {
   isQuadLocationPropagationOpen.value = true;
 }
 
-function formatQuadLocationPropagationSummary(quadIndex, summary) {
-  const messages =
-    summary.updatedCount > 0
-      ? [`已将 Quad ${quadIndex + 1} 的坐标应用到 ${summary.updatedCount} 张后续图片`]
-      : [`Quad ${quadIndex + 1} 没有需要应用的坐标变更`];
-  if (summary.unchangedCount > 0) messages.push(`${summary.unchangedCount} 张坐标已相同`);
-  if (summary.skippedImageIndexes.length > 0) {
-    messages.push(`${summary.skippedImageIndexes.length} 张缺少对应 Quad，已跳过`);
-  }
-  return `${messages.join('；')}。`;
-}
-
-async function applyQuadLocationForward() {
-  if (!canApplyQuadLocationForward.value) {
-    closeQuadLocationPropagation();
-    return;
-  }
-
-  const sourceImageIndex = imagePositionView.value.currentIndex;
-  const quadIndex = activeQuadIndex.value;
-  const count = quadLocationPropagationCount.value;
-  const rangeResult = resolveFollowingImageIndexes({ sourceImageIndex, count });
-  if (!rangeResult.success) {
-    outputMessage(rangeResult.error);
-    return;
-  }
-
-  closeQuadLocationPropagation();
-  await runSaveTransaction(
-    () => {
-      return applyQuadLocationToImagesWithHistory({
-        source: { imageIndex: sourceImageIndex, quadIndex },
-        targetImageIndexes: rangeResult.imageIndexes,
-        sourceImageSize: currentImageOriginalSize.value,
-      });
-    },
-    ({ mutation }) => {
-      if (mutation.historyEntry) recordCurrentJsonHistory(mutation.historyEntry);
-      if (mutation.summary) outputMessage(formatQuadLocationPropagationSummary(quadIndex, mutation.summary));
-    },
-  );
-}
-
-async function copyPreviousQuadLocation() {
-  const quadIndex = activeQuadIndex.value;
-  if (!canOperate.value) {
-    outputMessage('当前图片尚未匹配数据集，不能沿用上一图坐标。');
-    return;
-  }
-  if (imagePositionView.value.currentIndex <= 0) {
-    outputMessage('当前图片没有上一张图片可供沿用坐标。');
-    return;
-  }
-  if (quadIndex < 0 || quadIndex >= quadTotal.value) {
-    outputMessage('请先激活一个 Quad。');
-    return;
-  }
-
-  const saved = await runSaveTransaction(
-    () => {
-      return copyPreviousQuadLocationWithHistory(quadIndex, currentImageOriginalSize.value);
-    },
-    result => {
-      if (result.mutation.historyEntry) recordCurrentJsonHistory(result.mutation.historyEntry);
-      refreshCurrentAnnotations({ redrawOverlay: true });
-      selectQuadIndex(quadIndex);
-      resetDots();
-      outputMessage(
-        result.changed
-          ? `已沿用上一张图片中 Quad ${quadIndex + 1} 的坐标。`
-          : `当前 Quad ${quadIndex + 1} 已与上一张图片坐标相同。`,
-      );
-    },
-  );
-
-  if (!saved && canOperate.value) refreshCurrentAnnotations({ redrawOverlay: true });
-}
-
 async function saveJsonFile() {
   return saveJsonFileInfo(getJsonFileInfo());
 }
@@ -1246,28 +822,6 @@ async function saveJsonFileInfo(jsonFileInfo, { backupOriginal = false } = {}) {
   if (result.backupPath) {
     outputMessage(`已创建临时 JSON 备份，将在 7 天后自动删除：${result.backupPath}`);
   }
-  return true;
-}
-
-function refreshImagePositionView() {
-  const position = getJsonImagePosition();
-  imagePositionView.value = position;
-  return position;
-}
-
-// Dataset and image initialization
-function initProcessInfo(session, jsonImageIndex = null) {
-  const resetPictureResult = resetPicJson(session.path, jsonImageIndex);
-  imageSession.value = Object.freeze({ ...session, imageIndex: getCurrentJsonImageIndex() });
-  if (!resetPictureResult.success) {
-    clearCurrentAnnotations(resetPictureResult.error || '找不到与当前图片匹配的 JSON 数据。');
-    refreshImagePositionView();
-    jumpImageIndex.value = '';
-    return false;
-  }
-  refreshCurrentAnnotations({ resetSelection: true, resetVisibility: true });
-  const position = refreshImagePositionView();
-  jumpImageIndex.value = position.currentIndex + 1;
   return true;
 }
 
@@ -1310,367 +864,17 @@ function clearCurrentAnnotations(errorMessage = '') {
   annotationView.value = { formattedItems: [], quads: [], errorMessage };
   renderAnnotationQuads({ resetVisibility: true });
 }
-// Image request lifecycle
-function chooseImgFile() {
-  if (!canLoadImage.value) {
-    outputMessage(workflowBusy.value ? USER_MESSAGES.WAIT_FOR_CURRENT_OPERATION : USER_MESSAGES.NO_DATASET);
-    return;
-  }
-  if (getJsonImagePosition().total === 0) {
-    outputMessage('请先加载包含图片项的 JSON 图集。');
-    return;
-  }
-  try {
-    const started = startImageLoad(workflowState.value);
-    if (!applyWorkflowTransition(started)) {
-      outputMessage(started.error);
-      return;
-    }
-
-    imageLoadError.value = null;
-    const request = beginManualRequest(started.operationId);
-    void requestPreparedImage('open-image-file-dialog', {
-      ...getJsonImageDialogContext(),
-      requestId: request.requestId,
-    });
-  } catch (error) {
-    console.error('Error while sending IPC message open-image-file-dialog:', error);
-    handleImageRequestFailure(toUserErrorMessage(error, USER_MESSAGES.IMAGE_OPEN_FAILED));
-  }
-}
-
-function changeImageByArrowKeys(direction) {
-  if (!canLoadImage.value) {
-    outputMessage(USER_MESSAGES.WAIT_FOR_CURRENT_OPERATION);
-    return;
-  }
-
-  const target = getAdjacentJsonImageTarget(direction, getCurrentJsonImageIndex());
-  if (!target.success) {
-    outputMessage(target.error);
-    return;
-  }
-  startDatasetImageRequest(target, direction);
-}
-
-function jumpToImageIndex() {
-  if (!canLoadImage.value) {
-    outputMessage(USER_MESSAGES.WAIT_FOR_CURRENT_OPERATION);
-    return;
-  }
-
-  const inputValue = String(jumpImageIndex.value).trim();
-  if (!/^\d+$/.test(inputValue)) {
-    outputMessage('图片序号必须是从 1 开始的整数。');
-    return;
-  }
-
-  const pictureNumber = Number(inputValue);
-  const { total } = getJsonImagePosition();
-  if (!Number.isSafeInteger(pictureNumber) || pictureNumber < 1 || pictureNumber > total) {
-    outputMessage(`图片序号必须在 1 到 ${total} 之间。`);
-    return;
-  }
-
-  const target = getJsonImageTarget(pictureNumber - 1);
-  if (!target.success) {
-    outputMessage(target.error);
-    return;
-  }
-  startDatasetImageRequest(target, '');
-}
-
-function handleJumpToImageIndexKeyDown(event) {
-  if (!event.repeat) jumpToImageIndex();
-}
-
-function sendImageFileRequest(path, requestId) {
-  const { jsonFilePath } = getJsonImageDialogContext();
-  void requestPreparedImage('prepare-image', { imagePath: path, jsonFilePath, requestId });
-  outputMessage('正在读取图片…');
-}
-
-async function requestPreparedImage(channel, request) {
-  const result = await executeImageRequest(channel, request, {
-    isOperationCurrent: operationId =>
-      !disposed && isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.LOAD_IMAGE),
-  });
-  await handleImageRequestResult(result);
-}
-
-function startDatasetImageRequest(target, direction, previousRequest = null) {
-  const currentImageIndex = getCurrentJsonImageIndex();
-
-  let operationId;
-  if (previousRequest) {
-    operationId = previousRequest.operationId;
-  } else {
-    const started = startImageLoad(workflowState.value);
-    if (!applyWorkflowTransition(started)) {
-      outputMessage(started.error);
-      return false;
-    }
-    operationId = started.operationId;
-  }
-
-  const request = beginDatasetRequest({
-    operationId,
-    target,
-    direction,
-    currentImageIndex,
-    previousRequest,
-  });
-  imageLoadError.value = null;
-  sendImageFileRequest(target.path, request.requestId);
-  return true;
-}
-
-function handleImageRequestFailure(errorMessage, failedPath = '') {
-  const failedRequest = getActiveRequest();
-  if (!isCurrentImageRequest(failedRequest)) return;
-  outputMessage(`打开图片失败${failedPath ? `：${failedPath}` : '。'}`);
-  outputMessage(errorMessage || USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR);
-
-  const canRestorePreviousImage =
-    hasCurrentImageSession.value &&
-    imageSession.value.imageIndex >= 0 &&
-    imageSession.value.imageIndex === getCurrentJsonImageIndex() &&
-    operationReturnsTo(workflowState.value, failedRequest.operationId, WORKFLOW_PHASE.READY);
-  const failurePlan = planImageRequestFailure({ canRestorePreviousImage });
-  if (failurePlan.action === IMAGE_FAILURE_ACTION.RETRY) {
-    outputMessage(`正在跳过不可用图片，并尝试 JSON 中的第 ${failurePlan.target.index + 1} 项。`);
-    startDatasetImageRequest(failurePlan.target, failedRequest.direction, failurePlan.previousRequest);
-    return;
-  }
-
-  if (failurePlan.action === IMAGE_FAILURE_ACTION.RESTORE) {
-    const position = refreshImagePositionView();
-    jumpImageIndex.value = position.currentIndex >= 0 ? position.currentIndex + 1 : '';
-    imageLoadError.value = null;
-  } else {
-    clearCurrentImage();
-    imageLoadError.value = {
-      path: failedPath,
-      message: errorMessage || USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR,
-    };
-  }
-  if (failedRequest?.operationId) {
-    applyWorkflowTransition(
-      failOperation(
-        workflowState.value,
-        failedRequest.operationId,
-        canRestorePreviousImage ? null : WORKFLOW_PHASE.DATASET_READY,
-      ),
-    );
-  }
-  resetImageRequestState();
-}
-
-function isCurrentImageRequest(request) {
-  return (
-    !disposed &&
-    request &&
-    getActiveRequest()?.requestId === request.requestId &&
-    isCurrentOperation(workflowState.value, request.operationId, WORKFLOW_OPERATION.LOAD_IMAGE) &&
-    workflowState.value.operation.datasetVersion === workflowState.value.datasetVersion
-  );
-}
-
-function handleImageRequestResult(result) {
-  if (result.status === IMAGE_REQUEST_STATUS.STALE || !isCurrentImageRequest(result.request)) return;
-  const { request } = result;
-  if (result.status === IMAGE_REQUEST_STATUS.CANCELED) {
-    applyWorkflowTransition(failOperation(workflowState.value, request.operationId));
-    resetImageRequestState(request.requestId);
-    return;
-  }
-  if (result.status === IMAGE_REQUEST_STATUS.FAILED) {
-    handleImageRequestFailure(result.error, result.path);
-    return;
-  }
-  if (result.status !== IMAGE_REQUEST_STATUS.READY) return;
-
-  const previousSession = imageSession.value;
-  let presentationAttempted = false;
-  let isReady;
-  try {
-    const session = createImageSession({ ...result, datasetVersion: workflowState.value.datasetVersion });
-    // Synchronous presentation is the single canvas lifecycle boundary: no prop/nextTick ordering.
-    presentationAttempted = true;
-    if (imgContainerRef.value?.presentImageSession(session) !== true) throw new Error('图片画布初始化失败。');
-    resetDots();
-    resetZoomPreview();
-    isReady = initProcessInfo(
-      session,
-      request.source === IMAGE_REQUEST_SOURCE.DATASET ? request.targetImageIndex : null,
-    );
-  } catch (error) {
-    console.error('Failed to present image session:', error);
-    if (presentationAttempted) {
-      try {
-        if (!previousSession || imgContainerRef.value?.presentImageSession(previousSession) !== true) {
-          clearCurrentImage();
-        } else {
-          initProcessInfo(previousSession, previousSession.imageIndex);
-        }
-      } catch {
-        clearCurrentImage();
-      }
-    }
-    handleImageRequestFailure(toUserErrorMessage(error, '图片初始化失败。'), result.imageInfo?.path);
-    return;
-  }
-  imageLoadError.value = null;
-  const imageOperationCompleted = applyWorkflowTransition(
-    completeOperation(
-      workflowState.value,
-      request.operationId,
-      isReady ? WORKFLOW_PHASE.READY : WORKFLOW_PHASE.DATASET_READY,
-    ),
-  );
-  resetImageRequestState(request.requestId);
-  if (imageOperationCompleted && isReady) {
-    synchronizeQuadFocusSelection({ forceFocus: true });
-    reportWorkspaceSessionRecord(
-      workspaceSessionService.recordImage({
-        datasetPath: selectedDataset.value.path,
-        imagePath: imageSession.value.path,
-        imageIndex: imageSession.value.imageIndex,
-      }),
-    );
-  }
-  outputMessage(isReady ? '图片加载成功。' : '图片已加载，但没有找到匹配的 JSON 数据。');
-}
-
-function clearCurrentImage() {
-  imageSession.value = null;
-  imgContainerRef.value?.presentImageSession?.(null);
-  resetPicJson('');
-  resetDots();
-  resetZoomPreview();
-  clearCurrentAnnotations();
-  refreshImagePositionView();
-  jumpImageIndex.value = '';
-}
-
 function resetImageForDatasetChange() {
   viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.DATASET_CHANGED);
   clearJsonHistory();
-  imageLoadError.value = null;
-  resetImageRequestState();
-  clearCurrentImage();
+  resetImageSessionForDatasetChange();
   quadLocationPropagationCount.value = imagePositionView.value.total;
-}
-
-function resetViewForDatasetSelection() {
-  loadedProductType.value = '';
-  datasetLoadError.value = null;
-  resetImageForDatasetChange();
 }
 
 function reportWorkspaceSessionRecord(recordOperation) {
   void recordOperation.then(result => {
     if (!result.success) console.error(result.error);
   });
-}
-
-function handleDatasetTargetSelected(target) {
-  resetViewForDatasetSelection();
-  reportWorkspaceSessionRecord(workspaceSessionService.recordDatasetTarget(target.path));
-}
-
-function getRestoredImageTarget(session) {
-  if (session?.imagePath) {
-    const restoredTarget = getJsonImageTargetByPath(session.imagePath, session.imageIndex);
-    if (restoredTarget.success) return restoredTarget;
-  }
-  return getJsonImageTarget(0);
-}
-
-async function restoreWorkspaceSession() {
-  let restoredSession = null;
-
-  return runDatasetLoad(
-    async requestId => {
-      const loaded = await workspaceSessionService.get();
-      if (disposed) return createCanceledDatasetFileResponse(requestId);
-      if (!loaded.success) {
-        console.error(loaded.error);
-        return createCanceledDatasetFileResponse(requestId);
-      }
-      restoredSession = loaded.session;
-      if (!restoredSession) return createCanceledDatasetFileResponse(requestId);
-
-      return ipcRenderer.invoke('read-json-file', {
-        filePath: restoredSession.datasetPath,
-        requestId,
-      });
-    },
-    {
-      fallbackMessage: '恢复上次图集失败。',
-      getInitialImageTarget: () => getRestoredImageTarget(restoredSession),
-    },
-  );
-}
-
-async function runDatasetLoad(requestDataset, { fallbackMessage, getInitialImageTarget = null } = {}) {
-  const result = await executeDatasetLoadTransaction(requestDataset, { fallbackMessage });
-  if (disposed || result.status === DATASET_LOAD_TRANSACTION_STATUS.STALE) return false;
-  if (result.status !== DATASET_LOAD_TRANSACTION_STATUS.READY) {
-    if (result.error) outputMessage(result.error);
-    if (result.target) {
-      datasetLoadError.value = {
-        path: result.target.path,
-        message: result.error || USER_MESSAGES.JSON_READ_FAILED,
-      };
-      selectInspectorPage(INSPECTOR_PAGE.DATASET);
-    }
-    return false;
-  }
-
-  const { preparedJson } = result;
-  loadedProductType.value = preparedJson.productType;
-  datasetLoadError.value = null;
-  selectInspectorPage(INSPECTOR_PAGE.ANNOTATION);
-  if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
-
-  if (preparedJson.data.Picture.length === 0) {
-    outputMessage('JSON 已加载，但数据集中没有有效的图片项。');
-    return true;
-  }
-
-  const firstImageTarget = getInitialImageTarget?.() ?? getJsonImageTarget(0);
-  if (!firstImageTarget.success) {
-    outputMessage(firstImageTarget.error);
-    return true;
-  }
-  startDatasetImageRequest(firstImageTarget, KEYS.NEXT);
-  return true;
-}
-
-function chooseJsonFile() {
-  selectInspectorPage(INSPECTOR_PAGE.DATASET);
-  void runDatasetLoad(requestId => ipcRenderer.invoke('open-json-file-dialog', { requestId }), {
-    fallbackMessage: USER_MESSAGES.JSON_OPEN_FAILED,
-  });
-}
-
-function changeDatasetByDirection(direction) {
-  const currentFilePath = selectedDataset.value.path;
-  if (!currentFilePath) {
-    outputMessage(USER_MESSAGES.NO_DATASET);
-    return;
-  }
-
-  void runDatasetLoad(
-    requestId =>
-      ipcRenderer.invoke('open-adjacent-json-file', {
-        currentFilePath,
-        direction,
-        requestId,
-      }),
-    { fallbackMessage: USER_MESSAGES.DATASET_SWITCH_FAILED },
-  );
 }
 
 watch(selectedDots, () => {
@@ -1729,6 +933,7 @@ function toggleQuadInteraction() {
 }
 </script>
 
+<style scoped src="../assets/workspace-controls.css"></style>
 <style scoped>
 * {
   user-select: none;
@@ -1765,140 +970,6 @@ function toggleQuadInteraction() {
   font-family: var(--font-ui);
 }
 
-.workspace-toolbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-raised);
-}
-
-.app-identity {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  min-width: 172px;
-  margin-right: 4px;
-}
-
-.app-mark {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 9px;
-  background: var(--accent);
-  color: white;
-  font-size: 16px;
-  font-weight: 800;
-  box-shadow: 0 5px 12px rgba(47, 111, 237, 0.25);
-}
-
-.app-identity div {
-  display: grid;
-  gap: 1px;
-}
-
-.app-identity strong {
-  font-size: 14px;
-  line-height: 1.2;
-}
-
-.app-identity div span {
-  color: var(--text-muted);
-  font-size: var(--font-size-caption);
-}
-
-.toolbar-group {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding-right: 10px;
-  border-right: 1px solid var(--border-subtle);
-}
-
-.toolbar-files {
-  min-width: 0;
-}
-
-.toolbar-files .toolbar-button {
-  flex: 0 0 auto;
-}
-
-.toolbar-dataset-name {
-  display: flex;
-  width: clamp(120px, 18vw, 220px);
-  min-width: 0;
-  align-items: center;
-  color: var(--text-secondary);
-  font-size: var(--font-size-secondary);
-  white-space: nowrap;
-}
-
-.toolbar-dataset-name span {
-  flex: 0 0 auto;
-}
-
-.toolbar-dataset-name strong {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-primary);
-  font-weight: 600;
-  text-overflow: ellipsis;
-}
-
-.toolbar-button,
-.icon-button,
-.action-button {
-  box-sizing: border-box;
-  min-height: 32px;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--surface-raised);
-  color: var(--text-primary);
-  font: 600 var(--font-size-body) / 1 var(--font-ui);
-  cursor: pointer;
-  transition:
-    border-color 120ms ease,
-    background 120ms ease,
-    color 120ms ease;
-}
-
-.toolbar-button {
-  padding: 0 12px;
-}
-
-.toolbar-button,
-.action-button {
-  display: inline-flex;
-  gap: 7px;
-  align-items: center;
-  justify-content: center;
-}
-
-.toolbar-button:hover:not(:disabled),
-.icon-button:hover:not(:disabled),
-.action-button:hover:not(:disabled) {
-  border-color: #9eabc0;
-  background: var(--surface-hover);
-}
-
-.toolbar-button.primary,
-.action-button.primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: white;
-}
-
-.toolbar-button.primary:hover:not(:disabled),
-.action-button.primary:hover:not(:disabled) {
-  border-color: var(--accent-strong);
-  background: var(--accent-strong);
-}
-
 .action-button.direct-edit-mode-button.active {
   border-color: #c25f0d;
   background: #c25f0d;
@@ -1908,50 +979,6 @@ function toggleQuadInteraction() {
 .action-button.direct-edit-mode-button.active:hover:not(:disabled) {
   border-color: #a94e08;
   background: #a94e08;
-}
-
-.toolbar-button:disabled,
-.icon-button:disabled,
-.action-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.toolbar-button.compact {
-  min-height: 28px;
-  padding: 0 9px;
-}
-
-.icon-button {
-  display: inline-flex;
-  gap: 5px;
-  align-items: center;
-  justify-content: center;
-  width: 46px;
-  min-height: 30px;
-  padding: 0;
-  font-size: 20px;
-  font-weight: 400;
-}
-
-.image-position-control {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  color: var(--text-secondary);
-  font-size: var(--font-size-secondary);
-  white-space: nowrap;
-}
-
-.image-position-control input {
-  width: 48px;
-  height: 28px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface-muted);
-  color: var(--text-primary);
-  font: var(--font-size-code) var(--font-mono);
-  text-align: center;
 }
 
 .workspace-main {
@@ -2299,83 +1326,6 @@ function toggleQuadInteraction() {
   background: #ffe3e3;
 }
 
-.metadata-list {
-  display: grid;
-  gap: 0;
-  margin: 20px 0;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.dataset-load-error {
-  display: grid;
-  gap: 8px;
-  margin: 16px 0 4px;
-  padding: 12px;
-  border: 1px solid #edc5c7;
-  border-radius: 8px;
-  background: var(--danger-soft);
-  color: var(--text-primary);
-}
-
-.dataset-load-error > strong {
-  color: var(--danger);
-}
-
-.dataset-load-error p,
-.dataset-load-error dl {
-  margin: 0;
-}
-
-.dataset-load-error p,
-.dataset-load-error small {
-  line-height: 1.45;
-}
-
-.dataset-load-error dl {
-  display: grid;
-  gap: 5px;
-}
-
-.dataset-load-error dl > div {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 8px;
-}
-
-.dataset-load-error dt,
-.dataset-load-error small {
-  color: var(--text-secondary);
-}
-
-.dataset-load-error dd {
-  min-width: 0;
-  margin: 0;
-  font: var(--font-size-code) / 1.4 var(--font-mono);
-  overflow-wrap: anywhere;
-}
-
-.metadata-list > div {
-  display: grid;
-  grid-template-columns: 86px minmax(0, 1fr);
-  gap: 12px;
-  padding: 12px 2px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.metadata-list dt {
-  color: var(--text-muted);
-  font-size: var(--font-size-secondary);
-}
-
-.metadata-list dd {
-  min-width: 0;
-  margin: 0;
-  color: var(--text-primary);
-  font: var(--font-size-code) / 1.45 var(--font-mono);
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
 .stacked-actions {
   grid-template-columns: 1fr;
 }
@@ -2534,18 +1484,6 @@ function toggleQuadInteraction() {
   vertical-align: middle;
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 .toast-container {
   position: fixed;
   top: 80px;
@@ -2588,14 +1526,6 @@ function toggleQuadInteraction() {
 }
 
 @media (max-width: 980px) {
-  .app-identity {
-    min-width: 42px;
-  }
-
-  .app-identity div {
-    display: none;
-  }
-
   .workspace-main {
     grid-template-columns: minmax(330px, 1fr) 360px;
   }
