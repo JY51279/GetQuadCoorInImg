@@ -1,6 +1,7 @@
 import { normalizeCoordinateScale } from '../utils/AnnotationCoordinates.js';
 import { loadRendererImage } from '../utils/RendererImageLoader.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
+import { isFilePath, isRecord, normalizeServiceErrorKind, SERVICE_ERROR_KIND } from '../../../shared/ServiceResult.js';
 
 export const IMAGE_REQUEST_SOURCE = Object.freeze({
   MANUAL: 'manual',
@@ -82,12 +83,13 @@ export function createImageRequestService({
     return { status: IMAGE_REQUEST_STATUS.STALE };
   }
 
-  function failed(request, error, path = '') {
+  function failed(request, error, path = '', errorKind = SERVICE_ERROR_KIND.OPERATION) {
     return {
       status: IMAGE_REQUEST_STATUS.FAILED,
       request,
       error: toUserErrorMessage(error, USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR),
       path: normalizePath(path || request?.path),
+      errorKind,
     };
   }
 
@@ -95,26 +97,44 @@ export function createImageRequestService({
     if (!isCurrentRequest(response?.requestId, isOperationCurrent)) return stale();
     const request = activeRequest;
 
-    if (response.canceled === true) {
+    if (response.canceled === true && (response.success === false || response.success === undefined)) {
       return { status: IMAGE_REQUEST_STATUS.CANCELED, request };
     }
+    if (typeof response.success !== 'boolean' || (response.canceled !== undefined && response.canceled !== false)) {
+      return failed(request, '图片加载响应格式无效。', '', SERVICE_ERROR_KIND.INVALID_RESPONSE);
+    }
     if (response.success !== true) {
-      return failed(request, response.error, response.path);
+      return failed(request, response.error, response.path, normalizeServiceErrorKind(response.errorKind));
     }
 
     const imageInfo = response.imageInfo;
     try {
       const coordinateScale = normalizeCoordinateScale({
-        x: imageInfo.coordinateScaleX,
-        y: imageInfo.coordinateScaleY,
+        x: imageInfo?.coordinateScaleX,
+        y: imageInfo?.coordinateScaleY,
       });
       if (coordinateScale === null) {
-        throw new Error('处理后的图片坐标缩放比例必须包含两个有限正数。');
+        return failed(
+          request,
+          '处理后的图片坐标缩放比例必须包含两个有限正数。',
+          '',
+          SERVICE_ERROR_KIND.INVALID_RESPONSE,
+        );
+      }
+      if (
+        !isRecord(imageInfo) ||
+        !isFilePath(imageInfo.path) ||
+        !isFilePath(imageInfo.url) ||
+        ![imageInfo.originalWidth, imageInfo.originalHeight, imageInfo.displayWidth, imageInfo.displayHeight].every(
+          value => Number.isSafeInteger(value) && value > 0,
+        )
+      ) {
+        return failed(request, '图片加载响应缺少有效的路径或尺寸。', '', SERVICE_ERROR_KIND.INVALID_RESPONSE);
       }
 
       const image = await loadImage(imageInfo.url);
       if (!isCurrentRequest(request.requestId, isOperationCurrent)) return stale();
-      if (image.naturalWidth !== imageInfo.displayWidth || image.naturalHeight !== imageInfo.displayHeight) {
+      if (image?.naturalWidth !== imageInfo.displayWidth || image?.naturalHeight !== imageInfo.displayHeight) {
         throw new Error('处理后的图片尺寸与实际加载尺寸不一致。');
       }
 
@@ -127,7 +147,8 @@ export function createImageRequestService({
       };
     } catch (error) {
       if (!isCurrentRequest(request.requestId, isOperationCurrent)) return stale();
-      return failed(request, error.message, imageInfo?.path);
+      console.error('Failed to decode prepared image:', error);
+      return failed(request, error, imageInfo?.path);
     }
   }
 
@@ -140,12 +161,13 @@ export function createImageRequestService({
       // The invocation owns the response, not a request id supplied by that response.
       if (!isCurrentRequest(requestId, isOperationCurrent)) return stale();
       if (response?.requestId !== requestId) {
-        return failed(request, '图片加载响应缺少有效的请求标识。');
+        return failed(request, '图片加载响应缺少有效的请求标识。', '', SERVICE_ERROR_KIND.INVALID_RESPONSE);
       }
-      return handleResponse(response, { isOperationCurrent });
+      return await handleResponse(response, { isOperationCurrent });
     } catch (error) {
       if (!isCurrentRequest(requestId, isOperationCurrent)) return stale();
-      return failed(request, error.message);
+      console.error('Image IPC request failed:', error);
+      return failed(request, error, '', SERVICE_ERROR_KIND.TRANSPORT);
     }
   }
 

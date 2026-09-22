@@ -54,6 +54,73 @@ import {
 } from '../src/main/IpcHandlers.js';
 
 describe('Main-process IPC handlers', () => {
+  it.each([
+    null,
+    {},
+    { path: ' ', str: '{}' },
+    { path: 'test.json', str: 42 },
+    { path: 'test.json', str: '{}', backupOriginal: 'yes' },
+  ])('rejects invalid writes before filesystem access: %j', async request => {
+    await expect(handleSaveJsonFile(null, request)).resolves.toMatchObject({
+      success: false,
+      errorKind: 'invalid-request',
+    });
+    expect(fileOperationMocks.saveJsonFileAtomically).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid read, dialog, navigation and checkpoint requests before side effects', async () => {
+    await expect(handleReadJsonFile(null, { requestId: 1, filePath: null })).resolves.toMatchObject({
+      status: 'failed',
+      errorKind: 'invalid-request',
+    });
+    await expect(handleOpenJsonDialog(null, { requestId: '1' })).resolves.toMatchObject({
+      status: 'failed',
+      errorKind: 'invalid-request',
+    });
+    await expect(handleOpenImageDialog(null, {})).resolves.toMatchObject({
+      success: false,
+      errorKind: 'invalid-request',
+    });
+    await expect(
+      handleOpenAdjacentJson(null, { requestId: 1, currentFilePath: 'test.json', direction: 'sideways' }),
+    ).resolves.toMatchObject({ status: 'failed', errorKind: 'invalid-request' });
+    await expect(handleRecordWorkspaceDataset(null, {})).resolves.toMatchObject({
+      success: false,
+      errorKind: 'invalid-request',
+    });
+    await expect(handleRecordWorkspaceImage(null, null)).resolves.toMatchObject({
+      success: false,
+      errorKind: 'invalid-request',
+    });
+    expect(handleResolveJsonImagePaths(null, { jsonFilePath: 'test.json', imagePaths: [42] })).toMatchObject({
+      success: false,
+      errorKind: 'invalid-request',
+    });
+    expect(fileOperationMocks.readJsonFile).not.toHaveBeenCalled();
+    expect(fileOperationMocks.getAdjacentJsonFilePath).not.toHaveBeenCalled();
+    expect(fileOperationMocks.resolveJsonImagePath).not.toHaveBeenCalled();
+    expect(electronMocks.showOpenDialog).not.toHaveBeenCalled();
+    expect(workspaceSessionMocks.recordWorkspaceDatasetTarget).not.toHaveBeenCalled();
+    expect(workspaceSessionMocks.recordWorkspaceDatasetImage).not.toHaveBeenCalled();
+  });
+
+  it('contains path-resolution throws inside the image IPC boundary', async () => {
+    fileOperationMocks.resolveJsonImagePath.mockImplementationOnce(() => {
+      throw null;
+    });
+    await expect(handlePrepareImage(null, { requestId: 1, imagePath: 'one.png' })).resolves.toMatchObject({
+      success: false,
+      requestId: 1,
+    });
+    expect(imageReaderMocks.prepareImageFile).not.toHaveBeenCalled();
+  });
+
+  it('contains non-Error save and session rejections', async () => {
+    fileOperationMocks.saveJsonFileAtomically.mockRejectedValueOnce(null);
+    workspaceSessionMocks.getWorkspaceSession.mockRejectedValueOnce(undefined);
+    await expect(handleSaveJsonFile(null, { path: 'test.json', str: '{}' })).resolves.toMatchObject({ success: false });
+    await expect(handleGetWorkspaceSession()).resolves.toMatchObject({ success: false, session: null });
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -256,6 +323,7 @@ describe('Main-process IPC handlers', () => {
       requestId: 54,
       error: '图片路径无效。',
       path: '',
+      errorKind: 'invalid-request',
     });
     expect(imageReaderMocks.prepareImageFile).not.toHaveBeenCalled();
   });
@@ -275,6 +343,7 @@ describe('Main-process IPC handlers', () => {
     expect(handleResolveJsonImagePaths(null, { imagePaths: [] })).toEqual({
       success: false,
       error: '图片路径解析请求无效。',
+      errorKind: 'invalid-request',
     });
   });
 
@@ -325,12 +394,14 @@ describe('Main-process IPC handlers', () => {
       session: null,
       error: '读取上次工作区记录失败。',
     });
-    await expect(handleRecordWorkspaceDataset(null, {})).resolves.toEqual({
+    await expect(handleRecordWorkspaceDataset(null, { datasetPath: 'C:/data/sample.json' })).resolves.toEqual({
       success: false,
       session: null,
       error: '保存工作区图集记录失败。',
     });
-    await expect(handleRecordWorkspaceImage(null, {})).resolves.toEqual({
+    await expect(
+      handleRecordWorkspaceImage(null, { datasetPath: 'C:/data/sample.json', imagePath: 'C:/one.png', imageIndex: 0 }),
+    ).resolves.toEqual({
       success: false,
       session: null,
       error: '保存工作区图片记录失败。',

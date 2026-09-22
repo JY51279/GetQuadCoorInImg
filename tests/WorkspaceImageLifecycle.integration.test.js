@@ -267,6 +267,13 @@ describe('Workspace image session lifecycle', () => {
     view.vm.$emit('commit-quad-point-drag', { quadIndex: 0, pointIndex: 1, imagePoint: { x: 22, y: 10 } });
     await flushPromises();
     expect(wrapper.text()).toContain('需要重新加载图集');
+    expect(wrapper.findComponent({ name: 'JsonView' }).props('errorMessage')).toBe('JSON 状态不可用，请重新加载图集。');
+    const failures = wrapper
+      .findAll('.toast-message')
+      .map(toast => toast.text())
+      .filter(message => message.includes('保存 JSON 文件失败'));
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain('请重新加载图集');
     expect(view.props()).toMatchObject({ canEdit: false, canInteract: false });
     expect(button('下一张图片（D / →）').attributes('disabled')).toBeDefined();
     expect(button('手动匹配图片（Ctrl+I）').attributes('disabled')).toBeDefined();

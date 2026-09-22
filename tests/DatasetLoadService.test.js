@@ -26,7 +26,7 @@ describe('Dataset load service', () => {
       success: true,
       imagePaths: ['C:\\datasets\\images\\one.png'],
     }));
-    const saveJsonFile = vi.fn(async () => true);
+    const saveJsonFile = vi.fn(async () => ({ success: true }));
 
     const result = await prepareDatasetLoad(createJsonResponse([createDbrPicture()]), {
       resolveImagePaths,
@@ -64,7 +64,7 @@ describe('Dataset load service', () => {
 
   it('persists an approved lossy repair with an original-file backup', async () => {
     const confirmLossyRepair = vi.fn(() => true);
-    const saveJsonFile = vi.fn(async () => true);
+    const saveJsonFile = vi.fn(async () => ({ success: true }));
 
     const result = await prepareDatasetLoad(createJsonResponse([null, createDbrPicture()]), {
       confirmLossyRepair,
@@ -79,7 +79,7 @@ describe('Dataset load service', () => {
   });
 
   it('saves non-lossy normalization before returning the prepared dataset', async () => {
-    const saveJsonFile = vi.fn(async () => true);
+    const saveJsonFile = vi.fn(async () => ({ success: true }));
     const result = await prepareDatasetLoad(
       createJsonResponse([createDbrPicture({ 'No.': '9', 'Barcode Count': 7 })]),
       {
@@ -116,12 +116,13 @@ describe('Dataset load service', () => {
       status: DATASET_LOAD_STATUS.FAILED,
       target: datasetTarget,
       error: '解析图片路径失败。',
+      errorKind: 'operation',
     });
     expect(saveJsonFile).not.toHaveBeenCalled();
   });
 
   it('does not expose a prepared dataset when normalization cannot be persisted', async () => {
-    const saveJsonFile = vi.fn(async () => false);
+    const saveJsonFile = vi.fn(async () => ({ success: false }));
 
     const result = await prepareDatasetLoad(
       createJsonResponse([createDbrPicture({ 'No.': '9', 'Barcode Count': 7 })]),
@@ -134,7 +135,9 @@ describe('Dataset load service', () => {
     expect(result).toEqual({
       status: DATASET_LOAD_STATUS.FAILED,
       target: datasetTarget,
-      error: '保存规范化后的 JSON 文件失败。',
+      error: '保存 JSON 文件失败。',
+      errorKind: 'operation',
+      backupPath: '',
     });
     expect(saveJsonFile).toHaveBeenCalledOnce();
   });

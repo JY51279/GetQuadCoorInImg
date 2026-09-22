@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, nativeImage, net, protocol } from 'electron';
+import { app, shell, BrowserWindow, nativeImage, net, protocol, dialog } from 'electron';
 import { join } from 'path';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
@@ -6,6 +6,7 @@ import { initializeFileOperations } from './FileOperations.js';
 import { registerIpcHandlers } from './IpcHandlers.js';
 import { IMAGE_PROTOCOL_SCHEME, initializeImageFileReader, registerImageProtocol } from './ImageFileReader.js';
 import { initializeWorkspaceSessionStore } from './WorkspaceSessionStore.js';
+import { toUserErrorMessage } from '../shared/UserMessages.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -19,7 +20,25 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-function createWindow() {
+let startupFailed = false;
+
+function handleStartupFailure(error) {
+  console.error('Application startup failed:', error);
+  if (startupFailed) return;
+  startupFailed = true;
+  try {
+    dialog.showErrorBox(
+      'QuadTool 启动失败',
+      toUserErrorMessage(error, '应用初始化或窗口加载失败，请检查文件访问权限后重新启动。'),
+    );
+  } catch (dialogError) {
+    console.error('Failed to show startup error:', dialogError);
+  } finally {
+    app.exit(1);
+  }
+}
+
+async function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 1600,
@@ -42,14 +61,13 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(details => {
-    shell.openExternal(details.url);
+    shell.openExternal(details.url).catch(error => console.error('Failed to open external URL:', error));
     return { action: 'deny' };
   });
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
     mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
       callback({
         responseHeaders: {
@@ -58,8 +76,9 @@ function createWindow() {
         },
       });
     });
+    await mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+    await mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
@@ -70,29 +89,32 @@ function createWindow() {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(async () => {
-  await initializeFileOperations(app);
-  await initializeWorkspaceSessionStore(app);
-  await initializeImageFileReader(app, nativeImage);
-  registerImageProtocol(protocol, net);
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron');
+app
+  .whenReady()
+  .then(async () => {
+    await initializeFileOperations(app);
+    await initializeWorkspaceSessionStore(app);
+    await initializeImageFileReader(app, nativeImage);
+    registerImageProtocol(protocol, net);
+    // Set app user model id for windows
+    electronApp.setAppUserModelId('com.electron');
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window);
-  });
-  registerIpcHandlers();
-  createWindow();
+    // Default open or close DevTools by F12 in development
+    // and ignore CommandOrControl + R in production.
+    // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window);
+    });
+    registerIpcHandlers();
+    await createWindow();
 
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
+    app.on('activate', function () {
+      // On macOS it's common to re-create a window in the app when the
+      // dock icon is clicked and there are no other windows open.
+      if (BrowserWindow.getAllWindows().length === 0) createWindow().catch(handleStartupFailure);
+    });
+  })
+  .catch(handleStartupFailure);
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

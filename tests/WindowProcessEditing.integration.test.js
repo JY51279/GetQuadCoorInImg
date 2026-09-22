@@ -212,6 +212,21 @@ describe('Workspace editing through real domain and save transactions', () => {
     expect(getJsonFileInfo()).toEqual(added);
   });
 
+  it('reports a save failure once, preserving its specific message', async () => {
+    const imageView = await mountEditor();
+    const before = getJsonFileInfo();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    persist.mockResolvedValueOnce({ success: false, error: '写入测试失败。' });
+    imageView.vm.$emit('commit-quad-point-drag', { quadIndex: 0, pointIndex: 1, imagePoint: { x: 7.6, y: 4.4 } });
+    await flushPromises();
+    const failures = wrapper
+      .findAll('.toast-message')
+      .map(toast => toast.text())
+      .filter(message => message.includes('写入测试失败') || message.includes('保存 JSON 文件失败'));
+    expect(failures).toEqual(['写入测试失败。']);
+    expect(getJsonFileInfo()).toEqual(before);
+  });
+
   describe.each(['point drag', 'translation'])('pending %s save after unmount', edit => {
     it.each([
       { outcome: 'success', response: { success: true } },

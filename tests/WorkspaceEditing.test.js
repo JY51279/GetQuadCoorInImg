@@ -15,7 +15,7 @@ function createEditor() {
   expect(commitPreparedJsonProcess(prepared)).toBe(true);
   expect(resetPicJson('C:/images/one.png', 0).success).toBe(true);
   const workflowState = ref(createDatasetWorkflowState());
-  const saveJsonFile = vi.fn(async () => true);
+  const saveJsonFile = vi.fn(async () => ({ success: true }));
   const view = Object.fromEntries(
     [
       'outputMessage',
@@ -70,7 +70,7 @@ describe('Workspace editing controller without a mounted page', () => {
     const saving = editor.commitQuadPointDrag(pointEdit);
     expect(editor.jsonHistoryGroups.value[0].recordCount).toBe(0);
     expect(view.refreshCurrentAnnotations).not.toHaveBeenCalled();
-    finishSave(true);
+    finishSave({ success: true });
     await saving;
 
     expect(editor.jsonHistoryGroups.value[0].recordCount).toBe(1);
@@ -94,7 +94,7 @@ describe('Workspace editing controller without a mounted page', () => {
     const before = getJsonFileInfo();
     await editor.commitQuadPointDrag(pointEdit);
     const edited = getJsonFileInfo();
-    saveJsonFile.mockResolvedValueOnce(false);
+    saveJsonFile.mockResolvedValueOnce({ success: false });
     await editor.undoJsonEdit();
     expect(getJsonFileInfo()).toEqual(edited);
     expect(editor.canUndoJson.value).toBe(true);
@@ -138,7 +138,7 @@ describe('Workspace editing controller without a mounted page', () => {
       const edited = getJsonFileInfo();
       expect(edited.str).not.toBe(before.str);
       dispose();
-      finishSave(success);
+      finishSave({ success });
       await saving;
 
       expect(getJsonFileInfo()).toEqual(success ? edited : before);

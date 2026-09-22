@@ -37,7 +37,7 @@ function deferred() {
 function createLoadContext(overrides = {}) {
   const workflowState = ref(createDatasetWorkflowState());
   const resolveImagePaths = vi.fn(async ({ imagePaths }) => ({ success: true, imagePaths }));
-  const saveJsonFile = vi.fn(async () => true);
+  const saveJsonFile = vi.fn(async () => ({ success: true }));
   const confirmLossyRepair = vi.fn(() => false);
   const onDatasetTargetSelected = vi.fn();
   const dependencies = {
@@ -137,7 +137,7 @@ describe('Workspace behavior contracts across dataset, workflow and transactions
       backupOriginal: true,
     });
 
-    persistence.resolve(saved);
+    persistence.resolve({ success: saved });
     const result = await pendingLoad;
 
     expect(result.status).toBe(saved ? DATASET_LOAD_TRANSACTION_STATUS.READY : DATASET_LOAD_TRANSACTION_STATUS.FAILED);
@@ -186,7 +186,7 @@ describe('Workspace behavior contracts across dataset, workflow and transactions
     expect(context.workflowState.value.operation).toEqual(activeOperation);
     expect(getJsonFileInfo()).toEqual(pendingData);
 
-    persistence.resolve(false);
+    persistence.resolve({ success: false });
     expect(await pendingSave).toMatchObject({
       status: SAVE_TRANSACTION_STATUS.SAVE_FAILED,
       rollbackFailed: false,

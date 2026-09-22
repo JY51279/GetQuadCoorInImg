@@ -1,4 +1,5 @@
 import { computed } from 'vue';
+import { getBackupMessage } from '../../../shared/JsonSaveResult.js';
 import { useDatasetSaveTransaction } from './useDatasetSaveTransaction.js';
 import { getJsonActionLabel, useJsonHistory } from './useJsonHistory.js';
 import {
@@ -75,11 +76,17 @@ export function useWorkspaceEditing({
     const result = await executeSaveTransaction(mutate);
     if (!isActive()) return false;
     if (result.rollbackFailed) {
-      outputMessage('操作失败后无法恢复 JSON 状态，请重新加载图集。');
       clearCurrentImage();
       clearCurrentAnnotations('JSON 状态不可用，请重新加载图集。');
     }
-    if (result.error) outputMessage(result.error);
+    if (result.backupPath) outputMessage(getBackupMessage(result.backupPath));
+    if (result.error || result.rollbackFailed) {
+      outputMessage(
+        [result.error, result.rollbackFailed ? '操作失败后无法恢复 JSON 状态，请重新加载图集。' : '']
+          .filter(Boolean)
+          .join(' '),
+      );
+    }
     if (!result.success) return false;
 
     if (result.mutation?.historyEntry) recordCurrentJsonHistory(result.mutation.historyEntry);
@@ -119,7 +126,7 @@ export function useWorkspaceEditing({
       },
     );
 
-    if (!saved && isActive()) refreshCurrentAnnotations({ redrawOverlay: true });
+    if (!saved && isActive() && canOperate.value) refreshCurrentAnnotations({ redrawOverlay: true });
   }
 
   function getQuadTranslationSubject(quadIndex, target) {

@@ -365,7 +365,10 @@ import { usePointSelectionHistory } from '../composables/usePointSelectionHistor
 import { useToastNotifications } from '../composables/useToastNotifications.js';
 import { getCurrentAnnotationView, getJsonFileInfo } from '../state/DatasetState.js';
 import { createJsonFileService } from '../services/JsonFileService.js';
-import { createWorkspaceSessionService } from '../services/WorkspaceSessionService.js';
+import {
+  createWorkspaceSessionService,
+  observeWorkspaceRecord as reportWorkspaceSessionRecord,
+} from '../services/WorkspaceSessionService.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { createShortcutHelpGroups, dispatchShortcut } from '../utils/KeyboardShortcuts.js';
@@ -394,7 +397,6 @@ import {
   createWorkflowState,
   isWorkflowBusy,
 } from '../state/WorkflowState.js';
-import { USER_MESSAGES } from '../../../shared/UserMessages.js';
 
 let disposed = false;
 const ipcRenderer = window.electron.ipcRenderer;
@@ -494,7 +496,7 @@ const { loadedProductType, datasetLoadError, restoreWorkspaceSession, chooseJson
     invoke: (channel, request) => ipcRenderer.invoke(channel, request),
     isActive: () => !disposed,
     outputMessage,
-    saveJsonFile: saveJsonFileInfo,
+    saveJsonFile: saveJsonFileRequest,
     confirmLossyRepair: message => window.confirm(message),
     getWorkspaceSession: () => workspaceSessionService.get(),
     recordDatasetTarget: path => reportWorkspaceSessionRecord(workspaceSessionService.recordDatasetTarget(path)),
@@ -601,7 +603,7 @@ const {
   canApplyQuadLocationForward,
   quadLocationPropagationCount,
   isActive: () => !disposed,
-  saveJsonFile,
+  saveJsonFile: () => saveJsonFileRequest(getJsonFileInfo()),
   outputMessage,
   refreshCurrentAnnotations,
   clearCurrentAnnotations,
@@ -809,22 +811,6 @@ function toggleQuadLocationPropagation() {
   isQuadLocationPropagationOpen.value = true;
 }
 
-async function saveJsonFile() {
-  return saveJsonFileInfo(getJsonFileInfo());
-}
-
-async function saveJsonFileInfo(jsonFileInfo, { backupOriginal = false } = {}) {
-  const result = await saveJsonFileRequest(jsonFileInfo, { backupOriginal });
-  if (!result.success) {
-    outputMessage(result.error || USER_MESSAGES.JSON_SAVE_FAILED);
-    return false;
-  }
-  if (result.backupPath) {
-    outputMessage(`已创建临时 JSON 备份，将在 7 天后自动删除：${result.backupPath}`);
-  }
-  return true;
-}
-
 function renderAnnotationQuads({
   resetVisibility = false,
   deletedQuadIndex = null,
@@ -869,12 +855,6 @@ function resetImageForDatasetChange() {
   clearJsonHistory();
   resetImageSessionForDatasetChange();
   quadLocationPropagationCount.value = imagePositionView.value.total;
-}
-
-function reportWorkspaceSessionRecord(recordOperation) {
-  void recordOperation.then(result => {
-    if (!result.success) console.error(result.error);
-  });
 }
 
 watch(selectedDots, () => {

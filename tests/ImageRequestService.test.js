@@ -14,6 +14,8 @@ function createImageResponse(requestId, overrides = {}) {
       url: 'quad-image://one',
       path: 'C:\\images\\one.png',
       fileName: 'one.png',
+      originalWidth: 640,
+      originalHeight: 480,
       displayWidth: 640,
       displayHeight: 480,
       coordinateScaleX: 1,
@@ -24,6 +26,53 @@ function createImageResponse(requestId, overrides = {}) {
 }
 
 describe('Image request service', () => {
+  it('preserves a structured main-process failure classification', async () => {
+    const service = createImageRequestService();
+    const request = service.beginManualRequest(1);
+    await expect(
+      service.handleResponse({
+        requestId: request.requestId,
+        success: false,
+        error: '图片路径无效。',
+        errorKind: 'invalid-request',
+      }),
+    ).resolves.toMatchObject({
+      status: IMAGE_REQUEST_STATUS.FAILED,
+      error: '图片路径无效。',
+      errorKind: 'invalid-request',
+    });
+  });
+
+  it.each([{ path: '' }, { url: null }, { originalWidth: 0 }, { originalHeight: '480' }, { displayWidth: Infinity }])(
+    'rejects invalid image metadata before decoding: %j',
+    async fields => {
+      const loadImage = vi.fn();
+      const service = createImageRequestService({ loadImage });
+      const request = service.beginManualRequest(1);
+      const response = createImageResponse(request.requestId);
+      Object.assign(response.imageInfo, fields);
+      await expect(service.handleResponse(response)).resolves.toMatchObject({
+        status: IMAGE_REQUEST_STATUS.FAILED,
+        errorKind: 'invalid-response',
+      });
+      expect(loadImage).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([null, undefined, 'raw rejection'])('contains non-Error IPC and decode rejections: %j', async error => {
+    const service = createImageRequestService({
+      invoke: vi.fn().mockRejectedValue(error),
+      loadImage: vi.fn().mockRejectedValue(error),
+    });
+    const request = service.beginManualRequest(1);
+    await expect(service.execute('prepare-image', { requestId: request.requestId })).resolves.toMatchObject({
+      status: IMAGE_REQUEST_STATUS.FAILED,
+      errorKind: 'transport',
+    });
+    await expect(service.handleResponse(createImageResponse(request.requestId))).resolves.toMatchObject({
+      status: IMAGE_REQUEST_STATUS.FAILED,
+    });
+  });
   it.each([null, {}, { requestId: 999, success: true }])(
     'fails malformed current invocation responses: %j',
     async response => {
@@ -148,6 +197,14 @@ describe('Image request service', () => {
       status: IMAGE_REQUEST_STATUS.FAILED,
       error: '处理后的图片尺寸与实际加载尺寸不一致。',
     });
+  });
+
+  it('does not treat a malformed cancellation acknowledgement as a user cancellation', async () => {
+    const service = createImageRequestService();
+    const request = service.beginManualRequest(1);
+    await expect(
+      service.handleResponse({ requestId: request.requestId, canceled: true, success: 'false' }),
+    ).resolves.toMatchObject({ status: IMAGE_REQUEST_STATUS.FAILED, errorKind: 'invalid-response' });
   });
 
   it('classifies cancellation and transport failures', async () => {

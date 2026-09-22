@@ -1,6 +1,8 @@
 import { prepareJsonProcess } from '../utils/DatasetPreparation.js';
 import { DATASET_FILE_STATUS, createDatasetTarget } from '../../../shared/DatasetFileResponse.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
+import { normalizeJsonSaveResult } from '../../../shared/JsonSaveResult.js';
+import { isFilePath, isRecord, normalizeServiceErrorKind, SERVICE_ERROR_KIND } from '../../../shared/ServiceResult.js';
 
 export const DATASET_LOAD_STATUS = Object.freeze({
   READY: 'ready',
@@ -27,7 +29,10 @@ export async function prepareDatasetLoad(
     return { status: DATASET_LOAD_STATUS.CANCELED, target, error: response?.error || '' };
   }
   if (response?.status !== DATASET_FILE_STATUS.READY) {
-    return failed(target, toUserErrorMessage(response?.error, USER_MESSAGES.JSON_READ_FAILED));
+    return {
+      ...failed(target, toUserErrorMessage(response?.error, USER_MESSAGES.JSON_READ_FAILED)),
+      ...(response?.errorKind ? { errorKind: normalizeServiceErrorKind(response.errorKind) } : {}),
+    };
   }
   if (target === null || typeof response?.jsonInfo?.str !== 'string') {
     return failed(target, 'JSON 文件响应无效。');
@@ -60,21 +65,43 @@ export async function prepareDatasetLoad(
       imagePaths: preparedJson.imagePaths,
     });
     if (!isCurrent()) return { status: DATASET_LOAD_STATUS.STALE, target };
+    if (!isRecord(resolvedPathResult) || typeof resolvedPathResult.success !== 'boolean') {
+      return { ...failed(target, '图片路径解析响应格式无效。'), errorKind: SERVICE_ERROR_KIND.INVALID_RESPONSE };
+    }
     if (!resolvedPathResult.success) {
-      return failed(target, toUserErrorMessage(resolvedPathResult.error, USER_MESSAGES.IMAGE_PATH_RESOLUTION_FAILED));
+      return {
+        ...failed(target, toUserErrorMessage(resolvedPathResult.error, USER_MESSAGES.IMAGE_PATH_RESOLUTION_FAILED)),
+        errorKind: normalizeServiceErrorKind(resolvedPathResult.errorKind),
+      };
+    }
+    if (
+      !Array.isArray(resolvedPathResult.imagePaths) ||
+      resolvedPathResult.imagePaths.length !== preparedJson.imagePaths.length ||
+      !resolvedPathResult.imagePaths.every(isFilePath)
+    ) {
+      return {
+        ...failed(target, '图片路径解析响应与图集图片项不匹配。'),
+        errorKind: SERVICE_ERROR_KIND.INVALID_RESPONSE,
+      };
     }
     preparedJson.imagePaths = resolvedPathResult.imagePaths.map(imagePath => imagePath.replace(/[\\/]/g, '/'));
 
+    let backupPath = '';
     if (preparedJson.changed) {
-      const saved = await saveJsonFile(preparedJson.fileInfo, {
-        backupOriginal: preparedJson.lossyRepairsApplied,
-      });
-      if (!saved) return failed(target, '保存规范化后的 JSON 文件失败。');
+      const saved = normalizeJsonSaveResult(
+        await saveJsonFile(preparedJson.fileInfo, {
+          backupOriginal: preparedJson.lossyRepairsApplied,
+        }),
+      );
       if (!isCurrent()) return { status: DATASET_LOAD_STATUS.STALE, target };
+      if (!saved.success)
+        return { ...failed(target, saved.error), errorKind: saved.errorKind, backupPath: saved.backupPath };
+      backupPath = saved.backupPath;
     }
 
-    return { status: DATASET_LOAD_STATUS.READY, target, preparedJson, jsonData };
+    return { status: DATASET_LOAD_STATUS.READY, target, preparedJson, jsonData, backupPath };
   } catch (error) {
+    console.error('Failed to prepare dataset:', error);
     return failed(target, toUserErrorMessage(error, '处理 JSON 文件失败。'));
   }
 }

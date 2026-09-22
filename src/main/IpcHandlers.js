@@ -1,3 +1,4 @@
+import { IPC_CHANNELS } from '../shared/IpcChannels.js';
 import { dialog, ipcMain } from 'electron';
 import {
   getDefaultDialogDirectory,
@@ -16,9 +17,29 @@ import {
 } from './WorkspaceSessionStore.js';
 import { DATASET_FILE_STATUS, createDatasetTarget } from '../shared/DatasetFileResponse.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../shared/UserMessages.js';
+import { isJsonSaveRequest } from '../shared/JsonSaveResult.js';
+import { isFilePath, isRecord, isRequestId, serviceFailure, SERVICE_ERROR_KIND } from '../shared/ServiceResult.js';
+
+function invalidDatasetRequest(requestId, error) {
+  return {
+    requestId,
+    status: DATASET_FILE_STATUS.FAILED,
+    target: null,
+    jsonInfo: null,
+    error,
+    errorKind: SERVICE_ERROR_KIND.INVALID_REQUEST,
+  };
+}
 
 export async function handleOpenImageDialog(_event, context) {
   const requestId = context?.requestId ?? null;
+  if (!isRequestId(requestId)) {
+    return {
+      ...serviceFailure(null, '图片选择请求标识无效。', SERVICE_ERROR_KIND.INVALID_REQUEST),
+      requestId,
+      path: '',
+    };
+  }
   let selectedPath = '';
   try {
     const result = await dialog.showOpenDialog({
@@ -45,15 +66,19 @@ export async function handleOpenImageDialog(_event, context) {
 }
 
 export async function handlePrepareImage(_event, request) {
-  const imagePath = typeof request === 'string' ? request : request?.imagePath;
-  const jsonFilePath = typeof request === 'string' ? '' : request?.jsonFilePath;
-  const requestId = typeof request === 'string' ? null : request?.requestId ?? null;
-  const resolvedImagePath = resolveJsonImagePath(imagePath, jsonFilePath);
-  if (!resolvedImagePath) {
-    return { success: false, requestId, error: '图片路径无效。', path: '' };
+  const requestId = request?.requestId ?? null;
+  if (
+    !isRecord(request) ||
+    !isRequestId(requestId) ||
+    !isFilePath(request.imagePath) ||
+    (request.jsonFilePath !== undefined && request.jsonFilePath !== '' && !isFilePath(request.jsonFilePath))
+  ) {
+    return { ...serviceFailure(null, '图片路径无效。', SERVICE_ERROR_KIND.INVALID_REQUEST), requestId, path: '' };
   }
-
+  let resolvedImagePath = '';
   try {
+    resolvedImagePath = resolveJsonImagePath(request.imagePath, request.jsonFilePath);
+    if (!isFilePath(resolvedImagePath)) throw new Error('图片路径无效。');
     const imageInfo = await prepareImageFile(resolvedImagePath);
     return { success: true, requestId, imageInfo };
   } catch (error) {
@@ -91,11 +116,15 @@ async function createJsonFileResponse(filePath, requestId, fallbackMessage = USE
 }
 
 export async function handleReadJsonFile(_event, request) {
+  if (!isRecord(request) || !isRequestId(request.requestId) || !isFilePath(request.filePath)) {
+    return invalidDatasetRequest(request?.requestId ?? null, '图集读取请求无效。');
+  }
   return createJsonFileResponse(request?.filePath, request?.requestId ?? null);
 }
 
 export async function handleOpenJsonDialog(_event, context) {
   const requestId = context?.requestId ?? null;
+  if (!isRequestId(requestId)) return invalidDatasetRequest(requestId, '图集选择请求标识无效。');
   try {
     const result = await dialog.showOpenDialog({
       defaultPath: getDefaultDialogDirectory(),
@@ -115,7 +144,7 @@ export async function handleOpenJsonDialog(_event, context) {
 
     const filePath = result.filePaths[0];
     rememberJsonDirectory(filePath).catch(error => {
-      console.error('Failed to save dialog path settings:', error.message);
+      console.error('Failed to save dialog path settings:', error);
     });
     return createJsonFileResponse(filePath, requestId);
   } catch (error) {
@@ -132,6 +161,14 @@ export async function handleOpenJsonDialog(_event, context) {
 
 export async function handleOpenAdjacentJson(_event, request) {
   const requestId = request?.requestId ?? null;
+  if (
+    !isRecord(request) ||
+    !isRequestId(requestId) ||
+    !isFilePath(request.currentFilePath) ||
+    !['previous', 'next'].includes(request.direction)
+  ) {
+    return invalidDatasetRequest(requestId, '相邻图集请求无效。');
+  }
   try {
     const targetPath = await getAdjacentJsonFilePath(request?.currentFilePath, request?.direction);
     return createJsonFileResponse(targetPath, requestId, USER_MESSAGES.DATASET_SWITCH_FAILED);
@@ -148,10 +185,15 @@ export async function handleOpenAdjacentJson(_event, request) {
 }
 
 export function handleResolveJsonImagePaths(_event, data) {
+  if (
+    !isRecord(data) ||
+    !isFilePath(data.jsonFilePath) ||
+    !Array.isArray(data.imagePaths) ||
+    !data.imagePaths.every(isFilePath)
+  ) {
+    return serviceFailure(null, '图片路径解析请求无效。', SERVICE_ERROR_KIND.INVALID_REQUEST);
+  }
   try {
-    if (!data || typeof data.jsonFilePath !== 'string' || !Array.isArray(data.imagePaths)) {
-      throw new Error('图片路径解析请求无效。');
-    }
     const imagePaths = data.imagePaths.map(imagePath => resolveJsonImagePath(imagePath, data.jsonFilePath));
     return { success: true, imagePaths };
   } catch (error) {
@@ -161,11 +203,12 @@ export function handleResolveJsonImagePaths(_event, data) {
 }
 
 export async function handleSaveJsonFile(_event, data) {
+  if (!isJsonSaveRequest(data)) return serviceFailure(null, 'JSON 保存请求无效。', SERVICE_ERROR_KIND.INVALID_REQUEST);
   try {
     const result = await saveJsonFileAtomically(data);
     return { success: true, ...result };
   } catch (error) {
-    console.error('Failed to save JSON:', error.message);
+    console.error('Failed to save JSON:', error);
     return { success: false, error: toUserErrorMessage(error, USER_MESSAGES.JSON_SAVE_FAILED) };
   }
 }
@@ -174,41 +217,56 @@ export async function handleGetWorkspaceSession() {
   try {
     return { success: true, session: await getWorkspaceSession() };
   } catch (error) {
-    console.error('Failed to load workspace session:', error.message);
+    console.error('Failed to load workspace session:', error);
     return { success: false, session: null, error: '读取上次工作区记录失败。' };
   }
 }
 
 export async function handleRecordWorkspaceDataset(_event, request) {
+  if (!isRecord(request) || !isFilePath(request.datasetPath)) {
+    return {
+      ...serviceFailure(null, '工作区记录缺少有效的图集路径。', SERVICE_ERROR_KIND.INVALID_REQUEST),
+      session: null,
+    };
+  }
   try {
     const result = await recordWorkspaceDatasetTarget(request?.datasetPath);
     return { success: true, ...result };
   } catch (error) {
-    console.error('Failed to record workspace dataset:', error.message);
+    console.error('Failed to record workspace dataset:', error);
     return { success: false, session: null, error: '保存工作区图集记录失败。' };
   }
 }
 
 export async function handleRecordWorkspaceImage(_event, request) {
+  if (
+    !isRecord(request) ||
+    !isFilePath(request.datasetPath) ||
+    !isFilePath(request.imagePath) ||
+    !Number.isSafeInteger(request.imageIndex) ||
+    request.imageIndex < 0
+  ) {
+    return { ...serviceFailure(null, '工作区图片记录无效。', SERVICE_ERROR_KIND.INVALID_REQUEST), session: null };
+  }
   try {
     const result = await recordWorkspaceDatasetImage(request);
     return { success: true, ...result };
   } catch (error) {
-    console.error('Failed to record workspace image:', error.message);
+    console.error('Failed to record workspace image:', error);
     return { success: false, session: null, error: '保存工作区图片记录失败。' };
   }
 }
 
 export function registerIpcHandlers() {
-  ipcMain.handle('open-image-file-dialog', handleOpenImageDialog);
-  ipcMain.handle('prepare-image', handlePrepareImage);
-  ipcMain.handle('open-json-file-dialog', handleOpenJsonDialog);
-  ipcMain.handle('open-adjacent-json-file', handleOpenAdjacentJson);
-  ipcMain.handle('read-json-file', handleReadJsonFile);
+  ipcMain.handle(IPC_CHANNELS.OPEN_IMAGE, handleOpenImageDialog);
+  ipcMain.handle(IPC_CHANNELS.PREPARE_IMAGE, handlePrepareImage);
+  ipcMain.handle(IPC_CHANNELS.OPEN_DATASET, handleOpenJsonDialog);
+  ipcMain.handle(IPC_CHANNELS.ADJACENT_DATASET, handleOpenAdjacentJson);
+  ipcMain.handle(IPC_CHANNELS.READ_DATASET, handleReadJsonFile);
 
-  ipcMain.handle('resolve-json-image-paths', handleResolveJsonImagePaths);
-  ipcMain.handle('save-json-file', handleSaveJsonFile);
-  ipcMain.handle('get-workspace-session', handleGetWorkspaceSession);
-  ipcMain.handle('record-workspace-dataset', handleRecordWorkspaceDataset);
-  ipcMain.handle('record-workspace-image', handleRecordWorkspaceImage);
+  ipcMain.handle(IPC_CHANNELS.RESOLVE_IMAGE_PATHS, handleResolveJsonImagePaths);
+  ipcMain.handle(IPC_CHANNELS.SAVE_JSON, handleSaveJsonFile);
+  ipcMain.handle(IPC_CHANNELS.GET_WORKSPACE, handleGetWorkspaceSession);
+  ipcMain.handle(IPC_CHANNELS.RECORD_DATASET, handleRecordWorkspaceDataset);
+  ipcMain.handle(IPC_CHANNELS.RECORD_IMAGE, handleRecordWorkspaceImage);
 }

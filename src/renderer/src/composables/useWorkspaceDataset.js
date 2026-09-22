@@ -1,8 +1,10 @@
+import { IPC_CHANNELS } from '../../../shared/IpcChannels.js';
 import { ref } from 'vue';
+import { getBackupMessage } from '../../../shared/JsonSaveResult.js';
 import { DATASET_LOAD_TRANSACTION_STATUS, useDatasetLoadTransaction } from './useDatasetLoadTransaction.js';
 import { getJsonImageTarget, getJsonImageTargetByPath } from '../state/DatasetState.js';
 import { USER_MESSAGES } from '../../../shared/UserMessages.js';
-import { createCanceledDatasetFileResponse } from '../../../shared/DatasetFileResponse.js';
+import { createCanceledDatasetFileResponse, DATASET_FILE_STATUS } from '../../../shared/DatasetFileResponse.js';
 import { KEYS } from '../utils/BasicFuncs.js';
 
 // Coordinates selection, repair/commit and startup restoration; the transaction owns domain writes.
@@ -27,7 +29,7 @@ export function useWorkspaceDataset({
     confirmLossyRepair,
     saveJsonFile,
     isActive,
-    resolveImagePaths: request => invoke('resolve-json-image-paths', request),
+    resolveImagePaths: request => invoke(IPC_CHANNELS.RESOLVE_IMAGE_PATHS, request),
     onDatasetTargetSelected: handleDatasetTargetSelected,
   });
 
@@ -58,13 +60,19 @@ export function useWorkspaceDataset({
         const loaded = await getWorkspaceSession();
         if (!isActive()) return createCanceledDatasetFileResponse(requestId);
         if (!loaded.success) {
-          console.error(loaded.error);
-          return createCanceledDatasetFileResponse(requestId);
+          return {
+            requestId,
+            status: DATASET_FILE_STATUS.FAILED,
+            target: null,
+            jsonInfo: null,
+            error: loaded.error,
+            errorKind: loaded.errorKind,
+          };
         }
         restoredSession = loaded.session;
         if (!restoredSession) return createCanceledDatasetFileResponse(requestId);
 
-        return invoke('read-json-file', {
+        return invoke(IPC_CHANNELS.READ_DATASET, {
           filePath: restoredSession.datasetPath,
           requestId,
         });
@@ -79,6 +87,7 @@ export function useWorkspaceDataset({
   async function runDatasetLoad(requestDataset, { fallbackMessage, getInitialImageTarget = null } = {}) {
     const result = await executeDatasetLoadTransaction(requestDataset, { fallbackMessage });
     if (!isActive() || result.status === DATASET_LOAD_TRANSACTION_STATUS.STALE) return false;
+    if (result.backupPath) outputMessage(getBackupMessage(result.backupPath));
     if (result.status !== DATASET_LOAD_TRANSACTION_STATUS.READY) {
       if (result.error) outputMessage(result.error);
       if (result.target) {
@@ -113,7 +122,7 @@ export function useWorkspaceDataset({
 
   function chooseJsonFile() {
     showDatasetPanel();
-    return runDatasetLoad(requestId => invoke('open-json-file-dialog', { requestId }), {
+    return runDatasetLoad(requestId => invoke(IPC_CHANNELS.OPEN_DATASET, { requestId }), {
       fallbackMessage: USER_MESSAGES.JSON_OPEN_FAILED,
     });
   }
@@ -127,7 +136,7 @@ export function useWorkspaceDataset({
 
     return runDatasetLoad(
       requestId =>
-        invoke('open-adjacent-json-file', {
+        invoke(IPC_CHANNELS.ADJACENT_DATASET, {
           currentFilePath,
           direction,
           requestId,

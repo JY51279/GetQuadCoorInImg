@@ -1,4 +1,6 @@
 import { rollbackDatasetMutation } from '../state/DatasetState.js';
+import { normalizeJsonSaveResult } from '../../../shared/JsonSaveResult.js';
+import { SERVICE_ERROR_KIND } from '../../../shared/ServiceResult.js';
 import { USER_MESSAGES, toUserErrorMessage } from '../../../shared/UserMessages.js';
 import {
   WORKFLOW_OPERATION,
@@ -21,11 +23,18 @@ export const SAVE_TRANSACTION_STATUS = Object.freeze({
 
 // Publish mutation details only after a successful transaction (or a no-op).
 // Failed/stale saves must never expose a success-history payload to the caller.
-function createResult(status, { error = '', rollbackFailed = false, changed = false, mutation = null } = {}) {
+function createResult(
+  status,
+  { error = '', errorKind = '', backupPath = '', rollbackFailed = false, changed = false, mutation = null } = {},
+) {
   const success = status === SAVE_TRANSACTION_STATUS.SAVED || status === SAVE_TRANSACTION_STATUS.UNCHANGED;
-  return { success, status, error, rollbackFailed, changed, mutation };
+  return { success, status, error, errorKind, backupPath, rollbackFailed, changed, mutation };
 }
 
+/**
+ * saveJsonFile resolves to { success, backupPath?, error?, errorKind? }, never a boolean.
+ * Started persistence and receipt rollback outlive the view; callers gate UI/history updates.
+ */
 export function useDatasetSaveTransaction({
   workflowState,
   getCurrentImageIndex,
@@ -62,8 +71,8 @@ export function useDatasetSaveTransaction({
       try {
         const rollbackResult = rollbackMutation(receipt);
         if (rollbackResult === true || rollbackResult?.success === true) return true;
-      } catch {
-        // A failed rollback is reported through the structured transaction result.
+      } catch (error) {
+        console.error('Failed to roll back dataset mutation:', error);
       }
       rollbackFailed = true;
       completionPhase = WORKFLOW_PHASE.RECOVERY_REQUIRED;
@@ -75,6 +84,7 @@ export function useDatasetSaveTransaction({
       try {
         mutationResult = mutate();
       } catch (error) {
+        console.error('Dataset mutation threw before returning a receipt:', error);
         rollbackFailed = true;
         completionPhase = WORKFLOW_PHASE.RECOVERY_REQUIRED;
         return createResult(SAVE_TRANSACTION_STATUS.MUTATION_FAILED, {
@@ -113,8 +123,9 @@ export function useDatasetSaveTransaction({
 
       let saved;
       try {
-        saved = await saveJsonFile();
+        saved = normalizeJsonSaveResult(await saveJsonFile());
       } catch (error) {
+        console.error('Dataset persistence callback rejected:', error);
         if (!canApplySaveResult(workflowState.value, operationId, getCurrentImageIndex())) {
           return createResult(SAVE_TRANSACTION_STATUS.STALE, {
             error: '图集或图片已切换，已忽略过期的保存失败结果。',
@@ -124,6 +135,7 @@ export function useDatasetSaveTransaction({
         restoreMutationState(mutationResult.receipt);
         return createResult(SAVE_TRANSACTION_STATUS.SAVE_FAILED, {
           error: toUserErrorMessage(error, USER_MESSAGES.JSON_SAVE_FAILED),
+          errorKind: SERVICE_ERROR_KIND.TRANSPORT,
           rollbackFailed,
           changed: true,
         });
@@ -134,10 +146,12 @@ export function useDatasetSaveTransaction({
           changed: true,
         });
       }
-      if (!saved) {
+      if (!saved.success) {
         restoreMutationState(mutationResult.receipt);
         return createResult(SAVE_TRANSACTION_STATUS.SAVE_FAILED, {
-          error: USER_MESSAGES.JSON_SAVE_FAILED,
+          error: saved.error,
+          errorKind: saved.errorKind,
+          backupPath: saved.backupPath,
           rollbackFailed,
           changed: true,
         });
@@ -145,7 +159,11 @@ export function useDatasetSaveTransaction({
       if (!finishOperation()) {
         return createResult(SAVE_TRANSACTION_STATUS.COMPLETION_FAILED, { changed: true });
       }
-      return createResult(SAVE_TRANSACTION_STATUS.SAVED, { changed: true, mutation: mutationResult });
+      return createResult(SAVE_TRANSACTION_STATUS.SAVED, {
+        changed: true,
+        mutation: mutationResult,
+        backupPath: saved.backupPath,
+      });
     } finally {
       if (isCurrentOperation(workflowState.value, operationId, WORKFLOW_OPERATION.SAVE)) finishOperation();
     }

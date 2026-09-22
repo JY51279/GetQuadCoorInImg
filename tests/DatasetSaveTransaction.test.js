@@ -18,7 +18,7 @@ function createMutationResult(id = 'mutation') {
 function createTransaction(overrides = {}) {
   const workflowState = overrides.workflowState ?? ref(createDatasetWorkflowState());
   const imageIndex = overrides.imageIndex ?? ref(0);
-  const saveJsonFile = overrides.saveJsonFile ?? vi.fn(async () => true);
+  const saveJsonFile = overrides.saveJsonFile ?? vi.fn(async () => ({ success: true }));
   const rollbackMutation = overrides.rollbackMutation ?? vi.fn(() => ({ success: true }));
   const transaction = useDatasetSaveTransaction({
     workflowState,
@@ -30,6 +30,17 @@ function createTransaction(overrides = {}) {
 }
 
 describe('Dataset save transaction', () => {
+  it.each([true, {}, { success: 'true' }, { success: false, error: '磁盘写入失败。' }])(
+    'never commits history for an invalid or failed save result: %j',
+    async response => {
+      const context = createTransaction({ saveJsonFile: async () => response });
+      const result = await context.transaction.run(() => createMutationResult());
+      expect(result).toMatchObject({ success: false, status: SAVE_TRANSACTION_STATUS.SAVE_FAILED, mutation: null });
+      expect(context.rollbackMutation).toHaveBeenCalledOnce();
+      expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.READY);
+      if (response?.success === false) expect(result.error).toBe('磁盘写入失败。');
+    },
+  );
   it('saves a reversible in-memory mutation and completes the workflow', async () => {
     const context = createTransaction();
     const mutationResult = createMutationResult();
@@ -41,6 +52,8 @@ describe('Dataset save transaction', () => {
       status: SAVE_TRANSACTION_STATUS.SAVED,
       mutation: mutationResult,
       error: '',
+      errorKind: '',
+      backupPath: '',
       rollbackFailed: false,
       changed: true,
     });
@@ -59,6 +72,8 @@ describe('Dataset save transaction', () => {
       status: SAVE_TRANSACTION_STATUS.UNCHANGED,
       mutation: { success: true, changed: false, receipt: null },
       error: '',
+      errorKind: '',
+      backupPath: '',
       rollbackFailed: false,
       changed: false,
     });
@@ -102,7 +117,7 @@ describe('Dataset save transaction', () => {
   });
 
   it('rolls back the mutation receipt after the file save fails', async () => {
-    const context = createTransaction({ saveJsonFile: vi.fn(async () => false) });
+    const context = createTransaction({ saveJsonFile: vi.fn(async () => ({ success: false })) });
     const mutationResult = createMutationResult();
 
     const result = await context.transaction.run(() => mutationResult);
@@ -161,7 +176,7 @@ describe('Dataset save transaction', () => {
       imageIndex,
       saveJsonFile: vi.fn(async () => {
         imageIndex.value = 1;
-        return true;
+        return { success: true };
       }),
     });
 
@@ -179,7 +194,7 @@ describe('Dataset save transaction', () => {
 
   it('falls back to dataset-ready when receipt rollback is impossible', async () => {
     const context = createTransaction({
-      saveJsonFile: vi.fn(async () => false),
+      saveJsonFile: vi.fn(async () => ({ success: false })),
       rollbackMutation: vi.fn(() => ({ success: false })),
     });
 

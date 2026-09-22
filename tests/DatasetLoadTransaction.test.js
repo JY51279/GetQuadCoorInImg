@@ -61,6 +61,45 @@ function createContext(overrides = {}) {
 }
 
 describe('Dataset load transaction', () => {
+  it.each([null, {}, { status: 'unknown' }])(
+    'closes malformed preparation results with a visible failure: %j',
+    async response => {
+      const context = createContext({ prepareLoad: async () => response });
+      const result = await context.transaction.run(async () => createResponse());
+      expect(result).toMatchObject({
+        status: DATASET_LOAD_TRANSACTION_STATUS.FAILED,
+        errorKind: 'invalid-response',
+        error: '图集加载结果无效。',
+      });
+      expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.DATASET_ERROR);
+      expect(context.workflowState.value.operation).toBeNull();
+      expect(context.commitPreparedDataset).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, null, '1', 1.5, 999])(
+    'rejects an invalid response id before changing targets: %j',
+    async requestId => {
+      const context = createContext();
+      const result = await context.transaction.run(async () => ({ ...createResponse(), requestId }));
+      expect(result).toMatchObject({ status: DATASET_LOAD_TRANSACTION_STATUS.FAILED, errorKind: 'invalid-response' });
+      expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.READY);
+      expect(context.workflowState.value.datasetTarget).toEqual(TARGET_A);
+      expect(context.clearDataset).not.toHaveBeenCalled();
+      expect(context.prepareLoad).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([{ status: 'unknown' }, { status: 'canceled', target: TARGET_B }, { target: { path: 42 } }])(
+    'rejects a malformed envelope before target selection: %j',
+    async overrides => {
+      const context = createContext();
+      const result = await context.transaction.run(async () => ({ ...createResponse(), ...overrides }));
+      expect(result).toMatchObject({ status: DATASET_LOAD_TRANSACTION_STATUS.FAILED, errorKind: 'invalid-response' });
+      expect(context.clearDataset).not.toHaveBeenCalled();
+      expect(context.commitPreparedDataset).not.toHaveBeenCalled();
+    },
+  );
   it('does not commit a prepared dataset after its owner is disposed', async () => {
     let active = true;
     let resolve;
@@ -102,6 +141,8 @@ describe('Dataset load transaction', () => {
       target: null,
       preparedJson: null,
       error: '',
+      errorKind: '',
+      backupPath: '',
     });
     expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.READY);
     expect(context.workflowState.value.datasetTarget).toEqual(TARGET_A);
@@ -164,6 +205,8 @@ describe('Dataset load transaction', () => {
       target: TARGET_B,
       preparedJson: PREPARED_DATASET,
       error: '',
+      errorKind: '',
+      backupPath: '',
     });
     expect(context.commitPreparedDataset).toHaveBeenCalledWith(PREPARED_DATASET);
     expect(context.workflowState.value).toMatchObject({
@@ -242,7 +285,8 @@ describe('Dataset load transaction', () => {
 
     expect(malformed).toMatchObject({
       status: DATASET_LOAD_TRANSACTION_STATUS.FAILED,
-      error: '切换图集失败。',
+      error: '图集文件响应与当前加载操作不匹配。',
+      errorKind: 'invalid-response',
     });
     expect(malformedContext.workflowState.value.phase).toBe(WORKFLOW_PHASE.READY);
   });

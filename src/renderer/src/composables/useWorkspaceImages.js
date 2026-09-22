@@ -1,3 +1,4 @@
+import { IPC_CHANNELS } from '../../../shared/IpcChannels.js';
 import { computed, ref, shallowRef } from 'vue';
 import {
   getAdjacentJsonImageTarget,
@@ -112,7 +113,7 @@ export function useWorkspaceImages({
 
       imageLoadError.value = null;
       const request = beginManualRequest(started.operationId);
-      void requestPreparedImage('open-image-file-dialog', {
+      void requestPreparedImage(IPC_CHANNELS.OPEN_IMAGE, {
         ...getJsonImageDialogContext(),
         requestId: request.requestId,
       });
@@ -165,7 +166,7 @@ export function useWorkspaceImages({
 
   function sendImageFileRequest(path, requestId) {
     const { jsonFilePath } = getJsonImageDialogContext();
-    void requestPreparedImage('prepare-image', { imagePath: path, jsonFilePath, requestId });
+    void requestPreparedImage(IPC_CHANNELS.PREPARE_IMAGE, { imagePath: path, jsonFilePath, requestId });
     outputMessage('正在读取图片…');
   }
 
@@ -207,8 +208,9 @@ export function useWorkspaceImages({
   function handleImageRequestFailure(errorMessage, failedPath = '') {
     const failedRequest = getActiveRequest();
     if (!isCurrentImageRequest(failedRequest)) return;
-    outputMessage(`打开图片失败${failedPath ? `：${failedPath}` : '。'}`);
-    outputMessage(errorMessage || USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR);
+    outputMessage(
+      `打开图片失败${failedPath ? `：${failedPath}。` : '。'} ${errorMessage || USER_MESSAGES.UNKNOWN_IMAGE_LOADING_ERROR}`,
+    );
 
     const canRestorePreviousImage =
       hasCurrentImageSession.value &&

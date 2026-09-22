@@ -68,12 +68,13 @@ function createWorkspace() {
     clearCurrentAnnotations: vi.fn(),
     synchronizeQuadFocusSelection: vi.fn(),
   });
+  const saveJsonFile = vi.fn(async () => ({ success: true }));
   const dataset = useWorkspaceDataset({
     ...shared,
     getWorkspaceSession,
     recordDatasetTarget,
     confirmLossyRepair: () => true,
-    saveJsonFile: async () => true,
+    saveJsonFile,
     onDatasetReset: images.resetForDatasetChange,
     startDatasetImageRequest: images.startDatasetImageRequest,
     showDatasetPanel: vi.fn(),
@@ -90,6 +91,8 @@ function createWorkspace() {
     presentImageSession,
     recordImage,
     recordDatasetTarget,
+    outputMessage,
+    saveJsonFile,
     dispose() {
       active = false;
       images.dispose();
@@ -100,6 +103,39 @@ function createWorkspace() {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Workspace loading controllers without a mounted page', () => {
+  it('reports a failed startup restore once and closes loading instead of pretending it was canceled', async () => {
+    const workspace = createWorkspace();
+    workspace.getWorkspaceSession.mockResolvedValueOnce({
+      success: false,
+      error: '读取上次工作区记录失败。',
+      errorKind: 'transport',
+    });
+    await expect(workspace.dataset.restoreWorkspaceSession()).resolves.toBe(false);
+    expect(workspace.workflowState.value.phase).toBe(WORKFLOW_PHASE.EMPTY);
+    expect(workspace.outputMessage).toHaveBeenCalledExactlyOnceWith('读取上次工作区记录失败。');
+    expect(workspace.invoke).not.toHaveBeenCalled();
+  });
+
+  it('preserves the specific normalization-save failure without a second notification', async () => {
+    const workspace = createWorkspace();
+    workspace.saveJsonFile.mockResolvedValueOnce({ success: false, error: '测试规范化保存失败。' });
+    await expect(workspace.dataset.chooseJsonFile()).resolves.toBe(false);
+    expect(workspace.outputMessage).toHaveBeenCalledExactlyOnceWith('测试规范化保存失败。');
+    expect(workspace.prepareImage).not.toHaveBeenCalled();
+    expect(workspace.workflowState.value.phase).toBe(WORKFLOW_PHASE.DATASET_ERROR);
+  });
+
+  it('reports a normalization backup after the load transaction returns', async () => {
+    const workspace = createWorkspace();
+    workspace.saveJsonFile.mockResolvedValueOnce({ success: true, backupPath: 'C:/backups/sample.json' });
+    await workspace.dataset.chooseJsonFile();
+    await settle();
+    const backupMessages = workspace.outputMessage.mock.calls.filter(([message]) =>
+      message.includes('已创建临时 JSON 备份'),
+    );
+    expect(backupMessages).toEqual([['已创建临时 JSON 备份，将在 7 天后自动删除：C:/backups/sample.json']]);
+    expect(workspace.workflowState.value.phase).toBe(WORKFLOW_PHASE.READY);
+  });
   it('restores the checkpoint image and records only a matched ready session', async () => {
     const workspace = createWorkspace();
     await workspace.dataset.restoreWorkspaceSession();

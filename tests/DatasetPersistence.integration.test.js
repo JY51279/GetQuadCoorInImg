@@ -94,7 +94,7 @@ describe('Dataset persistence integration', () => {
 
   it('rolls back the real dataset mutation when persistence fails', async () => {
     const before = getJsonFileInfo().str;
-    const saveJsonFile = vi.fn(async () => false);
+    const saveJsonFile = vi.fn(async () => ({ success: false }));
     const { transaction, workflowState } = createTransaction(saveJsonFile);
 
     const result = await transaction.run(() =>
@@ -113,7 +113,7 @@ describe('Dataset persistence integration', () => {
 
   it('keeps a successfully persisted mutation in the real dataset state', async () => {
     const before = getJsonFileInfo().str;
-    const saveJsonFile = vi.fn(async () => true);
+    const saveJsonFile = vi.fn(async () => ({ success: true }));
     const { transaction, workflowState } = createTransaction(saveJsonFile);
 
     const result = await transaction.run(() =>
@@ -130,7 +130,7 @@ describe('Dataset persistence integration', () => {
 
   it('skips persistence for a real no-op mutation', async () => {
     const before = getJsonFileInfo().str;
-    const saveJsonFile = vi.fn(async () => true);
+    const saveJsonFile = vi.fn(async () => ({ success: true }));
     const { transaction } = createTransaction(saveJsonFile);
 
     const result = await transaction.run(() =>
@@ -145,7 +145,7 @@ describe('Dataset persistence integration', () => {
   it('rolls back a copied previous-image location when persistence fails', async () => {
     loadCopyDataset();
     const before = getJsonFileInfo().str;
-    const saveJsonFile = vi.fn(async () => false);
+    const saveJsonFile = vi.fn(async () => ({ success: false }));
     const { transaction } = createTransaction(saveJsonFile);
 
     const result = await transaction.run(() => copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 }));

@@ -1,5 +1,7 @@
 import { DATASET_LOAD_STATUS, normalizeDatasetTarget, prepareDatasetLoad } from '../services/DatasetLoadService.js';
 import { clearDatasetProcess, commitPreparedJsonProcess } from '../state/DatasetState.js';
+import { getDatasetResponseError } from '../../../shared/DatasetFileResponse.js';
+import { SERVICE_ERROR_KIND } from '../../../shared/ServiceResult.js';
 import {
   WORKFLOW_OPERATION,
   commitDataset,
@@ -19,16 +21,22 @@ export const DATASET_LOAD_TRANSACTION_STATUS = Object.freeze({
   START_FAILED: 'start-failed',
 });
 
-function createResult(status, { target = null, preparedJson = null, error = '' } = {}) {
+function createResult(
+  status,
+  { target = null, preparedJson = null, error = '', errorKind = '', backupPath = '' } = {},
+) {
   return {
     success: status === DATASET_LOAD_TRANSACTION_STATUS.READY,
     status,
     target,
     preparedJson,
     error,
+    errorKind,
+    backupPath,
   };
 }
 
+/** requestDataset must echo its operation id. Only genuinely superseded invocations are stale. */
 export function useDatasetLoadTransaction({
   workflowState,
   resolveImagePaths,
@@ -58,11 +66,11 @@ export function useDatasetLoadTransaction({
     return applyWorkflowTransition(transition);
   }
 
-  function failedOrStale(operationId, target, error) {
+  function failedOrStale(operationId, target, error, details = {}) {
     if (!closeFailedOperation(operationId, target)) {
       return createResult(DATASET_LOAD_TRANSACTION_STATUS.STALE, { target });
     }
-    return createResult(DATASET_LOAD_TRANSACTION_STATUS.FAILED, { target, error });
+    return createResult(DATASET_LOAD_TRANSACTION_STATUS.FAILED, { ...details, target, error });
   }
 
   async function run(requestDataset, { fallbackMessage = USER_MESSAGES.JSON_READ_FAILED } = {}) {
@@ -82,22 +90,21 @@ export function useDatasetLoadTransaction({
     try {
       response = await requestDataset(operationId);
     } catch (error) {
-      return failedOrStale(operationId, null, toUserErrorMessage(error, fallbackMessage));
+      console.error('Dataset request failed:', error);
+      return failedOrStale(operationId, null, toUserErrorMessage(error, fallbackMessage), {
+        errorKind: SERVICE_ERROR_KIND.TRANSPORT,
+      });
     }
 
     if (!isCurrent(operationId)) {
       return createResult(DATASET_LOAD_TRANSACTION_STATUS.STALE);
     }
-    if (!response || typeof response !== 'object') {
-      return failedOrStale(operationId, null, fallbackMessage);
+    const protocolError = getDatasetResponseError(response, operationId);
+    if (protocolError) {
+      console.error('Invalid dataset response:', response);
+      return failedOrStale(operationId, null, protocolError, { errorKind: SERVICE_ERROR_KIND.INVALID_RESPONSE });
     }
-
-    const responseOperationId = response.requestId ?? operationId;
-    if (responseOperationId !== operationId) {
-      return failedOrStale(operationId, null, '图集文件响应与当前加载操作不匹配。');
-    }
-    const normalizedResponse = response.requestId == null ? { ...response, requestId: operationId } : response;
-    const target = normalizeDatasetTarget(normalizedResponse.target);
+    const target = normalizeDatasetTarget(response.target);
 
     if (target) {
       const selected = selectDatasetTarget(workflowState.value, operationId, target);
@@ -108,27 +115,32 @@ export function useDatasetLoadTransaction({
         clearDataset();
         onDatasetTargetSelected(target);
       } catch (error) {
+        console.error('Failed to select dataset workspace:', error);
         return failedOrStale(operationId, target, toUserErrorMessage(error, '切换到新的图集工作区失败。'));
       }
     }
 
     let loadResult;
     try {
-      loadResult = await prepareLoad(normalizedResponse, {
+      loadResult = await prepareLoad(response, {
         confirmLossyRepair,
         resolveImagePaths,
         saveJsonFile,
         isCurrent: () => isCurrent(operationId),
       });
     } catch (error) {
+      console.error('Dataset preparation callback rejected:', error);
       return failedOrStale(operationId, target, toUserErrorMessage(error, '处理 JSON 文件失败。'));
     }
 
     if (!isCurrent(operationId)) {
       return createResult(DATASET_LOAD_TRANSACTION_STATUS.STALE, { target });
     }
-    if (!loadResult || typeof loadResult !== 'object') {
-      return failedOrStale(operationId, target, '图集加载结果无效。');
+    if (!loadResult || !Object.values(DATASET_LOAD_STATUS).includes(loadResult.status)) {
+      console.error('Invalid dataset preparation result:', loadResult);
+      return failedOrStale(operationId, target, '图集加载结果无效。', {
+        errorKind: SERVICE_ERROR_KIND.INVALID_RESPONSE,
+      });
     }
     if (loadResult.status === DATASET_LOAD_STATUS.STALE) {
       return failedOrStale(operationId, target, '图集加载结果已失效。');
@@ -144,6 +156,8 @@ export function useDatasetLoadTransaction({
         {
           target,
           error: loadResult.error || '',
+          errorKind: loadResult.errorKind || '',
+          backupPath: loadResult.backupPath || '',
         },
       );
     }
@@ -156,10 +170,15 @@ export function useDatasetLoadTransaction({
     }
     try {
       if (!commitPreparedDataset(loadResult.preparedJson)) {
-        return failedOrStale(operationId, target, '加载 JSON 失败：无法提交处理后的数据集。');
+        return failedOrStale(operationId, target, '加载 JSON 失败：无法提交处理后的数据集。', {
+          backupPath: loadResult.backupPath,
+        });
       }
     } catch (error) {
-      return failedOrStale(operationId, target, toUserErrorMessage(error, '加载 JSON 失败：无法提交处理后的数据集。'));
+      console.error('Failed to commit prepared dataset:', error);
+      return failedOrStale(operationId, target, toUserErrorMessage(error, '加载 JSON 失败：无法提交处理后的数据集。'), {
+        backupPath: loadResult.backupPath,
+      });
     }
 
     const committed = commitDataset(workflowState.value, operationId);
@@ -169,6 +188,7 @@ export function useDatasetLoadTransaction({
     return createResult(DATASET_LOAD_TRANSACTION_STATUS.READY, {
       target,
       preparedJson: loadResult.preparedJson,
+      backupPath: loadResult.backupPath || '',
     });
   }
 
