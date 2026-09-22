@@ -218,7 +218,7 @@ export async function handleGetWorkspaceSession() {
     return { success: true, session: await getWorkspaceSession() };
   } catch (error) {
     console.error('Failed to load workspace session:', error);
-    return { success: false, session: null, error: '读取上次工作区记录失败。' };
+    return { ...serviceFailure(error, '读取上次工作区记录失败。'), session: null };
   }
 }
 

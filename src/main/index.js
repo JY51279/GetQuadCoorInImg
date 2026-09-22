@@ -21,8 +21,14 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let startupFailed = false;
+let isQuitting = false;
+
+app.on('before-quit', () => {
+  isQuitting = true;
+});
 
 function handleStartupFailure(error) {
+  if (isQuitting) return;
   console.error('Application startup failed:', error);
   if (startupFailed) return;
   startupFailed = true;
@@ -39,6 +45,7 @@ function handleStartupFailure(error) {
 }
 
 async function createWindow() {
+  if (isQuitting || startupFailed) return;
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 1600,
@@ -67,19 +74,26 @@ async function createWindow() {
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': [`img-src 'self' data: blob: ${IMAGE_PROTOCOL_SCHEME}:;`],
-        },
+  try {
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+      mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+        callback({
+          responseHeaders: {
+            ...details.responseHeaders,
+            'Content-Security-Policy': [`img-src 'self' data: blob: ${IMAGE_PROTOCOL_SCHEME}:;`],
+          },
+        });
       });
-    });
-    await mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
-  } else {
-    await mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+      await mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
+    } else {
+      await mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+    }
+  } catch (error) {
+    // Destroying a window also rejects its pending load. This is not a startup failure.
+    if (isQuitting || mainWindow.isDestroyed()) return;
+    throw error;
   }
+  if (isQuitting || mainWindow.isDestroyed()) return;
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
   }
@@ -92,9 +106,13 @@ async function createWindow() {
 app
   .whenReady()
   .then(async () => {
+    if (isQuitting) return;
     await initializeFileOperations(app);
+    if (isQuitting) return;
     await initializeWorkspaceSessionStore(app);
+    if (isQuitting) return;
     await initializeImageFileReader(app, nativeImage);
+    if (isQuitting) return;
     registerImageProtocol(protocol, net);
     // Set app user model id for windows
     electronApp.setAppUserModelId('com.electron');
@@ -107,6 +125,7 @@ app
     });
     registerIpcHandlers();
     await createWindow();
+    if (isQuitting || startupFailed) return;
 
     app.on('activate', function () {
       // On macOS it's common to re-create a window in the app when the

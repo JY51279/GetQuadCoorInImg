@@ -393,6 +393,7 @@ describe('Main-process IPC handlers', () => {
       success: false,
       session: null,
       error: '读取上次工作区记录失败。',
+      errorKind: 'operation',
     });
     await expect(handleRecordWorkspaceDataset(null, { datasetPath: 'C:/data/sample.json' })).resolves.toEqual({
       success: false,

@@ -35,6 +35,47 @@ afterEach(async () => {
 });
 
 describe('Workspace session store', () => {
+  it.each(['EACCES', 'EPERM', 'EIO', null, undefined])(
+    'keeps a read failure observable without rejecting initialization: %s',
+    async code => {
+      const error = code ? Object.assign(new Error('test read failure'), { code }) : code;
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(fs, 'readFile').mockRejectedValueOnce(error);
+      await expect(initializeStore()).resolves.toEqual(expect.any(String));
+      await expect(getWorkspaceSession()).rejects.toBe(error);
+      await expect(getWorkspaceSession()).rejects.toBe(error);
+      expect(console.error).toHaveBeenCalledWith('Failed to load workspace session:', error);
+    },
+  );
+
+  it('clears a read failure only after a successful checkpoint write', async () => {
+    const readError = Object.assign(new Error('test read failure'), { code: 'EACCES' });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(fs, 'readFile').mockRejectedValueOnce(readError);
+    const userData = await initializeStore();
+    const writeError = Object.assign(new Error('test write failure'), { code: 'EACCES' });
+    vi.spyOn(fs, 'rename').mockRejectedValueOnce(writeError);
+    await expect(recordWorkspaceDatasetTarget('C:/datasets/A.json')).rejects.toBe(writeError);
+    await expect(getWorkspaceSession()).rejects.toBe(readError);
+    await expect(
+      recordWorkspaceDatasetImage({ datasetPath: 'C:/datasets/A.json', imagePath: 'one.png', imageIndex: 0 }),
+    ).resolves.toMatchObject({ changed: false, stale: true });
+    await expect(getWorkspaceSession()).rejects.toBe(readError);
+    await expect(recordWorkspaceDatasetTarget('C:/datasets/A.json')).resolves.toMatchObject({ changed: true });
+    const session = await getWorkspaceSession();
+    expect(session.datasetPath).toBe('C:/datasets/A.json');
+    expect(JSON.parse(await fs.readFile(path.join(userData, 'workspace-session.json'), 'utf-8'))).toEqual(session);
+  });
+
+  it('resets the previous read failure when initialized for another session store', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(fs, 'readFile').mockRejectedValueOnce(Object.assign(new Error('test failure'), { code: 'EACCES' }));
+    await initializeStore();
+    const session = createWorkspaceSession('C:/datasets/B.json');
+    await initializeStore(JSON.stringify(session));
+    await expect(getWorkspaceSession()).resolves.toEqual(session);
+  });
+
   it('returns no session when the settings file does not exist', async () => {
     await initializeStore();
 

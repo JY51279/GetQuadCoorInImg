@@ -17,11 +17,22 @@ const mocks = vi.hoisted(() => ({
   initializeImageFileReader: vi.fn(),
   registerImageProtocol: vi.fn(),
   registerIpcHandlers: vi.fn(),
+  openDevTools: vi.fn(),
+  windows: [],
+  isPackaged: true,
   is: { dev: false },
 }));
 
 vi.mock('electron', () => ({
-  app: { whenReady: mocks.whenReady, on: mocks.on, exit: mocks.exit, quit: mocks.quit, isPackaged: true },
+  app: {
+    whenReady: mocks.whenReady,
+    on: mocks.on,
+    exit: mocks.exit,
+    quit: mocks.quit,
+    get isPackaged() {
+      return mocks.isPackaged;
+    },
+  },
   BrowserWindow: mocks.BrowserWindow,
   dialog: { showErrorBox: mocks.showErrorBox },
   shell: { openExternal: mocks.openExternal },
@@ -50,11 +61,19 @@ function getActivateHandler() {
   return mocks.on.mock.calls.find(([event]) => event === 'activate')?.[1];
 }
 
+const settle = () => new Promise(resolve => setImmediate(resolve));
+
+function beginQuit() {
+  mocks.on.mock.calls.find(([event]) => event === 'before-quit')?.[1]();
+}
+
 beforeEach(() => {
   vi.resetModules();
   vi.resetAllMocks();
   vi.spyOn(console, 'error').mockImplementation(() => {});
   mocks.is.dev = false;
+  mocks.isPackaged = true;
+  mocks.windows.length = 0;
   mocks.whenReady.mockResolvedValue(undefined);
   mocks.initializeFileOperations.mockResolvedValue(undefined);
   mocks.initializeWorkspaceSessionStore.mockResolvedValue(undefined);
@@ -65,18 +84,22 @@ beforeEach(() => {
   mocks.getAllWindows.mockReturnValue([]);
   mocks.BrowserWindow.getAllWindows = mocks.getAllWindows;
   mocks.BrowserWindow.mockImplementation(function () {
-    return {
+    const window = {
       on: vi.fn(),
       show: vi.fn(),
+      isDestroyed: vi.fn(() => false),
       loadFile: mocks.loadFile,
       loadURL: mocks.loadURL,
       webContents: {
         setZoomMode: vi.fn(),
         setZoomFactor: vi.fn(),
         setWindowOpenHandler: mocks.setWindowOpenHandler,
+        openDevTools: mocks.openDevTools,
         session: { webRequest: { onHeadersReceived: vi.fn() } },
       },
     };
+    mocks.windows.push(window);
+    return window;
   });
 });
 afterEach(() => {
@@ -85,6 +108,108 @@ afterEach(() => {
 });
 
 describe('Main-process startup failure boundaries (mocked Electron)', () => {
+  it.each([
+    { dev: false, rejects: true },
+    { dev: true, rejects: true },
+    { dev: false, rejects: false },
+    { dev: true, rejects: false },
+  ])('treats a destroyed loading window as cancellation and permits reopening: %j', async ({ dev, rejects }) => {
+    mocks.is.dev = dev;
+    mocks.isPackaged = false;
+    vi.stubEnv('ELECTRON_RENDERER_URL', 'http://localhost:5173');
+    let finishLoad;
+    (dev ? mocks.loadURL : mocks.loadFile).mockImplementationOnce(
+      () =>
+        new Promise((resolve, reject) => {
+          finishLoad = () =>
+            rejects ? reject(Object.assign(new Error('load interrupted'), { code: 'ERR_FAILED' })) : resolve();
+        }),
+    );
+    await import('../src/main/index.js');
+    await vi.waitFor(() => expect(finishLoad).toBeTypeOf('function'));
+    mocks.windows[0].isDestroyed.mockReturnValue(true);
+    finishLoad();
+    await settle();
+    expect(mocks.showErrorBox).not.toHaveBeenCalled();
+    expect(mocks.exit).not.toHaveBeenCalled();
+    expect(mocks.openDevTools).not.toHaveBeenCalled();
+    expect(getActivateHandler()).toBeTypeOf('function');
+    getActivateHandler()();
+    await settle();
+    expect(mocks.BrowserWindow).toHaveBeenCalledTimes(2);
+    expect(mocks.openDevTools).toHaveBeenCalledOnce();
+  });
+
+  it.each(['whenReady', 'initializeFileOperations', 'initializeWorkspaceSessionStore', 'initializeImageFileReader'])(
+    'does not report a late %s rejection after quit has started',
+    async boundary => {
+      let rejectInitialization;
+      mocks[boundary].mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            rejectInitialization = reject;
+          }),
+      );
+      await import('../src/main/index.js');
+      await vi.waitFor(() => expect(rejectInitialization).toBeTypeOf('function'));
+      beginQuit();
+      rejectInitialization(new Error('late startup error'));
+      await settle();
+      expect(mocks.showErrorBox).not.toHaveBeenCalled();
+      expect(mocks.exit).not.toHaveBeenCalled();
+      expect(mocks.BrowserWindow).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not continue initialization after quit starts during a successful initialization step', async () => {
+    let finishInitialization;
+    mocks.initializeFileOperations.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          finishInitialization = resolve;
+        }),
+    );
+    await import('../src/main/index.js');
+    await vi.waitFor(() => expect(finishInitialization).toBeTypeOf('function'));
+    beginQuit();
+    finishInitialization();
+    await settle();
+    expect(mocks.initializeWorkspaceSessionStore).not.toHaveBeenCalled();
+    expect(mocks.BrowserWindow).not.toHaveBeenCalled();
+    expect(mocks.showErrorBox).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])(
+    'ignores a late load settlement while quitting before window destruction (rejects: %s)',
+    async rejects => {
+      mocks.isPackaged = false;
+      let finishLoad;
+      mocks.loadFile.mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finishLoad = () => (rejects ? reject(new Error('load interrupted by quit')) : resolve());
+          }),
+      );
+      await import('../src/main/index.js');
+      await vi.waitFor(() => expect(finishLoad).toBeTypeOf('function'));
+      beginQuit();
+      finishLoad();
+      await settle();
+      expect(mocks.windows[0].isDestroyed()).toBe(false);
+      expect(mocks.showErrorBox).not.toHaveBeenCalled();
+      expect(mocks.exit).not.toHaveBeenCalled();
+      expect(mocks.openDevTools).not.toHaveBeenCalled();
+      expect(getActivateHandler()).toBeUndefined();
+    },
+  );
+
+  it('does not ignore an aborted load on a live window based on its error code alone', async () => {
+    mocks.loadFile.mockRejectedValueOnce(Object.assign(new Error('navigation replaced'), { code: 'ERR_ABORTED' }));
+    await import('../src/main/index.js');
+    await vi.waitFor(() => expect(mocks.exit).toHaveBeenCalledWith(1));
+    expect(mocks.showErrorBox).toHaveBeenCalledOnce();
+  });
+
   it('completes initialization and window loading without an error dialog', async () => {
     await import('../src/main/index.js');
     await vi.waitFor(() => expect(getActivateHandler()).toBeTypeOf('function'));

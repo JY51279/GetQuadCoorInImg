@@ -5,6 +5,7 @@ import { createWorkspaceSession, normalizeWorkspaceSession } from '../shared/Wor
 
 let workspaceSessionFile = '';
 let currentSession = null;
+let sessionReadFailure = null;
 let operationQueue = Promise.resolve();
 
 function cloneSession(session) {
@@ -12,11 +13,18 @@ function cloneSession(session) {
 }
 
 async function readWorkspaceSession() {
+  let sessionText;
   try {
-    const sessionText = await fs.promises.readFile(workspaceSessionFile, 'utf-8');
+    sessionText = await fs.promises.readFile(workspaceSessionFile, 'utf-8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+  try {
     return normalizeWorkspaceSession(JSON.parse(sessionText));
   } catch (error) {
-    if (error.code !== 'ENOENT') console.error('Failed to load workspace session:', error.message);
+    // Keep the existing compatibility policy for corrupt or unsupported records.
+    console.error('Ignoring invalid workspace session:', error);
     return null;
   }
 }
@@ -33,6 +41,7 @@ async function writeWorkspaceSession(session) {
     str: JSON.stringify(session, null, 2),
   });
   currentSession = session;
+  sessionReadFailure = null;
 }
 
 function requireInitializedStore() {
@@ -42,15 +51,27 @@ function requireInitializedStore() {
 export function initializeWorkspaceSessionStore(electronApp) {
   workspaceSessionFile = path.join(electronApp.getPath('userData'), 'workspace-session.json');
   currentSession = null;
-  operationQueue = readWorkspaceSession().then(session => {
-    currentSession = session;
-  });
+  sessionReadFailure = null;
+  // A checkpoint read failure must not abort application startup. Preserve it for
+  // the restore request instead of disguising it as a missing checkpoint.
+  operationQueue = readWorkspaceSession().then(
+    session => {
+      currentSession = session;
+    },
+    error => {
+      sessionReadFailure = { error };
+      console.error('Failed to load workspace session:', error);
+    },
+  );
   return operationQueue;
 }
 
 export function getWorkspaceSession() {
   requireInitializedStore();
-  return enqueueOperation(() => cloneSession(currentSession));
+  return enqueueOperation(() => {
+    if (sessionReadFailure) throw sessionReadFailure.error;
+    return cloneSession(currentSession);
+  });
 }
 
 export function recordWorkspaceDatasetTarget(datasetPath) {
