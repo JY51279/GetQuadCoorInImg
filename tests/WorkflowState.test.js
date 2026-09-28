@@ -23,6 +23,83 @@ import {
 import { TEST_DATASET_TARGET, createDatasetWorkflowState } from './fixtures/WorkflowFixtures.js';
 
 describe('Workflow state', () => {
+  // Contract table from phase 0: columns are dataset load, image load, save.
+  it.each([
+    [WORKFLOW_PHASE.EMPTY, [true, false, false]],
+    [WORKFLOW_PHASE.DATASET_ERROR, [true, false, false]],
+    [WORKFLOW_PHASE.DATASET_READY, [true, true, false]],
+    [WORKFLOW_PHASE.RECOVERY_REQUIRED, [true, false, false]],
+    [WORKFLOW_PHASE.READY, [true, true, true]],
+    [WORKFLOW_PHASE.LOADING_DATASET, [false, false, false]],
+    [WORKFLOW_PHASE.LOADING_IMAGE, [false, false, false]],
+    [WORKFLOW_PHASE.SAVING, [false, false, false]],
+  ])('enforces the operation start table in %s without mutating the input', (phase, permissions) => {
+    const operations = [
+      [WORKFLOW_OPERATION.LOAD_DATASET, startDatasetLoad, WORKFLOW_PHASE.LOADING_DATASET],
+      [WORKFLOW_OPERATION.LOAD_IMAGE, startImageLoad, WORKFLOW_PHASE.LOADING_IMAGE],
+      [WORKFLOW_OPERATION.SAVE, startSave, WORKFLOW_PHASE.SAVING],
+    ];
+    const activeStart = operations.find(([, , activePhase]) => activePhase === phase)?.[1];
+    const state = activeStart
+      ? activeStart(createDatasetWorkflowState()).state
+      : phase === WORKFLOW_PHASE.EMPTY
+        ? createWorkflowState()
+        : createDatasetWorkflowState(phase);
+    const before = structuredClone(state);
+
+    operations.forEach(([type, start, activePhase], index) => {
+      expect(canStartOperation(state, type)).toBe(permissions[index]);
+      const result = start(state);
+      expect(result.success).toBe(permissions[index]);
+      expect(state).toEqual(before);
+      if (permissions[index]) {
+        expect(result.state).toMatchObject({
+          phase: activePhase,
+          datasetTarget: state.datasetTarget,
+          datasetVersion: state.datasetVersion,
+          operation: { id: state.operationId + 1, type, returnPhase: phase },
+        });
+        expect(canEdit(result.state)).toBe(false);
+        expect(failOperation(result.state, result.operationId).state).toEqual({
+          ...state,
+          operationId: result.operationId,
+        });
+      } else {
+        expect(result.state).toBe(state);
+      }
+    });
+  });
+
+  it('binds one target per load, rejects rebinding and increments version even for the same path on reload', () => {
+    const started = startDatasetLoad(createDatasetWorkflowState());
+    const unbound = structuredClone(started.state);
+    expect(commitDataset(started.state, started.operationId).success).toBe(false);
+    expect(rejectDataset(started.state, started.operationId).success).toBe(false);
+    expect(selectDatasetTarget(started.state, started.operationId, { path: '' }).success).toBe(false);
+    expect(started.state).toEqual(unbound);
+
+    const selected = selectDatasetTarget(started.state, started.operationId, TEST_DATASET_TARGET);
+    expect(selected.state.datasetVersion).toBe(started.state.datasetVersion + 1);
+    expect(selectDatasetTarget(selected.state, started.operationId, TEST_DATASET_TARGET).state).toBe(selected.state);
+    const other = { path: 'C:/datasets/other.json', fileName: 'other.json' };
+    const rejected = selectDatasetTarget(selected.state, started.operationId, other);
+    expect(rejected.success).toBe(false);
+    expect(rejected.state).toBe(selected.state);
+
+    const committed = commitDataset(selected.state, started.operationId).state;
+    const reloading = startDatasetLoad(committed);
+    const reselected = selectDatasetTarget(reloading.state, reloading.operationId, TEST_DATASET_TARGET).state;
+    expect(reselected.datasetVersion).toBe(committed.datasetVersion + 1);
+    for (const end of [commitDataset, rejectDataset, failOperation]) {
+      expect(end(reselected, started.operationId)).toMatchObject({ success: false, state: reselected });
+    }
+    expect(commitDataset(reselected, reloading.operationId).state).toMatchObject({
+      phase: WORKFLOW_PHASE.DATASET_READY,
+      operation: null,
+      datasetVersion: reselected.datasetVersion,
+    });
+  });
+
   it('requires dataset reload after failed rollback and preserves recovery on canceled reload', () => {
     const saving = startSave(createDatasetWorkflowState());
     const recovery = completeOperation(saving.state, saving.operationId, WORKFLOW_PHASE.RECOVERY_REQUIRED);

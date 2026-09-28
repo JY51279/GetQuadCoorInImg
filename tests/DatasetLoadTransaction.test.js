@@ -61,6 +61,65 @@ function createContext(overrides = {}) {
 }
 
 describe('Dataset load transaction', () => {
+  it.each(['clearDataset', 'onDatasetTargetSelected', 'prepareLoad', 'commitPreparedDataset'])(
+    'closes a %s exception at the selected target and permits a subsequent reload',
+    async boundary => {
+      const context = createContext();
+      context[boundary].mockImplementationOnce(() => {
+        throw new Error('boundary unavailable');
+      });
+      const result = await context.transaction.run(requestId => createResponse(TARGET_B, { requestId }));
+      expect(result).toMatchObject({
+        success: false,
+        status: DATASET_LOAD_TRANSACTION_STATUS.FAILED,
+        target: TARGET_B,
+      });
+      expect(context.workflowState.value).toMatchObject({
+        phase: WORKFLOW_PHASE.DATASET_ERROR,
+        operation: null,
+        datasetTarget: TARGET_B,
+        datasetVersion: 2,
+      });
+      if (boundary !== 'commitPreparedDataset') expect(context.commitPreparedDataset).not.toHaveBeenCalled();
+
+      const retried = await context.transaction.run(requestId => createResponse(TARGET_B, { requestId }));
+      expect(retried.status).toBe(DATASET_LOAD_TRANSACTION_STATUS.READY);
+      expect(context.workflowState.value).toMatchObject({
+        phase: WORKFLOW_PHASE.DATASET_READY,
+        operation: null,
+        datasetVersion: 3,
+      });
+    },
+  );
+
+  it('closes a stale preparation response from the current operation instead of leaving it busy', async () => {
+    const context = createContext({ prepareLoad: vi.fn(async () => ({ status: DATASET_LOAD_STATUS.STALE })) });
+    const result = await context.transaction.run(async () => createResponse());
+    expect(result).toMatchObject({ status: DATASET_LOAD_TRANSACTION_STATUS.FAILED, error: '图集加载结果已失效。' });
+    expect(context.workflowState.value).toMatchObject({ phase: WORKFLOW_PHASE.DATASET_ERROR, operation: null });
+    expect(context.commitPreparedDataset).not.toHaveBeenCalled();
+  });
+
+  it('ignores a late request rejection without ending the newer operation', async () => {
+    const context = createContext();
+    let rejectRequest;
+    const pending = context.transaction.run(
+      () =>
+        new Promise((resolve, reject) => {
+          rejectRequest = reject;
+        }),
+    );
+    const firstId = context.workflowState.value.operation.id;
+    context.workflowState.value = failOperation(context.workflowState.value, firstId).state;
+    context.workflowState.value = startSave(context.workflowState.value, { sourceImageIndex: 0 }).state;
+    const newer = context.workflowState.value;
+    rejectRequest(new Error('late transport failure'));
+    expect(await pending).toMatchObject({ status: DATASET_LOAD_TRANSACTION_STATUS.STALE });
+    expect(context.workflowState.value).toBe(newer);
+    expect(context.clearDataset).not.toHaveBeenCalled();
+    expect(context.commitPreparedDataset).not.toHaveBeenCalled();
+  });
+
   it.each([null, {}, { status: 'unknown' }])(
     'closes malformed preparation results with a visible failure: %j',
     async response => {

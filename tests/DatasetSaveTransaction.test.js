@@ -192,7 +192,7 @@ describe('Dataset save transaction', () => {
     expect(context.workflowState.value.phase).toBe(WORKFLOW_PHASE.READY);
   });
 
-  it('falls back to dataset-ready when receipt rollback is impossible', async () => {
+  it('requires dataset recovery when receipt rollback is impossible', async () => {
     const context = createTransaction({
       saveJsonFile: vi.fn(async () => ({ success: false })),
       rollbackMutation: vi.fn(() => ({ success: false })),

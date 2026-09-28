@@ -32,6 +32,8 @@ QuadTool 是一个仅在本地使用的标准集四边形坐标标注工具，�
 - 转换缓存位于应用数据目录，启动时自动清理，运行期间最多保留 512 MB。
 - 使用临时文件和替换操作保存 JSON，减少写入中断导致原文件损坏的风险。
 - 保存失败时使用当前标注操作的可逆变更记录回滚；没有产生实际数据变化的更新不会重复写入文件。
+- 回滚失败或无法确认数据一致性时，停止编辑并要求重新加载图集；不能仅切换图片后继续编辑。
+- 启动时尝试恢复最近选择的图集目标及匹配的图片检查点；所选目标加载失败也会保留该目标。恢复记录读取失败会提示，但不阻止手动打开图集。
 
 所有文件都在本机读取和保存，工具不依赖网络服务。
 
@@ -87,7 +89,9 @@ QuadTool 是一个仅在本地使用的标准集四边形坐标标注工具，�
 
 ## 安装和开发
 
-推荐使用 Node.js 22。首次安装或依赖发生变化时执行：
+开发工具链限定为 Node.js `>=22.17.1 <23`、npm `>=10.9.2 <11`。已验证基线是 Windows x64 / Node.js `22.17.1` / npm `10.9.2`，`.nvmrc` 记录该 Node 基线；这不是“最新版本”声明。使用其他平台或升级工具链后，需要重新执行干净安装和完整检查。
+
+`package.json` 中的 `engines` 声明版本范围，npm 10.9.2 的 `devEngines` 会在安装和运行脚本前检查开发工具链。首次安装或依赖发生变化时执行：
 
 ```powershell
 npm ci
@@ -104,10 +108,11 @@ npm run dev
 ## 检查和测试
 
 ```powershell
-npm test               # 运行 Vitest 单元测试
+npm test               # 运行单元、组合契约及 Vue 组件测试，不采集覆盖率
+npm run test:coverage  # 全量测试、关键模块逐文件覆盖率门槛、生成报告
 npm run lint:check     # 检查 ESLint 错误，不修改文件
 npm run format:check   # 检查受管理文件的格式，不修改文件
-npm run check          # 依次运行格式检查、测试、静态检查和生产构建
+npm run check          # 格式检查、测试及覆盖率门槛、静态检查、生产构建
 ```
 
 自动修复命令：
@@ -117,9 +122,13 @@ npm run lint
 npm run format
 ```
 
-`format` 只处理项目源码、配置和文档；构建产物、依赖、测试数据以及图片资源已被排除。
+`format` 只处理项目源码、配置和文档；构建产物、依赖、覆盖率报告、测试数据以及图片资源已被排除。
 
-测试按职责分为数据模式、数据集状态、数据变更、历史、图片几何、渲染、服务、IPC 和少量 Vue 组件交互。相邻层级不会仅为了减少文件数量而合并；这可以让失败位置直接对应代码职责。桌面原生对话框和真实文件系统连接采用[人工冒烟检查](docs/manual-smoke-test.md)验证，当前个人离线使用场景不引入完整 Electron E2E 框架。
+覆盖率统计全部 `src/**/*.js` 和 `src/**/*.vue`，包括未导入源码，不隐藏启动入口和薄覆盖的界面模块。`coverage/index.html` 可查看逐行详情，`coverage/coverage-summary.json` 和 `coverage/coverage-final.json` 供机器读取；报告可重新生成，不提交 Git。关键门槛以 `vitest.config.mjs` 为准，按模块逐文件检查，不用平均值掩盖回退。当前基线、门槛策略和未覆盖范围见[阶段 5 质量保障记录](docs/phase-5-quality-assurance.md)。
+
+局部调试使用 `npm test -- tests/WorkflowState.test.js`；覆盖率命令要求全量运行，过滤测试可能因其他关键模块未被执行而触发门槛失败。新增功能和缺陷修复应同时补充最终数据、历史、工作流终态和副作用断言，不能只检查函数调用次数。
+
+测试按职责覆盖数据模式、数据集状态与变更、历史、图片几何、手势、服务、IPC、Vue 组件和跨层异常序列。部分文件测试使用真实临时文件；Electron 原生对话框、IPC 传输和 Canvas 绘制仍有模拟边界，不等于完整桌面验证。[既有人工冒烟清单](docs/manual-smoke-test.md)保留，但本轮按要求不新增、不执行；当前个人离线场景不引入完整 Electron E2E 框架。
 
 ## 构建和打包
 
@@ -140,35 +149,38 @@ src/
 │  ├─ index.js                 Electron 主进程入口
 │  ├─ IpcHandlers.js           文件选择、图片读取和保存相关 IPC
 │  ├─ FileOperations.js        路径、JSON 读取和原子保存
-│  └─ ImageFileReader.js       图片限幅、转换缓存和安全资源协议
+│  ├─ ImageFileReader.js       图片限幅、转换缓存和安全资源协议
+│  └─ WorkspaceSessionStore.js 串行持久化最近目标与图片检查点
 ├─ preload/
 │  └─ index.js                 向渲染端暴露 Electron API
+├─ shared/                     IPC 通道、服务结果、文件响应及会话契约
 └─ renderer/src/
    ├─ composables/
-   │  ├─ useCanvasPanGesture.js 画布点击/平移手势及指针捕获
-   │  ├─ useDatasetSaveTransaction.js JSON 保存事务与失败回滚
-   │  ├─ useImageViewport.js    图片缩放、平移、可见区域和坐标换算
-   │  ├─ useJsonHistory.js      JSON 历史状态与历史页展示模型
-   │  ├─ usePointSelectionHistory.js 选点状态及撤回/重做
-   │  ├─ useQuadOverlay.js      Quad 显示、命中判断和可见索引管理
-   │  ├─ useQuadTranslationGesture.js Quad 整体平移手势状态与取消/提交
-   │  └─ useToastNotifications.js 临时通知队列与定时清理
-   ├─ services/
-   │  ├─ DatasetLoadService.js JSON 解析、修复、路径解析与规范化保存
-   │  ├─ ImageRequestService.js 图片请求跟踪、验证、重试与失败决策
-   │  └─ JsonFileService.js     JSON 保存 IPC 与结果归一化
+   │  ├─ useWorkspaceDataset.js 图集加载、启动恢复与目标选择编排
+   │  ├─ useWorkspaceImages.js  图片会话、请求重试与失败恢复
+   │  ├─ useWorkspaceEditing.js 编辑命令、保存及成功历史编排
+   │  ├─ useDatasetLoadTransaction.js 目标绑定、数据准备与提交
+   │  ├─ useDatasetSaveTransaction.js 保存互斥、失败回滚与恢复态
+   │  ├─ use*Gesture.js        画布、顶点和整框/边手势的捕获与取消
+   │  └─ 其他 composable       视口、覆盖层、历史、选点和通知
+   ├─ services/               图集准备、图片请求、JSON 保存及会话协议边界
    ├─ components/
-   │  ├─ WindowProcess.vue     页面与数据/图片加载流程编排
-   │  ├─ ImageView.vue         图片画布、缩放、标点和四边形显示
-   │  ├─ JsonView.vue          当前图片 JSON 内容显示
-   │  ├─ HistoryView.vue       按图片分组的 JSON 操作历史
-   │  └─ Help.vue              快捷键帮助面板
+   │  ├─ WindowProcess.vue     页面装配、局部视图状态、权限及事件绑定
+   │  ├─ ImageView.vue         图片会话呈现、Canvas 绘制和交互绑定
+   │  ├─ WorkspaceToolbar.vue 工具栏展示与操作事件
+   │  ├─ DatasetInfoPanel.vue  图集/图片信息展示与操作事件
+   │  └─ JsonView / HistoryView / Help.vue  内容、历史与帮助展示
    ├─ state/
-   │  ├─ DatasetState.js       数据集运行状态和标注增删改
-   │  ├─ JsonHistoryStore.js   JSON 历史分组、时间戳和容量限制
-   │  └─ UndoRedoHistory.js    通用的有界撤销/重做双栈
-   └─ utils/                   数据校验、坐标换算和绘制辅助模块
-tests/                         核心逻辑回归测试
+   │  ├─ DatasetState.js       已提交数据、受控命令、历史应用与回滚记录
+   │  ├─ WorkflowState.js      纯工作流转换、操作身份与权限守卫
+   │  ├─ ImageSession.js       不可变图片元数据和图集版本归属
+   │  ├─ PointerGestureState.js 纯指针手势转换
+   │  └─ 其他 state            历史容量/双栈、Quad 选择和独立交互模式
+   └─ utils/                   纯数据准备、几何/坐标换算、图片解码与绘制调度
+tests/                         单元、组件与跨层契约回归
+docs/                          行为契约、分阶段实施及质量保障记录
 ```
 
 这个项目面向个人本地使用，当前结构以直接、容易定位为原则，不额外引入路由、全局状态框架或服务端组件。
+
+维护导航：[整体改进方案](docs/code-quality-improvement-plan.md) → [行为契约](docs/phase-0-contracts-and-state-design.md) → [图片与手势状态设计](docs/phase-2-image-session-and-gestures.md) → [阶段 5 检查与覆盖率基线](docs/phase-5-quality-assurance.md)。
