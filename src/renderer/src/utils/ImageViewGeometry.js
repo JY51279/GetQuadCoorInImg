@@ -202,12 +202,12 @@ export function clientToLocalPoint(clientPoint, bounds, border = { left: 0, top:
   };
 }
 
-function getFocusScale(visualPixelSize, gridLimit, minimumScale, maximumScale) {
+function getFocusScale(visualPixelSize, gridLimit, minimumScale, maximumScale, roundUp = false) {
   let scale = visualPixelSize;
   if (visualPixelSize >= gridLimit + 1) {
     scale = visualPixelSize - 1;
   } else if (visualPixelSize >= gridLimit) {
-    scale = gridLimit - 0.1;
+    scale = roundUp ? gridLimit : gridLimit - 0.1;
   }
   return normalizeScale(scale, minimumScale, maximumScale, 1);
 }
@@ -242,12 +242,13 @@ export function calculateFitScale(
 
 export function calculateQuadFocusTransform(
   quadPoints,
-  { viewportWidth, viewportHeight },
+  { viewportWidth, viewportHeight, imageWidth, imageHeight },
   {
     viewportRatio = 0.75,
     paddingRatio = 0.25,
     minimumPadding = 8,
     maximumPadding = 32,
+    viewportPadding = 16,
     minimumScale = 0.1,
     maximumScale = 60,
     gridLimit = 10,
@@ -260,7 +261,11 @@ export function calculateQuadFocusTransform(
     !Number.isFinite(viewportWidth) ||
     viewportWidth <= 0 ||
     !Number.isFinite(viewportHeight) ||
-    viewportHeight <= 0
+    viewportHeight <= 0 ||
+    !Number.isSafeInteger(imageWidth) ||
+    imageWidth <= 0 ||
+    !Number.isSafeInteger(imageHeight) ||
+    imageHeight <= 0
   ) {
     return null;
   }
@@ -287,7 +292,26 @@ export function calculateQuadFocusTransform(
     (viewportWidth * viewportRatio) / focusWidth,
     (viewportHeight * viewportRatio) / focusHeight,
   );
-  const scale = getFocusScale(visualPixelSize, gridLimit, minimumScale, maximumScale);
+  const preferredScale = getFocusScale(visualPixelSize, gridLimit, minimumScale, maximumScale);
+  // The image-size floor rounds up across the grid gap (10 <= pitch < 11),
+  // while both Quad fits round down so their rendered pixels remain visible.
+  const imageFitScale = getFocusScale(
+    Math.min(viewportWidth / imageWidth, viewportHeight / imageHeight),
+    gridLimit,
+    minimumScale,
+    maximumScale,
+    true,
+  );
+  const screenPadding = Math.min(viewportPadding, viewportWidth / 4, viewportHeight / 4);
+  const quadMaxScale = getFocusScale(
+    Math.min((viewportWidth - screenPadding * 2) / quadWidth, (viewportHeight - screenPadding * 2) / quadHeight),
+    gridLimit,
+    0,
+    maximumScale,
+  );
+  // Full visibility takes precedence even when an imported Quad needs < 0.1x.
+  const scale = Math.min(quadMaxScale, Math.max(preferredScale, imageFitScale));
+  if (!Number.isFinite(scale) || scale <= 0) return null;
   const centerX = (left + rightEdge) / 2;
   const centerY = (top + bottomEdge) / 2;
 

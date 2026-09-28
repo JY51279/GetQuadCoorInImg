@@ -145,9 +145,9 @@
         :value="scaleDisplayValue"
         class="scale-number"
         type="number"
-        min="0.1"
+        :min="minimumScale"
         :max="scaleRange"
-        step="0.1"
+        :step="minimumScale"
         :disabled="!canInteract"
         aria-label="图片缩放比例"
         @change="applyScaleInput"
@@ -259,6 +259,7 @@ const ctx = ref(null);
 const ctxQuad = ref(null);
 const {
   scale,
+  minimumScale,
   viewportWidth,
   viewportHeight,
   imageWidth: initImgWidth,
@@ -284,16 +285,19 @@ const {
   resetPosition: resetViewportPosition,
   clear: clearViewport,
 } = useImageViewport({ gridLimit, scaleRange, snapDistance: autoAdaptBorderDis });
-const scaleSliderPosition = computed(() => scaleToSliderPosition(scale.value));
-const scaleDisplayValue = computed(() => Number(scale.value.toFixed(scale.value < 10 ? 2 : 1)));
+const scaleOptions = computed(() => ({ minimumScale: minimumScale.value, maximumScale: scaleRange, gridLimit }));
+const scaleSliderPosition = computed(() => scaleToSliderPosition(scale.value, scaleOptions.value));
+const scaleDisplayValue = computed(() =>
+  Number(scale.value < 0.1 ? scale.value.toPrecision(2) : scale.value.toFixed(scale.value < 10 ? 2 : 1)),
+);
 const canvasPixelRatio = computed(() => normalizeDevicePixelRatio(props.displayPixelRatio));
 const canvasBackingWidth = computed(() => getCanvasBackingLength(viewportWidth.value, canvasPixelRatio.value));
 const canvasBackingHeight = computed(() => getCanvasBackingLength(viewportHeight.value, canvasPixelRatio.value));
-const scaleTicks = Object.freeze(
-  [0.1, 1, 10, 60].map(value => ({
+const scaleTicks = computed(() =>
+  [minimumScale.value, 1, 10, 60].map(value => ({
     value,
     label: `${value}×`,
-    position: scaleToSliderPosition(value),
+    position: scaleToSliderPosition(value, scaleOptions.value),
   })),
 );
 const presentedSession = shallowRef(null);
@@ -711,11 +715,11 @@ function applyScaleInput(event) {
 
 function applyScaleSliderInput(event) {
   const sliderPosition = Number(event.target.value);
-  let nextScale = sliderPositionToScale(sliderPosition);
-  const gridPosition = scaleToSliderPosition(gridLimit);
+  let nextScale = sliderPositionToScale(sliderPosition, scaleOptions.value);
+  const gridPosition = scaleToSliderPosition(gridLimit, scaleOptions.value);
   if (Math.abs(sliderPosition - gridPosition) <= 0.75) nextScale = gridLimit;
   applyUserScale(nextScale);
-  event.target.value = scaleToSliderPosition(nextScale);
+  event.target.value = scaleToSliderPosition(nextScale, scaleOptions.value);
 }
 
 // Component lifecycle
@@ -830,6 +834,8 @@ function focusQuad(quadIndex) {
   const transform = calculateQuadFocusTransform(getQuad(quadIndex), {
     viewportWidth: viewportWidth.value,
     viewportHeight: viewportHeight.value,
+    imageWidth: initImgWidth.value,
+    imageHeight: initImgHeight.value,
   });
   if (transform === null) return { success: false, error: '当前 Quad 的坐标无效。' };
 
@@ -919,7 +925,7 @@ const onWheel = event => {
     return;
   }
   if (syncMouseCoord(event.clientX, event.clientY) === null) return;
-  applyUserScale(calculateWheelScale(scale.value, event.deltaY, { gridLimit }), { anchorAtPointer: true });
+  applyUserScale(calculateWheelScale(scale.value, event.deltaY, scaleOptions.value), { anchorAtPointer: true });
 };
 
 // Zoom preview and point positions

@@ -93,6 +93,26 @@ describe('Image viewport state', () => {
     expect(viewport.canvasToImage(canvasPoint)).toEqual(imagePoint);
   });
 
+  it('preserves pointer-anchored zoom below 0.1 after focus and resets the range for a new image', () => {
+    const viewport = useImageViewport();
+    viewport.setViewportSize(800, 600);
+    viewport.setImageSize(4000, 4000);
+    viewport.applyTransform({ scale: 0.04, offsetX: 300, offsetY: 200 });
+    const pointer = { x: 350, y: 250 };
+    const imagePoint = viewport.canvasToImage(pointer);
+
+    expect(viewport.minimumScale.value).toBe(0.01);
+    expect(viewport.updateScale(0.05, { anchorPoint: pointer }).changed).toBe(true);
+    expect(viewport.scale.value).toBe(0.05);
+    expect(viewport.canvasToImage(pointer)).toEqual(imagePoint);
+    viewport.updateScale(0.04, { anchorPoint: pointer });
+    expect(viewport.offsetX.value).toBeCloseTo(300);
+    expect(viewport.offsetY.value).toBeCloseTo(200);
+
+    viewport.clear();
+    expect(viewport.minimumScale.value).toBe(0.1);
+  });
+
   it('clears image-specific state without discarding the viewport size', () => {
     const viewport = useImageViewport();
     viewport.setViewportSize(800, 600);

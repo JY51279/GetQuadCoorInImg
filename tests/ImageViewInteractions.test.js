@@ -206,6 +206,79 @@ describe('ImageView interactions', () => {
     wrapper.unmount();
   });
 
+  it('focuses a mapped Quad using display-image dimensions and keeps its handles visible', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray(
+      [
+        [
+          { x: 200, y: 100 },
+          { x: 1190, y: 100 },
+          { x: 1190, y: 495 },
+          { x: 200, y: 495 },
+        ],
+      ],
+      { x: 0.1, y: 0.2 },
+    );
+
+    expect(wrapper.vm.focusQuad(0)).toEqual({ success: true });
+    await nextTick();
+    expect(Number(wrapper.find('.scale-number').element.value)).toBeCloseTo(1.68);
+    const handles = wrapper.findAll('.quad-point-handle');
+    expect(handles).toHaveLength(4);
+    for (const handle of handles) {
+      expect(parseFloat(handle.element.style.left)).toBeGreaterThan(16);
+      expect(parseFloat(handle.element.style.left)).toBeLessThan(184);
+      expect(parseFloat(handle.element.style.top)).toBeGreaterThan(16);
+      expect(parseFloat(handle.element.style.top)).toBeLessThan(184);
+    }
+    const center = wrapper.find('.quad-translate-handle');
+    expect(parseFloat(center.element.style.left)).toBeCloseTo(100);
+    expect(parseFloat(center.element.style.top)).toBeCloseTo(100);
+    expect(wrapper.emitted('commit-quad-point-drag')).toBeUndefined();
+    expect(wrapper.emitted('commit-quad-translation')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('keeps zoom controls and wheel usable after focusing a huge Quad below 0.1', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray(
+      [
+        [
+          { x: -10000, y: -10000 },
+          { x: 19999, y: -10000 },
+          { x: 19999, y: 19999 },
+          { x: -10000, y: 19999 },
+        ],
+      ],
+      1,
+    );
+    expect(wrapper.vm.focusQuad(0).success).toBe(true);
+    await nextTick();
+    const input = wrapper.find('.scale-number');
+    expect(Number(input.element.value)).toBeCloseTo(0.0056);
+    expect(Number(input.attributes('min'))).toBe(0.001);
+
+    await input.setValue('0.006');
+    expect(Number(input.element.value)).toBe(0.006);
+    wrapper
+      .find('.image-container')
+      .element.dispatchEvent(new WheelEvent('wheel', { clientX: 150, clientY: 150, deltaY: -100, bubbles: true }));
+    await nextTick();
+    expect(Number(input.element.value)).toBeGreaterThan(0.006);
+    expect(Number(input.element.value)).toBeLessThan(0.01);
+    await wrapper.find('.scale-range').setValue('0');
+    expect(Number(input.element.value)).toBe(0.001);
+
+    wrapper.vm.presentImageSession({
+      image: { src: 'next-image', naturalWidth: 100, naturalHeight: 100 },
+      displaySize: { width: 100, height: 100 },
+    });
+    await nextTick();
+    expect(Number(input.attributes('min'))).toBe(0.1);
+    expect(Number(input.element.value)).toBe(2);
+    wrapper.unmount();
+  });
+
   beforeEach(() => {
     const contexts = new WeakMap();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function getContext() {

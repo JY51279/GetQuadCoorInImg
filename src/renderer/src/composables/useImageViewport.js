@@ -13,6 +13,7 @@ import {
 
 export function useImageViewport({ gridLimit = 10, scaleRange = 60, snapDistance = 10 } = {}) {
   const scale = ref(1);
+  const minimumScale = ref(0.1);
   const offsetX = ref(0);
   const offsetY = ref(0);
   const viewportWidth = ref(0);
@@ -47,6 +48,7 @@ export function useImageViewport({ gridLimit = 10, scaleRange = 60, snapDistance
 
   function clear() {
     scale.value = 0;
+    minimumScale.value = 0.1;
     imageWidth.value = 0;
     imageHeight.value = 0;
     resetPosition();
@@ -175,8 +177,8 @@ export function useImageViewport({ gridLimit = 10, scaleRange = 60, snapDistance
   }
 
   function updateScale(newScale, { anchorPoint = null, hasImage = true } = {}) {
-    const previousScale = normalizeScale(scale.value, 0.1, scaleRange, 1);
-    const validScale = normalizeScale(newScale, 0.1, scaleRange, previousScale);
+    const previousScale = normalizeScale(scale.value, minimumScale.value, scaleRange, 1);
+    const validScale = normalizeScale(newScale, minimumScale.value, scaleRange, previousScale);
     if (Object.is(previousScale, validScale)) {
       return { changed: false, becameInvisible: false };
     }
@@ -210,6 +212,10 @@ export function useImageViewport({ gridLimit = 10, scaleRange = 60, snapDistance
   }
 
   function applyTransform(transform) {
+    // Keep manual zoom usable after focusing an oversized imported Quad.
+    if (transform.scale > 0 && transform.scale < minimumScale.value) {
+      minimumScale.value = 10 ** Math.floor(Math.log10(transform.scale));
+    }
     scale.value = transform.scale;
     offsetX.value = transform.offsetX;
     offsetY.value = transform.offsetY;
@@ -255,6 +261,7 @@ export function useImageViewport({ gridLimit = 10, scaleRange = 60, snapDistance
 
   return {
     scale,
+    minimumScale,
     offsetX,
     offsetY,
     viewportWidth,

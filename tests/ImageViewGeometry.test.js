@@ -44,6 +44,27 @@ function getFocusedOuterQuadBounds(quad, focusTransform, gridLimit = 10) {
   };
 }
 
+function createRectQuad(left, top, right, bottom) {
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ];
+}
+
+function expectVisibleFocusedQuad(quad, transform, viewportWidth, viewportHeight, padding = 16) {
+  const bounds = getFocusedOuterQuadBounds(quad, transform);
+  const tolerance = 1e-8;
+  expect(bounds.left).toBeGreaterThanOrEqual(padding - tolerance);
+  expect(bounds.top).toBeGreaterThanOrEqual(padding - tolerance);
+  expect(bounds.right).toBeLessThanOrEqual(viewportWidth - padding + tolerance);
+  expect(bounds.bottom).toBeLessThanOrEqual(viewportHeight - padding + tolerance);
+  // The final grid gutter is outside the rendered Quad outline.
+  expect(Math.abs((bounds.left + bounds.right) / 2 - viewportWidth / 2)).toBeLessThanOrEqual(0.5 + tolerance);
+  expect(Math.abs((bounds.top + bounds.bottom) / 2 - viewportHeight / 2)).toBeLessThanOrEqual(0.5 + tolerance);
+}
+
 describe('Image view geometry', () => {
   it('converts window client coordinates into viewport-local coordinates', () => {
     expect(clientToLocalPoint({ x: 425, y: 218 }, { left: 100, top: 40 }, { left: 1, top: 2 })).toEqual({
@@ -229,7 +250,12 @@ describe('Image view geometry', () => {
       { x: 100, y: 50 },
       { x: 0, y: 50 },
     ];
-    const result = calculateQuadFocusTransform(quad, { viewportWidth: 1000, viewportHeight: 800 });
+    const result = calculateQuadFocusTransform(quad, {
+      viewportWidth: 1000,
+      viewportHeight: 800,
+      imageWidth: 2000,
+      imageHeight: 1000,
+    });
     const outerBounds = getFocusedOuterQuadBounds(quad, result);
 
     expect(result.focusBounds).toEqual({ left: -26, right: 127, top: -26, bottom: 77 });
@@ -245,7 +271,12 @@ describe('Image view geometry', () => {
       { x: 1010, y: 610 },
       { x: 1000, y: 610 },
     ];
-    const result = calculateQuadFocusTransform(quad, { viewportWidth: 1000, viewportHeight: 800 });
+    const result = calculateQuadFocusTransform(quad, {
+      viewportWidth: 1000,
+      viewportHeight: 800,
+      imageWidth: 2000,
+      imageHeight: 1000,
+    });
     const outerBounds = getFocusedOuterQuadBounds(quad, result);
     const focusPixelCount = result.focusBounds.bottom - result.focusBounds.top;
     const visualFocusHeight = focusPixelCount * (result.scale + 1) - 1;
@@ -254,6 +285,99 @@ describe('Image view geometry', () => {
     expect(Math.abs(visualFocusHeight - 800 * 0.75)).toBeLessThanOrEqual(1);
     expect(Math.abs((outerBounds.left + outerBounds.right) / 2 - 500)).toBeLessThanOrEqual(1);
     expect(Math.abs((outerBounds.top + outerBounds.bottom) / 2 - 400)).toBeLessThanOrEqual(1);
+  });
+
+  it('raises a large off-center Quad to the image fit scale without losing the Quad', () => {
+    const quad = createRectQuad(90, 10, 989, 489);
+    const result = calculateQuadFocusTransform(quad, {
+      viewportWidth: 1000,
+      viewportHeight: 800,
+      imageWidth: 1000,
+      imageHeight: 500,
+    });
+
+    expect(result.scale).toBe(1);
+    expect(getRenderedImageSize(1000, result.scale)).toBe(1000);
+    expectVisibleFocusedQuad(quad, result, 1000, 800);
+    expect(result.offsetX).not.toBe(0); // Quad-centered, not image-centered.
+  });
+
+  it.each([
+    ['full-image', createRectQuad(0, 0, 999, 799)],
+    ['beyond the left edge', createRectQuad(-200, 10, 799, 700)],
+    ['very wide', createRectQuad(-600, 100, 1599, 299)],
+    ['very tall', createRectQuad(100, -600, 299, 1599)],
+    ['beyond all image edges', createRectQuad(-100, -100, 1099, 899)],
+    ['larger than the usual minimum scale permits', createRectQuad(-10000, -10000, 19999, 19999)],
+  ])('keeps a %s Quad fully visible even when the image fit scale would crop it', (_, quad) => {
+    const result = calculateQuadFocusTransform(quad, {
+      viewportWidth: 1000,
+      viewportHeight: 800,
+      imageWidth: 1000,
+      imageHeight: 800,
+    });
+
+    expect(result.scale).toBeGreaterThan(0);
+    expect(result.scale).toBeLessThan(1);
+    expectVisibleFocusedQuad(quad, result, 1000, 800);
+    const bounds = getFocusedOuterQuadBounds(quad, result);
+    expect(Math.min(bounds.left, bounds.top)).toBeCloseTo(16);
+  });
+
+  it.each([
+    [9.9, 9.9],
+    [10, 9.9],
+    [10.5, 9.9],
+    [11, 10],
+    [11.5, 10.5],
+  ])('fits the whole Quad when the available pixel pitch is %s', (availablePitch, expectedScale) => {
+    const quad = createRectQuad(-10, -10, 39, 39);
+    const viewportSize = 50 * availablePitch + 32;
+    const result = calculateQuadFocusTransform(quad, {
+      viewportWidth: viewportSize,
+      viewportHeight: viewportSize,
+      imageWidth: 20,
+      imageHeight: 20,
+    });
+
+    expect(result.scale).toBeCloseTo(expectedScale);
+    expectVisibleFocusedQuad(quad, result, viewportSize, viewportSize);
+  });
+
+  it('rounds the image-size floor up across the grid gap when the Quad still fits', () => {
+    const quad = createRectQuad(10, 10, 39, 39);
+    const result = calculateQuadFocusTransform(quad, {
+      viewportWidth: 525,
+      viewportHeight: 525,
+      imageWidth: 50,
+      imageHeight: 50,
+    });
+
+    expect(result.scale).toBe(10);
+    expect(getRenderedImageSize(50, result.scale)).toBeGreaterThanOrEqual(525);
+    expectVisibleFocusedQuad(quad, result, 525, 525);
+  });
+
+  it('reduces screen padding in a tiny viewport and keeps the upper zoom limit', () => {
+    const quad = createRectQuad(-50, -50, 49, 49);
+    const result = calculateQuadFocusTransform(quad, {
+      viewportWidth: 20,
+      viewportHeight: 12,
+      imageWidth: 100,
+      imageHeight: 100,
+    });
+    expect(result.scale).toBeCloseTo(0.06);
+    expectVisibleFocusedQuad(quad, result, 20, 12, 3);
+
+    const tinyQuad = createRectQuad(0, 0, 1, 1);
+    const cappedResult = calculateQuadFocusTransform(tinyQuad, {
+      viewportWidth: 10000,
+      viewportHeight: 10000,
+      imageWidth: 2,
+      imageHeight: 2,
+    });
+    expect(cappedResult.scale).toBe(60);
+    expectVisibleFocusedQuad(tinyQuad, cappedResult, 10000, 10000);
   });
 
   it('centers one rendered pixel at the standard local editing scale', () => {
@@ -275,7 +399,8 @@ describe('Image view geometry', () => {
   });
 
   it('rejects invalid Quad focus input', () => {
-    expect(calculateQuadFocusTransform([], { viewportWidth: 1000, viewportHeight: 800 })).toBeNull();
+    const dimensions = { viewportWidth: 1000, viewportHeight: 800, imageWidth: 1000, imageHeight: 800 };
+    expect(calculateQuadFocusTransform([], dimensions)).toBeNull();
     expect(
       calculateQuadFocusTransform(
         [
@@ -284,8 +409,14 @@ describe('Image view geometry', () => {
           { x: 1, y: Number.NaN },
           { x: 0, y: 1 },
         ],
-        { viewportWidth: 1000, viewportHeight: 800 },
+        dimensions,
       ),
+    ).toBeNull();
+    for (const key of Object.keys(dimensions)) {
+      expect(calculateQuadFocusTransform(createRectQuad(0, 0, 10, 10), { ...dimensions, [key]: 0 })).toBeNull();
+    }
+    expect(
+      calculateQuadFocusTransform(createRectQuad(-Number.MAX_VALUE, 0, Number.MAX_VALUE, 10), dimensions),
     ).toBeNull();
     expect(
       calculatePixelFocusTransform({ x: Number.NaN, y: 0 }, { viewportWidth: 1000, viewportHeight: 800 }),
