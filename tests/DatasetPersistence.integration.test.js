@@ -19,9 +19,9 @@ import { KEYS } from '../src/renderer/src/utils/BasicFuncs.js';
 import { createPicture } from './fixtures/DatasetFixtures.js';
 import { createDatasetWorkflowState } from './fixtures/WorkflowFixtures.js';
 
-function loadDataset() {
+function loadDataset(location) {
   const prepared = prepareJsonProcess({
-    str: JSON.stringify({ Picture: [createPicture('DBR', 'C:/images/one.png')] }),
+    str: JSON.stringify({ Picture: [createPicture('DBR', 'C:/images/one.png', location)] }),
     path: 'C:/datasets/sample.json',
   });
   if (!prepared.success || !commitPreparedJsonProcess(prepared)) {
@@ -35,7 +35,7 @@ function loadCopyDataset() {
   const prepared = prepareJsonProcess({
     str: JSON.stringify({
       Picture: [
-        createPicture('DBR', 'C:/images/one.png', '5 5 15 5 15 15 5 15'),
+        createPicture('DBR', 'C:/images/one.png', '-5 -5 115 -5 115 115 -5 115'),
         { ...createPicture('DBR', 'C:/images/two.png', '20 20 30 20 30 30 20 30'), 'No.': '2' },
       ],
     }),
@@ -59,11 +59,11 @@ function createTransaction(saveJsonFile) {
 }
 
 describe('Dataset persistence integration', () => {
-  beforeEach(loadDataset);
+  beforeEach(() => loadDataset());
 
   it('restores all target images when a batch save throws', async () => {
     const pictures = [
-      createPicture('DBR', 'C:/images/one.png'),
+      createPicture('DBR', 'C:/images/one.png', '-5 -5 115 -5 115 115 -5 115'),
       { ...createPicture('DBR', 'C:/images/two.png', '20 20 30 20 30 30 20 30'), 'No.': '2' },
       { ...createPicture('DBR', 'C:/images/three.png', '40 40 50 40 50 50 40 50'), 'No.': '3' },
     ];
@@ -81,7 +81,6 @@ describe('Dataset persistence integration', () => {
       applyQuadLocationToImagesWithHistory({
         source: { imageIndex: 0, quadIndex: 0 },
         targetImageIndexes: [1, 2],
-        sourceImageSize: { width: 100, height: 100 },
       }),
     );
     expect(result).toMatchObject({
@@ -93,12 +92,13 @@ describe('Dataset persistence integration', () => {
   });
 
   it('rolls back the real dataset mutation when persistence fails', async () => {
+    loadDataset('-10 -10 110 -10 110 110 -10 110');
     const before = getJsonFileInfo().str;
     const saveJsonFile = vi.fn(async () => ({ success: false }));
     const { transaction, workflowState } = createTransaction(saveJsonFile);
 
     const result = await transaction.run(() =>
-      updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 9, y: 1 }], { width: 1000, height: 1000 }),
+      updateJsonWithHistory(KEYS.JSON_MODIFY, 1, 0, [{ x: 5, y: 5 }], { width: 100, height: 100 }),
     );
 
     expect(result).toMatchObject({
@@ -148,7 +148,7 @@ describe('Dataset persistence integration', () => {
     const saveJsonFile = vi.fn(async () => ({ success: false }));
     const { transaction } = createTransaction(saveJsonFile);
 
-    const result = await transaction.run(() => copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 }));
+    const result = await transaction.run(() => copyPreviousQuadLocationWithHistory(0));
 
     expect(result).toMatchObject({
       status: SAVE_TRANSACTION_STATUS.SAVE_FAILED,

@@ -404,8 +404,7 @@ const {
     !quadPointDrag.active &&
     !canvasPointerGesture.active,
   getQuad,
-  getImageSize: () => ({ width: initImgWidth.value, height: initImgHeight.value }),
-  getPointerImagePoint: getDraggedImagePoint,
+  getPointerImagePoint: getUnclampedImagePoint,
   previewQuad: (quadIndex, points) => {
     if (!setQuadPoints(quadIndex, points)) return false;
     drawCanvasForShowQuads();
@@ -516,13 +515,19 @@ function getDotInfo(e) {
   return { canvasCoord, realCoord, existingDotIndex };
 }
 
-function getDraggedImagePoint(event) {
+function getUnclampedImagePoint(event) {
   if (!Number.isFinite(event?.clientX) || !Number.isFinite(event?.clientY)) return null;
   const localPoint = syncMouseCoord(event.clientX, event.clientY);
   if (localPoint === null || initImgWidth.value <= 0 || initImgHeight.value <= 0) return null;
 
   const imagePoint = { x: 0, y: 0 };
   transCanvas2RealInfo(imagePoint, localPoint);
+  return imagePoint;
+}
+
+function getDraggedImagePoint(event) {
+  const imagePoint = getUnclampedImagePoint(event);
+  if (imagePoint === null) return null;
   return {
     x: Math.min(initImgWidth.value - 1, Math.max(0, imagePoint.x)),
     y: Math.min(initImgHeight.value - 1, Math.max(0, imagePoint.y)),

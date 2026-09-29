@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   QUAD_TRANSLATION_TARGET,
-  calculateClampedQuadTranslation,
+  calculateQuadTranslation,
   getQuadCenterPoint,
   isPointInQuad,
   prepareQuad,
@@ -10,7 +10,7 @@ import {
 } from '../src/renderer/src/utils/QuadGeometry.js';
 
 describe('Quad geometry', () => {
-  it('translates every Quad point by one uniform delta and clamps at image boundaries', () => {
+  it('translates every Quad point by the full requested delta beyond image boundaries', () => {
     const points = [
       { x: 2, y: 3 },
       { x: 8, y: 3 },
@@ -18,16 +18,18 @@ describe('Quad geometry', () => {
       { x: 2, y: 9 },
     ];
 
-    expect(calculateClampedQuadTranslation(points, { x: 20, y: -10 }, { width: 15, height: 12 })).toEqual({
+    const result = calculateQuadTranslation(points, { x: 20, y: -10 });
+    expect(result).toEqual({
       points: [
-        { x: 8, y: 0 },
-        { x: 14, y: 0 },
-        { x: 14, y: 6 },
-        { x: 8, y: 6 },
+        { x: 22, y: -7 },
+        { x: 28, y: -7 },
+        { x: 28, y: -1 },
+        { x: 22, y: -1 },
       ],
-      delta: { x: 6, y: -3 },
-      clamped: true,
+      delta: { x: 20, y: -10 },
+      clamped: false,
     });
+    expect(calculateQuadTranslation(result.points, { x: -20, y: 10 }).points).toEqual(points);
     expect(points[0]).toEqual({ x: 2, y: 3 });
   });
 
@@ -40,10 +42,9 @@ describe('Quad geometry', () => {
     ];
 
     expect(
-      calculateClampedQuadTranslation(
+      calculateQuadTranslation(
         points,
         { x: 4, y: 2 },
-        { width: 20, height: 20 },
         {
           type: QUAD_TRANSLATION_TARGET.EDGE,
           edgeIndex: 0,
@@ -70,10 +71,9 @@ describe('Quad geometry', () => {
     ];
 
     expect(
-      calculateClampedQuadTranslation(
+      calculateQuadTranslation(
         points,
         { x: 0, y: 20 },
-        { width: 20, height: 30 },
         {
           type: QUAD_TRANSLATION_TARGET.EDGE,
           edgeIndex: 0,
@@ -89,6 +89,47 @@ describe('Quad geometry', () => {
       delta: { x: 0, y: 5 },
       clamped: true,
     });
+  });
+
+  it('moves an already out-of-bounds edge further outward while keeping the other vertices fixed', () => {
+    const points = [
+      { x: -5, y: -5 },
+      { x: 15, y: -5 },
+      { x: 15, y: 15 },
+      { x: -5, y: 15 },
+    ];
+    expect(calculateQuadTranslation(points, { x: -10, y: -20 }, { type: 'edge', edgeIndex: 0 })).toEqual({
+      points: [
+        { x: -15, y: -25 },
+        { x: 5, y: -25 },
+        { x: 15, y: 15 },
+        { x: -5, y: 15 },
+      ],
+      delta: { x: -10, y: -20 },
+      clamped: false,
+    });
+  });
+
+  it('rejects translations whose resulting coordinates exceed the safe integer range', () => {
+    const maximum = Number.MAX_SAFE_INTEGER;
+    const points = [
+      { x: maximum - 10, y: 0 },
+      { x: maximum, y: 0 },
+      { x: maximum, y: 10 },
+      { x: maximum - 10, y: 10 },
+    ];
+    expect(calculateQuadTranslation(points, { x: 1, y: 0 })).toBeNull();
+    expect(calculateQuadTranslation(points, { x: 1, y: 0 }, { type: 'edge', edgeIndex: 1 })).toBeNull();
+  });
+
+  it('rejects edge translation of a degenerate imported Quad', () => {
+    const points = [
+      { x: -10, y: 0 },
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 20, y: 0 },
+    ];
+    expect(calculateQuadTranslation(points, { x: 0, y: -5 }, { type: 'edge', edgeIndex: 0 })).toBeNull();
   });
 
   it('sorts a Quad from its top-left point in clockwise screen order', () => {

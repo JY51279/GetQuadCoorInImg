@@ -76,7 +76,7 @@ describe('Dataset mutations', () => {
   });
 
   it.each([null, { width: 0, height: 100 }, { width: 100, height: NaN }])(
-    'requires valid original dimensions for geometry writes: %j',
+    'requires valid original dimensions for newly picked pixels: %j',
     imageSize => {
       loadDbrDataset();
       const before = getJsonFileInfo();
@@ -86,7 +86,7 @@ describe('Dataset mutations', () => {
     },
   );
 
-  it('checks the final rounded coordinates and permits the last original-image pixel', () => {
+  it('checks rounded picked coordinates and permits the last original-image pixel', () => {
     loadDbrDataset();
     const before = getJsonFileInfo();
     const size = { width: 100, height: 100 };
@@ -119,13 +119,12 @@ describe('Dataset mutations', () => {
   });
 
   it('validates a batch source before modifying any target', () => {
-    loadDbrPictureSeries(['90 90 110 90 110 110 90 110', '5 5 15 5 15 15 5 15']);
+    loadDbrPictureSeries(['0 0 10 0 20 0 30 0', '5 5 15 5 15 15 5 15']);
     const before = getJsonFileInfo();
     expect(
       applyQuadLocationToImagesWithHistory({
         source: { imageIndex: 0, quadIndex: 0 },
         targetImageIndexes: [1],
-        sourceImageSize: { width: 100, height: 100 },
       }).success,
     ).toBe(false);
     expect(getJsonFileInfo()).toEqual(before);
@@ -136,7 +135,6 @@ describe('Dataset mutations', () => {
     const result = applyQuadLocationToImagesWithHistory({
       source: { imageIndex: 0, quadIndex: 0 },
       targetImageIndexes: [1],
-      sourceImageSize: { width: 100, height: 100 },
     });
     expect(result.success).toBe(true);
     expect(JSON.parse(getJsonFileInfo().str).Picture[1]['Barcode Info'][0]['Barcode Location']).toBe('0 0 0 0 0 0 0 0');
@@ -161,7 +159,7 @@ describe('Dataset mutations', () => {
     expect(getJsonFileInfo()).toEqual(before);
   });
 
-  it.each([KEYS.JSON_MODIFY, KEYS.JSON_ADD])('rejects a completed Quad outside the image before %s', action => {
+  it.each([KEYS.JSON_MODIFY, KEYS.JSON_ADD])('accepts an inferred vertex outside the image on %s', action => {
     loadDbrDataset();
     const before = getJsonFileInfo();
     const result = updateJsonWithHistory(
@@ -175,15 +173,75 @@ describe('Dataset mutations', () => {
       ],
       { width: 100, height: 100 },
     );
-    expect(result).toMatchObject({ success: false, error: 'Quad 坐标超出当前图片边界。' });
-    expect(result.receipt).toBeUndefined();
+    expect(result).toMatchObject({ success: true, changed: true });
+    const edited = getJsonFileInfo();
+    const quadIndex = action === KEYS.JSON_ADD ? 1 : 0;
+    expect(getCurrentAnnotationView().quads[quadIndex]).toContainEqual({ x: -10, y: 10 });
+    expect(applyJsonHistoryEntriesWithReceipt([result.historyEntry], 'undo').success).toBe(true);
     expect(getJsonFileInfo()).toEqual(before);
+    expect(applyJsonHistoryEntriesWithReceipt([result.historyEntry], 'redo').success).toBe(true);
+    expect(getJsonFileInfo()).toEqual(edited);
   });
 
   it('rejects an explicit dragged point outside the original image', () => {
     loadDbrDataset();
     const before = getJsonFileInfo();
     expect(updateQuadPointWithHistory(0, 1, { x: 100, y: 0 }, { width: 100, height: 100 }).success).toBe(false);
+    expect(getJsonFileInfo()).toEqual(before);
+  });
+
+  it.each(['DBR', 'DDN', 'DLR'])(
+    'edits one picked or dragged %s vertex while preserving other out-of-bounds vertices',
+    productType => {
+      for (const mode of ['picked', 'dragged']) {
+        loadProductDataset(productType, '-10 -10 110 -10 110 110 -10 110', 'DataMatrix');
+        const before = getJsonFileInfo();
+        const result =
+          mode === 'picked'
+            ? updateJsonWithHistory(KEYS.JSON_MODIFY, { x: 0.5, y: 0.25 }, 0, [{ x: 2.5, y: 1.25 }], {
+                width: 100,
+                height: 100,
+              })
+            : updateQuadPointWithHistory(0, 0, { x: 5, y: 5 }, { width: 100, height: 100 });
+        expect(result).toMatchObject({ success: true, changed: true });
+        expect(getCurrentAnnotationView().quads[0]).toEqual([
+          { x: 5, y: 5 },
+          { x: 110, y: -10 },
+          { x: 110, y: 110 },
+          { x: -10, y: 110 },
+        ]);
+        const edited = getJsonFileInfo();
+        expect(applyJsonHistoryEntriesWithReceipt([result.historyEntry], 'undo').success).toBe(true);
+        expect(getJsonFileInfo()).toEqual(before);
+        expect(applyJsonHistoryEntriesWithReceipt([result.historyEntry], 'redo').success).toBe(true);
+        expect(getJsonFileInfo()).toEqual(edited);
+      }
+    },
+  );
+
+  it('allows the inferred fourth point beyond the upper image bounds', () => {
+    loadDbrDataset();
+    const result = updateJsonWithHistory(
+      KEYS.JSON_MODIFY,
+      1,
+      0,
+      [
+        { x: 99, y: 0 },
+        { x: 89, y: 10 },
+        { x: 99, y: 20 },
+      ],
+      { width: 100, height: 100 },
+    );
+    expect(result.success).toBe(true);
+    expect(getCurrentAnnotationView().quads[0]).toContainEqual({ x: 109, y: 10 });
+  });
+
+  it('rejects unsafe translations without changing data or history', () => {
+    loadDbrDataset();
+    const before = getJsonFileInfo();
+    const result = translateQuadWithHistory({ quadIndex: 0, delta: { x: Number.MAX_SAFE_INTEGER, y: 0 } });
+    expect(result.success).toBe(false);
+    expect(result.historyEntry).toBeUndefined();
     expect(getJsonFileInfo()).toEqual(before);
   });
 
@@ -296,7 +354,7 @@ describe('Dataset mutations', () => {
     const schema = PRODUCT_SCHEMAS[productType];
     const beforeItem = JSON.parse(getJsonFileInfo().str).Picture[1][schema.targetKey][0];
 
-    const result = copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 });
+    const result = copyPreviousQuadLocationWithHistory(0);
 
     expect(result).toMatchObject({
       success: true,
@@ -319,7 +377,7 @@ describe('Dataset mutations', () => {
     loadDbrDataset();
     expect(resetPicJson('C:/images/two.png', 1).success).toBe(true);
 
-    const result = copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 });
+    const result = copyPreviousQuadLocationWithHistory(0);
 
     expect(result).toMatchObject({ success: true, changed: false, historyEntry: null, receipt: null });
   });
@@ -329,7 +387,7 @@ describe('Dataset mutations', () => {
     loadProductDataset('DBR', previousLocation, '', '20 20 30 20 30 30 20 30');
     expect(resetPicJson('C:/images/two.png', 1).success).toBe(true);
 
-    const result = copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 });
+    const result = copyPreviousQuadLocationWithHistory(0);
 
     expect(result.success).toBe(true);
     expect(JSON.parse(getJsonFileInfo().str).Picture[1]['Barcode Info'][0]['Barcode Location']).toBe(
@@ -339,7 +397,7 @@ describe('Dataset mutations', () => {
 
   it('rejects copying without a previous image or a matching Quad index', () => {
     loadDbrDataset();
-    expect(copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 })).toEqual({
+    expect(copyPreviousQuadLocationWithHistory(0)).toEqual({
       success: false,
       error: '当前图片没有上一张图片可供沿用坐标。',
     });
@@ -357,20 +415,24 @@ describe('Dataset mutations', () => {
         { width: 1000, height: 1000 },
       ).success,
     ).toBe(true);
-    expect(copyPreviousQuadLocationWithHistory(1, { width: 100, height: 100 })).toEqual({
+    expect(copyPreviousQuadLocationWithHistory(1)).toEqual({
       success: false,
       error: '上一张图片中没有同下标的 Quad。',
     });
   });
 
-  it('rejects previous locations outside the current image without changing data', () => {
-    loadProductDataset('DBR', '90 90 110 90 110 110 90 110', '', '20 20 30 20 30 30 20 30');
+  it('copies previous locations with negative and beyond-image coordinates and supports undo', () => {
+    loadProductDataset('DBR', '-10 -10 110 -10 110 110 -10 110', '', '20 20 30 20 30 30 20 30');
     expect(resetPicJson('C:/images/two.png', 1).success).toBe(true);
     const before = getJsonFileInfo().str;
 
-    const result = copyPreviousQuadLocationWithHistory(0, { width: 100, height: 100 });
+    const result = copyPreviousQuadLocationWithHistory(0);
 
-    expect(result).toEqual({ success: false, error: 'Quad 坐标超出当前图片边界。' });
+    expect(result).toMatchObject({ success: true, changed: true });
+    expect(JSON.parse(getJsonFileInfo().str).Picture[1]['Barcode Info'][0]['Barcode Location']).toBe(
+      '-10 -10 110 -10 110 110 -10 110',
+    );
+    expect(applyJsonHistoryEntriesWithReceipt([result.historyEntry], 'undo').success).toBe(true);
     expect(getJsonFileInfo().str).toBe(before);
   });
 
@@ -403,13 +465,12 @@ describe('Dataset mutations', () => {
   });
 
   it.each(['DBR', 'DDN', 'DLR'])('applies the current %s Loc through the product schema', productType => {
-    const sourceLocation = '5 5 15 5 15 15 5 15';
+    const sourceLocation = '-5 -5 115 -5 115 115 -5 115';
     const targetLocation = '20 20 30 20 30 30 20 30';
     loadProductDataset(productType, sourceLocation, '', targetLocation);
     const schema = PRODUCT_SCHEMAS[productType];
 
     const result = applyQuadLocationToImagesWithHistory({
-      sourceImageSize: { width: 1000, height: 1000 },
       source: { imageIndex: 0, quadIndex: 0 },
       targetImageIndexes: [1],
     });
@@ -432,7 +493,6 @@ describe('Dataset mutations', () => {
     expect(resetPicJson('C:/images/1.png', 0).success).toBe(true);
 
     const result = applyQuadLocationToImagesWithHistory({
-      sourceImageSize: { width: 1000, height: 1000 },
       source: { imageIndex: 0, quadIndex: 0 },
       targetImageIndexes: [1, 2, 3],
     });
@@ -482,7 +542,6 @@ describe('Dataset mutations', () => {
     loadDbrPictureSeries([sourceLocation, firstTargetLocation, secondTargetLocation]);
 
     const result = applyQuadLocationToImagesWithHistory({
-      sourceImageSize: { width: 1000, height: 1000 },
       source: { imageIndex: 0, quadIndex: 0 },
       targetImageIndexes: [1, 2],
     });
@@ -500,7 +559,6 @@ describe('Dataset mutations', () => {
 
     expect(
       applyQuadLocationToImagesWithHistory({
-        sourceImageSize: { width: 1000, height: 1000 },
         source: { imageIndex: 0, quadIndex: 0 },
         targetImageIndexes: [1, 2],
       }),
@@ -518,33 +576,28 @@ describe('Dataset mutations', () => {
     });
   });
 
-  it('uses the shared full-location mutation path for validated replacements', () => {
+  it('accepts a valid full-location replacement outside the image', () => {
     loadDbrDataset('10 10 20 10 20 20 10 20');
 
-    const result = replaceQuadLocationWithHistory(
-      0,
-      [
-        { x: 15, y: 15 },
-        { x: 25, y: 15 },
-        { x: 25, y: 25 },
-        { x: 15, y: 25 },
-      ],
-      { width: 100, height: 100 },
-    );
+    const result = replaceQuadLocationWithHistory(0, [
+      { x: -15, y: -15 },
+      { x: 125, y: -15 },
+      { x: 125, y: 125 },
+      { x: -15, y: 125 },
+    ]);
 
     expect(result).toMatchObject({ success: true, changed: true });
     expect(JSON.parse(getJsonFileInfo().str).Picture[0]['Barcode Info'][0]['Barcode Location']).toBe(
-      '15 15 25 15 25 25 15 25',
+      '-15 -15 125 -15 125 125 -15 125',
     );
   });
 
-  it('translates all Quad points by one clamped delta and supports undo', () => {
+  it('translates all Quad points beyond the image by the requested delta and supports undo', () => {
     loadDbrDataset('10 10 20 10 20 20 10 20');
 
     const result = translateQuadWithHistory({
       quadIndex: 0,
       delta: { x: 90, y: -20 },
-      imageSize: { width: 100, height: 100 },
     });
 
     expect(result).toMatchObject({
@@ -557,10 +610,10 @@ describe('Dataset mutations', () => {
       },
     });
     expect(getCurrentAnnotationView().quads[0]).toEqual([
-      { x: 89, y: 0 },
-      { x: 99, y: 0 },
-      { x: 99, y: 10 },
-      { x: 89, y: 10 },
+      { x: 100, y: -10 },
+      { x: 110, y: -10 },
+      { x: 110, y: 0 },
+      { x: 100, y: 0 },
     ]);
 
     expect(applyJsonHistoryEntriesWithReceipt([result.historyEntry], 'undo').mutationResults[0].success).toBe(true);
@@ -579,7 +632,6 @@ describe('Dataset mutations', () => {
       quadIndex: 0,
       target: { type: QUAD_TRANSLATION_TARGET.EDGE, edgeIndex: 0 },
       delta: { x: 5, y: 3 },
-      imageSize: { width: 100, height: 100 },
     });
 
     expect(result).toMatchObject({
@@ -606,7 +658,6 @@ describe('Dataset mutations', () => {
       translateQuadWithHistory({
         quadIndex: 0,
         delta: { x: 0, y: 0 },
-        imageSize: { width: 100, height: 100 },
       }),
     ).toMatchObject({
       success: true,

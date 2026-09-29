@@ -96,16 +96,12 @@ export function getQuadCenterPoint(points) {
   };
 }
 
-export function calculateClampedQuadTranslation(points, requestedDelta, imageSize, target) {
+export function calculateQuadTranslation(points, requestedDelta, target) {
   if (
     !Array.isArray(points) ||
     points.length !== 4 ||
     !points.every(isSafeIntegerPoint) ||
-    !isSafeIntegerPoint(requestedDelta) ||
-    !Number.isSafeInteger(imageSize?.width) ||
-    imageSize.width <= 0 ||
-    !Number.isSafeInteger(imageSize?.height) ||
-    imageSize.height <= 0
+    !isSafeIntegerPoint(requestedDelta)
   ) {
     return null;
   }
@@ -113,30 +109,10 @@ export function calculateClampedQuadTranslation(points, requestedDelta, imageSiz
   const normalizedTarget = normalizeQuadTranslationTarget(target);
   if (normalizedTarget === null) return null;
 
-  const xValues = points.map(point => point.x);
-  const yValues = points.map(point => point.y);
-  const minimumX = Math.min(...xValues);
-  const maximumX = Math.max(...xValues);
-  const minimumY = Math.min(...yValues);
-  const maximumY = Math.max(...yValues);
-  if (minimumX < 0 || maximumX >= imageSize.width || minimumY < 0 || maximumY >= imageSize.height) return null;
-
   const translatedPointIndices = getTranslatedPointIndices(normalizedTarget);
-  const translatedPoints = translatedPointIndices.map(pointIndex => points[pointIndex]);
-  const translatedXValues = translatedPoints.map(point => point.x);
-  const translatedYValues = translatedPoints.map(point => point.y);
-  const translatedMinimumX = Math.min(...translatedXValues);
-  const translatedMaximumX = Math.max(...translatedXValues);
-  const translatedMinimumY = Math.min(...translatedYValues);
-  const translatedMaximumY = Math.max(...translatedYValues);
-
-  const boundaryClampedDelta = {
-    x: Math.min(imageSize.width - 1 - translatedMaximumX, Math.max(-translatedMinimumX, requestedDelta.x)),
-    y: Math.min(imageSize.height - 1 - translatedMaximumY, Math.max(-translatedMinimumY, requestedDelta.y)),
-  };
-
-  let delta = boundaryClampedDelta;
+  let delta = { ...requestedDelta };
   let translatedQuad = translateQuadPoints(points, translatedPointIndices, delta);
+  if (!translatedQuad.every(isSafeIntegerPoint)) return null;
   if (normalizedTarget.type === QUAD_TRANSLATION_TARGET.EDGE) {
     if (!validateCanonicalQuad(points).success) return null;
     const turnDirection = Math.sign(getTurnCrossProduct(points[0], points[1], points[2]));
@@ -149,8 +125,8 @@ export function calculateClampedQuadTranslation(points, requestedDelta, imageSiz
       for (let iteration = 0; iteration < 32; iteration++) {
         const ratio = (minimumRatio + maximumRatio) / 2;
         const candidateDelta = {
-          x: Math.round(boundaryClampedDelta.x * ratio),
-          y: Math.round(boundaryClampedDelta.y * ratio),
+          x: Math.round(requestedDelta.x * ratio),
+          y: Math.round(requestedDelta.y * ratio),
         };
         const candidatePoints = translateQuadPoints(points, translatedPointIndices, candidateDelta);
         if (hasCanonicalQuadDirection(candidatePoints, turnDirection)) {

@@ -4,7 +4,7 @@ import { DEFAULT_LOCATION } from '../utils/DatasetSchema.js';
 import { imagePointToDatasetPoint } from '../utils/AnnotationCoordinates.js';
 import {
   QUAD_TRANSLATION_TARGET,
-  calculateClampedQuadTranslation,
+  calculateQuadTranslation,
   normalizeQuadTranslationTarget,
   prepareQuad,
   prepareQuadPointUpdate,
@@ -170,6 +170,8 @@ function prepareDatasetQuad(realDots, coordinateScale, baseItem = null, imageSiz
   if (jsonDots.some(dot => dot === null)) {
     return { success: false, error: '无法将所选点换算为有效的数据集坐标。' };
   }
+  const pickedPointsValidation = validatePickedPoints(jsonDots, imageSize);
+  if (!pickedPointsValidation.success) return pickedPointsValidation;
 
   // 判断是否为一个元素，并仅修改与当前点最近的点
   if (jsonDots.length === 1) {
@@ -182,14 +184,11 @@ function prepareDatasetQuad(realDots, coordinateScale, baseItem = null, imageSiz
     if (closestIndex === -1) {
       return { success: false, error: '无法找到最近的 Quad 顶点。' };
     }
-    return validatePreparedQuad(
-      prepareQuadPointUpdate(currentPoints, closestIndex, newPoint, baseItem['Barcode Type'] ?? ''),
-      imageSize,
-    );
+    return prepareQuadPointUpdate(currentPoints, closestIndex, newPoint, baseItem['Barcode Type'] ?? '');
   }
 
   const barcodeType = baseItem?.['Barcode Type'] ?? '';
-  return validatePreparedQuad(prepareQuad(jsonDots, barcodeType), imageSize);
+  return prepareQuad(jsonDots, barcodeType);
 }
 
 function serializePreparedQuad(points) {
@@ -313,11 +312,15 @@ function updateQuadPoint(activeQuadIndex, pointIndex, nextPoint, imageSize) {
 
     const targetItem = datasetState.currentItems[activeQuadIndex];
     const currentPoints = parsePointString2Array(targetItem[datasetState.productSchema.ItemKey], POINT_SEPARATOR);
-    const preparedPoints = validatePreparedQuad(
-      prepareQuadPointUpdate(currentPoints, pointIndex, nextPoint, targetItem['Barcode Type'] ?? ''),
-      imageSize,
+    const preparedPoints = prepareQuadPointUpdate(
+      currentPoints,
+      pointIndex,
+      nextPoint,
+      targetItem['Barcode Type'] ?? '',
     );
     if (!preparedPoints.success) return preparedPoints.error;
+    const pickedPointValidation = validatePickedPoints([nextPoint], imageSize);
+    if (!pickedPointValidation.success) return pickedPointValidation.error;
 
     targetItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedPoints.points);
     return KEYS.OPERATE_SUCCESS;
@@ -337,26 +340,25 @@ function normalizeImageSize(imageSize) {
   return { width, height };
 }
 
-function validatePreparedQuad(preparedQuad, imageSize) {
-  if (!preparedQuad.success) return preparedQuad;
+// Only newly picked pixels must be inside the image. Existing or inferred Quad
+// vertices may legitimately describe a target extending beyond the image.
+function validatePickedPoints(points, imageSize) {
   const size = normalizeImageSize(imageSize);
   if (size === null) return { success: false, error: '当前图片的原始尺寸无效。' };
-  if (
-    preparedQuad.points.some(point => point.x < 0 || point.x >= size.width || point.y < 0 || point.y >= size.height)
-  ) {
-    return { success: false, error: 'Quad 坐标超出当前图片边界。' };
+  if (points.some(point => point.x < 0 || point.x >= size.width || point.y < 0 || point.y >= size.height)) {
+    return { success: false, error: '所选点超出当前图片边界。' };
   }
-  return preparedQuad;
+  return { success: true };
 }
 
-function replaceQuadLocation(activeQuadIndex, points, imageSize) {
+function replaceQuadLocation(activeQuadIndex, points) {
   return operateJsonContent(() => {
     if (activeQuadIndex < 0 || activeQuadIndex >= datasetState.currentItems.length) {
       return '找不到对应的 JSON 标注项。';
     }
 
     const targetItem = datasetState.currentItems[activeQuadIndex];
-    const preparedQuad = validatePreparedQuad(prepareQuad(points, targetItem['Barcode Type'] ?? ''), imageSize);
+    const preparedQuad = prepareQuad(points, targetItem['Barcode Type'] ?? '');
     if (!preparedQuad.success) return preparedQuad.error;
 
     targetItem[datasetState.productSchema.ItemKey] = serializePreparedQuad(preparedQuad.points);
@@ -364,13 +366,13 @@ function replaceQuadLocation(activeQuadIndex, points, imageSize) {
   }, '替换 Quad 坐标失败。');
 }
 
-export function replaceQuadLocationWithHistory(activeQuadIndex = -1, points = [], imageSize = null) {
+export function replaceQuadLocationWithHistory(activeQuadIndex = -1, points = []) {
   return runJsonMutationWithHistory(KEYS.JSON_MODIFY, activeQuadIndex, () =>
-    replaceQuadLocation(activeQuadIndex, points, imageSize),
+    replaceQuadLocation(activeQuadIndex, points),
   );
 }
 
-export function translateQuadWithHistory({ quadIndex = -1, target, delta = null, imageSize = null } = {}) {
+export function translateQuadWithHistory({ quadIndex = -1, target, delta = null } = {}) {
   const normalizedTarget = normalizeQuadTranslationTarget(target);
   if (normalizedTarget === null) return { success: false, error: 'Quad 平移目标无效。' };
 
@@ -381,13 +383,13 @@ export function translateQuadWithHistory({ quadIndex = -1, target, delta = null,
 
     const targetItem = datasetState.currentItems[quadIndex];
     const currentPoints = parsePointString2Array(targetItem[datasetState.productSchema.ItemKey], POINT_SEPARATOR);
-    const translation = calculateClampedQuadTranslation(currentPoints, delta, imageSize, normalizedTarget);
+    const translation = calculateQuadTranslation(currentPoints, delta, normalizedTarget);
     if (translation === null) return '无法计算 Quad 平移坐标。';
-    return replaceQuadLocation(quadIndex, translation.points, imageSize);
+    return replaceQuadLocation(quadIndex, translation.points);
   });
 }
 
-export function copyPreviousQuadLocationWithHistory(activeQuadIndex = -1, imageSize = null) {
+export function copyPreviousQuadLocationWithHistory(activeQuadIndex = -1) {
   if (datasetState.currentImageIndex <= 0) {
     return { success: false, error: '当前图片没有上一张图片可供沿用坐标。' };
   }
@@ -408,7 +410,7 @@ export function copyPreviousQuadLocationWithHistory(activeQuadIndex = -1, imageS
 
   const sourcePoints = parsePointString2Array(sourceLocation, POINT_SEPARATOR);
   return runJsonMutationWithHistory(KEYS.JSON_COPY_PREVIOUS_LOCATION, activeQuadIndex, () =>
-    replaceQuadLocation(activeQuadIndex, sourcePoints, imageSize),
+    replaceQuadLocation(activeQuadIndex, sourcePoints),
   );
 }
 
@@ -453,7 +455,7 @@ function normalizeTargetImageIndexes(targetImageIndexes, sourceImageIndex, pictu
   return normalizedIndexes;
 }
 
-export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexes, sourceImageSize = null } = {}) {
+export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexes } = {}) {
   const sourceImageIndex = source?.imageIndex;
   const quadIndex = source?.quadIndex;
   const pictures = datasetState.dataset[ROOT_KEY];
@@ -481,15 +483,14 @@ export function applyQuadLocationToImagesWithHistory({ source, targetImageIndexe
   if (typeof sourceLocation !== 'string') {
     return { success: false, error: '当前 Quad 的坐标无效。' };
   }
-  // Target dimensions are unknown until those images load. Validate the source
-  // and preserve its exact vertex order; never invent target image bounds.
+  // Validate source geometry and preserve its exact vertex order, including
+  // coordinates outside the image and the explicit zero placeholder.
   const sourcePoints = parsePointString2Array(sourceLocation, POINT_SEPARATOR);
   const preparedSource =
     sourceLocation === DEFAULT_LOCATION
       ? { success: true, points: sourcePoints }
       : prepareQuad(sourcePoints, sourceItems[quadIndex]['Barcode Type'] ?? '');
-  const validatedSource = validatePreparedQuad(preparedSource, sourceImageSize);
-  if (!validatedSource.success) return validatedSource;
+  if (!preparedSource.success) return preparedSource;
 
   const mutations = [];
   const skippedImageIndexes = [];

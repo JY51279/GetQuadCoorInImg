@@ -163,7 +163,6 @@ export function useWorkspaceEditing({
             quadIndex,
             target,
             delta: datasetDelta,
-            imageSize: currentImageOriginalSize.value,
           });
         },
         result => {
@@ -332,7 +331,6 @@ export function useWorkspaceEditing({
         return applyQuadLocationToImagesWithHistory({
           source: { imageIndex: sourceImageIndex, quadIndex },
           targetImageIndexes: rangeResult.imageIndexes,
-          sourceImageSize: currentImageOriginalSize.value,
         });
       },
       ({ mutation }) => {
@@ -358,7 +356,7 @@ export function useWorkspaceEditing({
 
     const saved = await runSaveTransaction(
       () => {
-        return copyPreviousQuadLocationWithHistory(quadIndex, currentImageOriginalSize.value);
+        return copyPreviousQuadLocationWithHistory(quadIndex);
       },
       result => {
         refreshCurrentAnnotations({ redrawOverlay: true });

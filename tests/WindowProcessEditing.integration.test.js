@@ -111,7 +111,7 @@ describe('Workspace editing through real domain and save transactions', () => {
     ipcRenderer.invoke.mockReset();
   });
 
-  it('rejects a three-point completion outside the original image without saving or recording history', async () => {
+  it('saves an inferred vertex outside the original image and restores it through undo/redo', async () => {
     const imageView = await mountEditor();
     const before = getJsonFileInfo();
     imageView.vm.$emit('update-selected-dots', [
@@ -122,10 +122,18 @@ describe('Workspace editing through real domain and save transactions', () => {
     await button('更新当前 Quad（Ctrl+S）').trigger('click');
     await flushPromises();
 
+    const edited = getJsonFileInfo();
+    expect(currentLocation()).toBe('0 0 10 10 0 20 -10 10');
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(persist.mock.calls[0][0].str).toBe(edited.str);
+    expect(button('撤销 JSON 操作（Ctrl+Shift+Z）').attributes('disabled')).toBeUndefined();
+    await button('撤销 JSON 操作（Ctrl+Shift+Z）').trigger('click');
+    await flushPromises();
     expect(getJsonFileInfo()).toEqual(before);
-    expect(persist).not.toHaveBeenCalled();
-    expect(button('撤销 JSON 操作（Ctrl+Shift+Z）').attributes('disabled')).toBeDefined();
-    expect(wrapper.text()).toContain('Quad 坐标超出当前图片边界。');
+    await button('重做 JSON 操作（Ctrl+Shift+Y）').trigger('click');
+    await flushPromises();
+    expect(getJsonFileInfo()).toEqual(edited);
+    expect(persist).toHaveBeenCalledTimes(3);
   });
 
   it('passes original dimensions to the point-drag command and skips a no-op', async () => {

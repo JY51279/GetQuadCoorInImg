@@ -33,7 +33,6 @@ function createGesture(overrides = {}) {
   const gesture = useQuadTranslationGesture({
     canStart: () => true,
     getQuad: () => QUAD,
-    getImageSize: () => ({ width: 20, height: 20 }),
     getPointerImagePoint: event => event.imagePoint,
     ...callbacks,
     ...overrides,

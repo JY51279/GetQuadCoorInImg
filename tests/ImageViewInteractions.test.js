@@ -431,6 +431,51 @@ describe('ImageView interactions', () => {
     wrapper.unmount();
   });
 
+  it.each([
+    ['.quad-translate-handle', [0, 1, 2, 3]],
+    ['.quad-edge-handle', [0, 1]],
+  ])('drags %s beyond the image from an already out-of-bounds Quad', async (selector, movedIndices) => {
+    const wrapper = await mountReadyImage();
+    const quad = [
+      { x: -10, y: -10 },
+      { x: 40, y: -10 },
+      { x: 40, y: 40 },
+      { x: -10, y: 40 },
+    ];
+    wrapper.vm.resetQuadsArray([quad], 1);
+    await nextTick();
+    const handle = wrapper.find(selector);
+    const startX = parseFloat(handle.element.style.left);
+    const startY = parseFloat(handle.element.style.top);
+    await handle.trigger('pointerdown', { button: 0, pointerId: 15, clientX: startX, clientY: startY });
+    await handle.trigger('pointermove', { pointerId: 15, clientX: startX - 80, clientY: startY - 60 });
+    expect(parseFloat(handle.element.style.left)).toBeCloseTo(startX - 80);
+    expect(parseFloat(handle.element.style.top)).toBeCloseTo(startY - 60);
+    await handle.trigger('pointerup', { pointerId: 15, clientX: startX - 80, clientY: startY - 60 });
+    expect(wrapper.emitted('commit-quad-translation')).toHaveLength(1);
+    expect(wrapper.emitted('commit-quad-translation')[0][0]).toMatchObject({
+      imageDelta: { x: -40, y: -30 },
+      imagePoints: quad.map((point, index) =>
+        movedIndices.includes(index) ? { x: point.x - 40, y: point.y - 30 } : point,
+      ),
+    });
+    wrapper.unmount();
+  });
+
+  it('still rejects outside point picks and clamps a dragged vertex to the last image pixel', async () => {
+    const wrapper = await mountReadyImage();
+    wrapper.vm.resetQuadsArray([QUAD], 1);
+    await nextTick();
+    const selectionsBefore = wrapper.emitted('update-selected-dots').length;
+    await wrapper.find('canvas.canvas-layer').trigger('click', { clientX: -10, clientY: 100 });
+    expect(wrapper.emitted('update-selected-dots')).toHaveLength(selectionsBefore);
+    const handle = wrapper.find('.quad-point-handle');
+    await handle.trigger('pointerdown', { button: 0, pointerId: 16, clientX: 21, clientY: 21 });
+    await handle.trigger('pointerup', { pointerId: 16, clientX: -50, clientY: 250 });
+    expect(wrapper.emitted('commit-quad-point-drag')[0][0].imagePoint).toEqual({ x: 0, y: 99 });
+    wrapper.unmount();
+  });
+
   it('previews and commits one whole-Quad translation without hover-switching the active Quad', async () => {
     const wrapper = await mountReadyImage({ quadInteractionCapabilities: DIRECT_QUAD_INTERACTION });
     const secondQuad = QUAD.map(point => ({ x: point.x + 50, y: point.y }));

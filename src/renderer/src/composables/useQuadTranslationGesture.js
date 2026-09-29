@@ -6,7 +6,7 @@ import {
   transitionPointerGesture,
 } from '../state/PointerGestureState.js';
 import { capturePointer, releasePointer } from '../utils/PointerCapture.js';
-import { calculateClampedQuadTranslation, normalizeQuadTranslationTarget } from '../utils/QuadGeometry.js';
+import { calculateQuadTranslation, normalizeQuadTranslationTarget } from '../utils/QuadGeometry.js';
 
 function createIdleState() {
   return {
@@ -24,7 +24,6 @@ export function useQuadTranslationGesture({
   canStart = () => false,
   canContinue = canStart,
   getQuad = () => null,
-  getImageSize = () => null,
   getPointerImagePoint = () => null,
   previewQuad = () => false,
   onStart = () => {},
@@ -65,8 +64,7 @@ export function useQuadTranslationGesture({
 
     const sourceQuad = getQuad(quadIndex);
     const startPoint = getPointerImagePoint(event);
-    const imageSize = getImageSize();
-    const initialTranslation = calculateClampedQuadTranslation(sourceQuad, { x: 0, y: 0 }, imageSize, normalizedTarget);
+    const initialTranslation = calculateQuadTranslation(sourceQuad, { x: 0, y: 0 }, normalizedTarget);
     if (!Number.isFinite(startPoint?.x) || !Number.isFinite(startPoint?.y) || initialTranslation === null) return false;
 
     Object.assign(state, {
@@ -97,13 +95,12 @@ export function useQuadTranslationGesture({
     }
     const currentPoint = getPointerImagePoint(event);
     if (!Number.isFinite(currentPoint?.x) || !Number.isFinite(currentPoint?.y)) return false;
-    const translation = calculateClampedQuadTranslation(
+    const translation = calculateQuadTranslation(
       state.originalPoints,
       {
         x: currentPoint.x - state.startPoint.x,
         y: currentPoint.y - state.startPoint.y,
       },
-      getImageSize(),
       state.target,
     );
     if (translation === null) return false;
