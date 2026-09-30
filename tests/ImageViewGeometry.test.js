@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateFitScale,
   calculateWheelScale,
-  calculatePixelFocusTransform,
   calculatePointerAnchoredOffset,
   calculateQuadFocusTransform,
   calculateSnappedPanOffset,
@@ -380,24 +379,6 @@ describe('Image view geometry', () => {
     expectVisibleFocusedQuad(tinyQuad, cappedResult, 10000, 10000);
   });
 
-  it('centers one rendered pixel at the standard local editing scale', () => {
-    const imagePoint = { x: 123, y: 45 };
-    const result = calculatePixelFocusTransform(imagePoint, { viewportWidth: 1000, viewportHeight: 800 });
-    const coordinateTransform = {
-      scale: result.scale,
-      gridLimit: 10,
-      offsetX: result.offsetX,
-      offsetY: result.offsetY,
-      canvasOffsetLeft: 0,
-      canvasOffsetTop: 0,
-    };
-    const pixelTopLeft = imageToCanvasPoint(imagePoint, coordinateTransform);
-
-    expect(result.scale).toBe(9.9);
-    expect(Math.abs(pixelTopLeft.x + result.scale / 2 - 500)).toBeLessThanOrEqual(1);
-    expect(Math.abs(pixelTopLeft.y + result.scale / 2 - 400)).toBeLessThanOrEqual(1);
-  });
-
   it('rejects invalid Quad focus input', () => {
     const dimensions = { viewportWidth: 1000, viewportHeight: 800, imageWidth: 1000, imageHeight: 800 };
     expect(calculateQuadFocusTransform([], dimensions)).toBeNull();
@@ -417,9 +398,6 @@ describe('Image view geometry', () => {
     }
     expect(
       calculateQuadFocusTransform(createRectQuad(-Number.MAX_VALUE, 0, Number.MAX_VALUE, 10), dimensions),
-    ).toBeNull();
-    expect(
-      calculatePixelFocusTransform({ x: Number.NaN, y: 0 }, { viewportWidth: 1000, viewportHeight: 800 }),
     ).toBeNull();
   });
 });

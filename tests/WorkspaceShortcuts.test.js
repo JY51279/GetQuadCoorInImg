@@ -40,6 +40,38 @@ describe('workspace shortcut configuration', () => {
     expect(actions['image.next']).toHaveBeenCalledOnce();
   });
 
+  it('keeps step zoom separate from point and JSON undo', () => {
+    const actions = createActions();
+    const commands = createWorkspaceShortcutCommands(actions);
+    const cases = [
+      [{ key: 'z' }, 'image.zoom.in'],
+      [{ key: 'Z', shiftKey: true }, 'image.zoom.out'],
+      [{ key: 'z', ctrlKey: true }, 'point.undo'],
+      [{ key: 'Z', ctrlKey: true, shiftKey: true }, 'json.undo'],
+    ];
+    for (const [event, action] of cases) {
+      vi.clearAllMocks();
+      expect(dispatchShortcut(createKeyEvent(event), commands)).toBe(true);
+      expect(actions[action]).toHaveBeenCalledOnce();
+      expect(Object.values(actions).filter(handler => handler.mock.calls.length > 0)).toHaveLength(1);
+    }
+    expect(getWorkspaceShortcutTitle('image.zoom.in')).toBe('以鼠标为锚点放大图片（Z）');
+    expect(getWorkspaceShortcutTitle('image.zoom.out')).toBe('以鼠标为锚点缩小图片（Shift+Z）');
+  });
+
+  it('does not step zoom while typing or on held-key repeats', () => {
+    const actions = createActions();
+    const commands = createWorkspaceShortcutCommands(actions);
+    for (const shiftKey of [false, true]) {
+      expect(dispatchShortcut(createKeyEvent({ key: 'z', shiftKey, repeat: true }), commands)).toBe(true);
+      expect(dispatchShortcut(createKeyEvent({ key: 'z', shiftKey, target: { tagName: 'INPUT' } }), commands)).toBe(
+        false,
+      );
+    }
+    expect(actions['image.zoom.in']).not.toHaveBeenCalled();
+    expect(actions['image.zoom.out']).not.toHaveBeenCalled();
+  });
+
   it('fails fast when a command action is missing', () => {
     const actions = createActions();
     delete actions['image.next'];

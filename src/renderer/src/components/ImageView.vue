@@ -187,7 +187,6 @@ import { useQuadTranslationGesture } from '../composables/useQuadTranslationGest
 import { getCanvasBackingLength, normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { QUAD_TRANSLATION_TARGET } from '../utils/QuadGeometry.js';
 import {
-  calculatePixelFocusTransform,
   calculateQuadFocusTransform,
   calculateWheelScale,
   clientToLocalPoint,
@@ -458,7 +457,7 @@ defineExpose({
   resetQuadsArray,
   redrawQuadOverlay: drawCanvasForShowQuads,
   focusQuad,
-  focusPixelAtMouse,
+  zoomAtMouse,
   cancelQuadTranslation,
 });
 
@@ -848,7 +847,7 @@ function focusQuad(quadIndex) {
   return { success: true };
 }
 
-function focusPixelAtMouse() {
+function zoomAtMouse(deltaY) {
   if (!props.canInteract || !hasImage.value) return { success: false, error: '当前没有可用图片。' };
 
   syncMouseCoord(x.value, y.value);
@@ -857,24 +856,9 @@ function focusPixelAtMouse() {
     return { success: false, error: '请先将鼠标移到可见的图片像素上。' };
   }
 
-  const imagePoint = { x: 0, y: 0 };
-  transCanvas2RealInfo(imagePoint, mousePoint);
-  if (
-    imagePoint.x < 0 ||
-    imagePoint.x >= initImgWidth.value ||
-    imagePoint.y < 0 ||
-    imagePoint.y >= initImgHeight.value
-  ) {
-    return { success: false, error: '鼠标所在像素超出图片范围。' };
-  }
-
-  const transform = calculatePixelFocusTransform(imagePoint, {
-    viewportWidth: viewportWidth.value,
-    viewportHeight: viewportHeight.value,
+  applyUserScale(calculateWheelScale(scale.value, deltaY, { ...scaleOptions.value, scaleFactor: 1.25 }), {
+    anchorAtPointer: true,
   });
-  if (transform === null) return { success: false, error: '无法计算像素聚焦位置。' };
-
-  applyViewTransform(transform);
   return { success: true };
 }
 

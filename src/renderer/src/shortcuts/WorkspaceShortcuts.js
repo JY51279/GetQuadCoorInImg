@@ -86,10 +86,16 @@ export const WORKSPACE_SHORTCUT_DEFINITIONS = Object.freeze([
     shortcuts: [{ key: 'f' }],
   },
   {
-    id: 'pixel.focus',
+    id: 'image.zoom.in',
     group: SHORTCUT_GROUP.NAVIGATION,
-    label: '聚焦鼠标所在像素',
+    label: '以鼠标为锚点放大图片',
     shortcuts: [{ key: 'z' }],
+  },
+  {
+    id: 'image.zoom.out',
+    group: SHORTCUT_GROUP.NAVIGATION,
+    label: '以鼠标为锚点缩小图片',
+    shortcuts: [{ key: 'z', shift: true }],
   },
   {
     id: 'image.position.reset',

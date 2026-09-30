@@ -13,7 +13,11 @@ const ipcRenderer = { invoke: vi.fn() };
 const ImageViewStub = defineComponent({
   name: 'ImageView',
   props: ['canEdit', 'activeQuadIndex'],
-  methods: { presentImageSession: () => true },
+  methods: {
+    presentImageSession: () => true,
+    focusQuad: () => ({ success: true }),
+    zoomAtMouse: () => ({ success: true }),
+  },
   render: () => h('div'),
 });
 const JsonViewStub = defineComponent({
@@ -109,6 +113,24 @@ describe('Workspace editing through real domain and save transactions', () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
     ipcRenderer.invoke.mockReset();
+  });
+
+  it('routes repeated zoom shortcuts without leaving Quad focus mode or saving data', async () => {
+    const imageView = await mountEditor();
+    const zoom = vi.spyOn(imageView.vm, 'zoomAtMouse');
+    const focus = vi.spyOn(imageView.vm, 'focusQuad');
+    await button('进入 Quad 聚焦模式（F）').trigger('click');
+    await flushPromises();
+    expect(focus).toHaveBeenCalledExactlyOnceWith(0);
+
+    for (const shiftKey of [false, false, true, true]) {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: shiftKey ? 'Z' : 'z', shiftKey }));
+      await nextTick();
+    }
+    expect(zoom.mock.calls).toEqual([[-1], [-1], [1], [1]]);
+    expect(button('退出 Quad 聚焦模式（F）').attributes('aria-pressed')).toBe('true');
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(persist).not.toHaveBeenCalled();
   });
 
   it('saves an inferred vertex outside the original image and restores it through undo/redo', async () => {

@@ -279,6 +279,86 @@ describe('ImageView interactions', () => {
     wrapper.unmount();
   });
 
+  it.each([
+    [
+      2,
+      [
+        [-1, 2.5],
+        [-1, 3.13],
+        [1, 2.5],
+        [1, 2],
+      ],
+    ],
+    [
+      9,
+      [
+        [-1, 10],
+        [-1, 12.5],
+        [1, 10],
+        [1, 8],
+      ],
+    ],
+  ])('step zoom from %s keeps the pixel under the mouse in place', async (initialScale, steps) => {
+    const wrapper = await mountReadyImage();
+    const input = wrapper.find('.scale-number');
+    await input.setValue(String(initialScale));
+    const pointer = { clientX: 61, clientY: 81 };
+    await wrapper.find('.image-container').trigger('mouseenter', pointer);
+    window.dispatchEvent(new MouseEvent('mousemove', pointer));
+    await nextTick();
+    const canvas = wrapper.find('canvas.canvas-layer');
+    await canvas.trigger('click', pointer);
+    const originalPoint = wrapper.emitted('update-selected-dots').at(-1);
+
+    for (const [deltaY, expectedScale] of steps) {
+      expect(wrapper.vm.zoomAtMouse(deltaY)).toEqual({ success: true });
+      await nextTick();
+      expect(Number(input.element.value)).toBe(expectedScale);
+      await canvas.trigger('click', pointer);
+      expect(wrapper.emitted('update-selected-dots').at(-1)).toEqual(originalPoint);
+    }
+    wrapper.unmount();
+  });
+
+  it.each([
+    [0.1, 1, 0.1],
+    [59, -1, 60],
+  ])('clamps step zoom from %s to the scale limit', async (initialScale, deltaY, expectedScale) => {
+    const wrapper = await mountReadyImage();
+    const input = wrapper.find('.scale-number');
+    await input.setValue(String(initialScale));
+    const pointer = { clientX: 5, clientY: 5 };
+    await wrapper.find('.image-container').trigger('mouseenter', pointer);
+    window.dispatchEvent(new MouseEvent('mousemove', pointer));
+    await nextTick();
+    for (let step = 0; step < 2; step++) {
+      expect(wrapper.vm.zoomAtMouse(deltaY)).toEqual({ success: true });
+      await nextTick();
+      expect(Number(input.element.value)).toBe(expectedScale);
+    }
+    wrapper.unmount();
+  });
+
+  it('only step zooms when interaction is enabled and the mouse is over the image', async () => {
+    const wrapper = await mountReadyImage();
+    expect(wrapper.vm.zoomAtMouse(-1).success).toBe(false);
+    const pointer = { clientX: 150, clientY: 150 };
+    await wrapper.find('.image-container').trigger('mouseenter', pointer);
+    window.dispatchEvent(new MouseEvent('mousemove', pointer));
+    await nextTick();
+    const input = wrapper.find('.scale-number');
+    await input.setValue('1');
+    expect(wrapper.vm.zoomAtMouse(-1).success).toBe(false);
+    await input.setValue('2');
+    await wrapper.setProps({ canInteract: false });
+    expect(wrapper.vm.zoomAtMouse(-1).success).toBe(false);
+    expect(Number(input.element.value)).toBe(2);
+    wrapper.vm.presentImageSession(null);
+    await wrapper.setProps({ canInteract: true });
+    expect(wrapper.vm.zoomAtMouse(-1).success).toBe(false);
+    wrapper.unmount();
+  });
+
   beforeEach(() => {
     const contexts = new WeakMap();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function getContext() {

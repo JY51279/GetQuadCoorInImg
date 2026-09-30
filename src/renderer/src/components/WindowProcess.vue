@@ -700,7 +700,8 @@ const shortcutCommands = createWorkspaceShortcutCommands({
   'dataset.previous': () => changeDatasetByDirection(KEYS.PREVIOUS),
   'dataset.next': () => changeDatasetByDirection(KEYS.NEXT),
   'quad.focus.toggle': () => toggleQuadFocusMode(),
-  'pixel.focus': () => focusPixelAtMouse(),
+  'image.zoom.in': () => zoomAtMouse(-1),
+  'image.zoom.out': () => zoomAtMouse(1),
   'image.position.reset': () => resetPosition(),
   'dataset.open': () => chooseJsonFile(),
   'image.match': () => chooseImgFile(),
@@ -789,9 +790,9 @@ function toggleQuadFocusMode() {
   }
 }
 
-function focusPixelAtMouse() {
-  const result = imgContainerRef.value?.focusPixelAtMouse();
-  if (!result?.success) outputMessage(result?.error || '无法聚焦鼠标所在像素。');
+function zoomAtMouse(deltaY) {
+  const result = imgContainerRef.value?.zoomAtMouse(deltaY);
+  if (!result?.success) outputMessage(result?.error || '无法缩放图片。');
 }
 
 function closeQuadLocationPropagation() {
