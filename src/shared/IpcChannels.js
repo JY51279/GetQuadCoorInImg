@@ -11,4 +11,6 @@ export const IPC_CHANNELS = Object.freeze({
   RECORD_DATASET: 'record-workspace-dataset',
   RECORD_IMAGE: 'record-workspace-image',
   NORMALIZE_ANNOTATION: 'normalize-annotation',
+  LOAD_ANNOTATIONS: 'load-annotations',
+  GENERATE_AND_SAVE_ANNOTATION: 'generate-and-save-annotation',
 });
