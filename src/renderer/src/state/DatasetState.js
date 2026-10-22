@@ -141,6 +141,10 @@ export function getCurrentJsonImageIndex() {
   return datasetState.currentImageIndex;
 }
 
+export function getJsonImagePaths() {
+  return [...datasetState.imagePaths];
+}
+
 export function getJsonImagePosition() {
   const pictures = datasetState.dataset[ROOT_KEY];
   return {

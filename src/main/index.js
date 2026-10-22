@@ -63,6 +63,20 @@ async function createWindow() {
   mainWindow.webContents.setZoomMode('isolated');
   mainWindow.webContents.setZoomFactor(1);
 
+  mainWindow.webContents.on('will-prevent-unload', event => {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'question',
+      buttons: ['继续编辑', '离开'],
+      defaultId: 0,
+      cancelId: 0,
+      title: '图片注解尚未保存',
+      message: '有未提交的注解输入或正在生成、保存的请求。',
+      detail: '离开可能丢失草稿或中断请求。确定离开？',
+    });
+    if (choice === 1) event.preventDefault();
+    else isQuitting = false;
+  });
+
   mainWindow.on('ready-to-show', () => {
     mainWindow.show();
   });

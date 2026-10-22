@@ -9,7 +9,7 @@ import { isRecord, serviceFailure, SERVICE_ERROR_KIND } from '../shared/ServiceR
 
 const pendingRecords = new Set();
 
-export async function generateAndSaveAnnotation(request, { appPath, normalize = normalizeAnnotation } = {}) {
+export async function generateAndSaveAnnotation(request, { appPath, normalize = normalizeAnnotation, onStage } = {}) {
   if (
     !isRecord(request) ||
     typeof request.recordId !== 'string' ||
@@ -34,16 +34,22 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
   pendingRecords.add(key);
   let usage = null;
   let stage = 'prepare';
+  const reportStage = () => {
+    // A closed renderer must not interrupt a valid save.
+    try { onStage?.({ ...context, stage }); } catch { /* Presentation only. */ }
+  };
   try {
     const snapshot = await loadAnnotations(datasetPath);
     if (!snapshot.records.some(record => record.recordId === recordId)) {
       throw new Error('请求对应的图片记录已变化，请重新加载图集后重试。');
     }
     stage = 'generate';
+    reportStage();
     const generated = await normalize(text, { appPath });
     usage = generated.usage ?? null;
     if (!generated.success) return { ...generated, ...context, stage };
     stage = 'save';
+    reportStage();
     const saved = await saveAnnotation(datasetPath, recordId, {
       completed: generated.completed,
       rawDescription: text,

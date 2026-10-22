@@ -13,4 +13,5 @@ export const IPC_CHANNELS = Object.freeze({
   NORMALIZE_ANNOTATION: 'normalize-annotation',
   LOAD_ANNOTATIONS: 'load-annotations',
   GENERATE_AND_SAVE_ANNOTATION: 'generate-and-save-annotation',
+  ANNOTATION_PROGRESS: 'annotation-progress',
 });

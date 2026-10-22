@@ -292,7 +292,7 @@ export async function handleLoadAnnotations(_event, request) {
   }
 }
 
-export async function handleGenerateAndSaveAnnotation(_event, request) {
+export async function handleGenerateAndSaveAnnotation(event, request) {
   if (!isRecord(request) || !isRequestId(request.requestId)) {
     return {
       ...serviceFailure(null, '生成并保存注解的请求标识无效。', SERVICE_ERROR_KIND.INVALID_REQUEST),
@@ -300,7 +300,12 @@ export async function handleGenerateAndSaveAnnotation(_event, request) {
     };
   }
   const requestId = request.requestId;
-  const result = await generateAndSaveAnnotation(request, { appPath: app.getAppPath() });
+  const result = await generateAndSaveAnnotation(request, {
+    appPath: app.getAppPath(),
+    onStage: progress => {
+      if (event?.sender && !event.sender.isDestroyed()) event.sender.send(IPC_CHANNELS.ANNOTATION_PROGRESS, { ...progress, requestId });
+    },
+  });
   return { ...result, requestId };
 }
 

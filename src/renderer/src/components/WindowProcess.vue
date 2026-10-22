@@ -49,7 +49,7 @@
               :key="page.id"
               class="inspector-tab"
               :class="{ active: activeInspectorPage === page.id }"
-              :title="`${page.label}（${page.shortcut}）`"
+              :title="page.shortcut ? `${page.label}（${page.shortcut}）` : page.label"
               :aria-label="page.label"
               :aria-pressed="activeInspectorPage === page.id"
               @click="selectInspectorPage(page.id)"
@@ -237,6 +237,22 @@
             </div>
           </section>
 
+          <ImageAnnotationPanel
+            v-show="activeInspectorPage === INSPECTOR_PAGE.IMAGE_ANNOTATION"
+            v-model="imageAnnotationDraft"
+            :status="imageAnnotationStatus"
+            :error="imageAnnotationError"
+            :load-error="imageAnnotationLoadError"
+            :loading="imageAnnotationsLoading"
+            :can-input="canInputImageAnnotation"
+            :can-submit="canSubmitImageAnnotation"
+            :image-number="currentImageAnnotation ? currentImageAnnotation.imageIndex + 1 : 0"
+            :image-name="imgFileName"
+            :saved="currentImageAnnotation?.saved ?? null"
+            @submit="submitImageAnnotation"
+            @reload="reloadImageAnnotations"
+          />
+
           <DatasetInfoPanel
             v-show="activeInspectorPage === INSPECTOR_PAGE.DATASET"
             :dataset-load-error="datasetLoadError"
@@ -358,12 +374,15 @@ import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
 import WorkspaceToolbar from './WorkspaceToolbar.vue';
 import DatasetInfoPanel from './DatasetInfoPanel.vue';
+import ImageAnnotationPanel from './ImageAnnotationPanel.vue';
+import { useImageAnnotations } from '../composables/useImageAnnotations.js';
+import { IPC_CHANNELS } from '../../../shared/IpcChannels.js';
 import Help from './Help.vue';
 import HistoryView from './HistoryView.vue';
 import { useWorkspaceEditing } from '../composables/useWorkspaceEditing.js';
 import { usePointSelectionHistory } from '../composables/usePointSelectionHistory.js';
 import { useToastNotifications } from '../composables/useToastNotifications.js';
-import { getCurrentAnnotationView, getJsonFileInfo } from '../state/DatasetState.js';
+import { getCurrentAnnotationView, getJsonFileInfo, getJsonImagePaths } from '../state/DatasetState.js';
 import { createJsonFileService } from '../services/JsonFileService.js';
 import {
   createWorkspaceSessionService,
@@ -414,6 +433,7 @@ const zoomView = ref(null);
 
 const INSPECTOR_PAGE = Object.freeze({
   ANNOTATION: 'annotation',
+  IMAGE_ANNOTATION: 'image-annotation',
   DATASET: 'dataset',
   DISPLAY: 'display',
   HISTORY: 'history',
@@ -422,6 +442,7 @@ const INSPECTOR_PAGE = Object.freeze({
 const inspectorPages = Object.freeze([
   { id: INSPECTOR_PAGE.DATASET, label: '图集与图片', icon: '▤', shortcut: 'Ctrl+1' },
   { id: INSPECTOR_PAGE.ANNOTATION, label: 'Quad 标注', icon: '◇', shortcut: 'Ctrl+2' },
+  { id: INSPECTOR_PAGE.IMAGE_ANNOTATION, label: '图片注解', icon: '✎' },
   { id: INSPECTOR_PAGE.DISPLAY, label: '视图与交互', icon: '◐', shortcut: 'Ctrl+3' },
   { id: INSPECTOR_PAGE.HISTORY, label: '操作历史', icon: '↶', shortcut: 'Ctrl+4' },
 ]);
@@ -456,9 +477,9 @@ const {
   hasCurrentImageSession,
   canLoadImage,
   isImageLoading,
-  chooseImgFile,
-  changeImageByArrowKeys,
-  jumpToImageIndex,
+  chooseImgFile: chooseImgFileInternal,
+  changeImageByArrowKeys: changeImageByArrowKeysInternal,
+  jumpToImageIndex: jumpToImageIndexInternal,
   startDatasetImageRequest,
   clearCurrentImage,
   resetForDatasetChange: resetImageSessionForDatasetChange,
@@ -490,7 +511,7 @@ const canOperate = computed(
     imageSession.value.imageIndex >= 0 &&
     imageSession.value.imageIndex === imagePositionView.value.currentIndex,
 );
-const { loadedProductType, datasetLoadError, restoreWorkspaceSession, chooseJsonFile, changeDatasetByDirection } =
+const { loadedProductType, datasetLoadError, restoreWorkspaceSession, chooseJsonFile: chooseJsonFileInternal, changeDatasetByDirection: changeDatasetByDirectionInternal } =
   useWorkspaceDataset({
     workflowState,
     invoke: (channel, request) => ipcRenderer.invoke(channel, request),
@@ -505,6 +526,63 @@ const { loadedProductType, datasetLoadError, restoreWorkspaceSession, chooseJson
     showDatasetPanel: () => selectInspectorPage(INSPECTOR_PAGE.DATASET),
     showAnnotationPanel: () => selectInspectorPage(INSPECTOR_PAGE.ANNOTATION),
   });
+
+const imageAnnotationDataset = computed(() => loadedProductType.value ? {
+  path: selectedDataset.value.path,
+  version: workflowState.value.datasetVersion,
+  imagePaths: getJsonImagePaths(),
+} : null);
+const imageAnnotationIndex = computed(() => hasCurrentImageSession.value && imageSession.value.imageIndex === imagePositionView.value.currentIndex ? imageSession.value.imageIndex : -1);
+const {
+  current: currentImageAnnotation,
+  draft: imageAnnotationDraft,
+  status: imageAnnotationStatus,
+  error: imageAnnotationError,
+  loadError: imageAnnotationLoadError,
+  loading: imageAnnotationsLoading,
+  canInput: canInputImageAnnotation,
+  canSubmit: canSubmitImageAnnotation,
+  hasUnsavedWork: hasUnsavedImageAnnotations,
+  reload: reloadImageAnnotations,
+  submit: submitImageAnnotation,
+  allowNavigation: allowImageAnnotationNavigation,
+  dispose: disposeImageAnnotations,
+} = useImageAnnotations({
+  dataset: imageAnnotationDataset,
+  imageIndex: imageAnnotationIndex,
+  canEdit: canOperate,
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+  confirmNavigation: message => window.confirm(message),
+  notify: outputMessage,
+  subscribeProgress: listener => ipcRenderer.on?.(IPC_CHANNELS.ANNOTATION_PROGRESS, (_event, progress) => listener(progress)),
+});
+
+function chooseImgFile() {
+  if (canLoadImage.value && !allowImageAnnotationNavigation()) return;
+  return chooseImgFileInternal();
+}
+function changeImageByArrowKeys(direction) {
+  if (canLoadImage.value && !allowImageAnnotationNavigation()) return;
+  return changeImageByArrowKeysInternal(direction);
+}
+function jumpToImageIndex() {
+  if (canLoadImage.value && Number(jumpImageIndex.value) !== imagePositionView.value.currentIndex + 1 && !allowImageAnnotationNavigation()) return;
+  return jumpToImageIndexInternal();
+}
+function chooseJsonFile() {
+  if (canLoadDataset.value && !allowImageAnnotationNavigation()) return;
+  return chooseJsonFileInternal();
+}
+function changeDatasetByDirection(direction) {
+  if (canLoadDataset.value && !allowImageAnnotationNavigation()) return;
+  return changeDatasetByDirectionInternal(direction);
+}
+function guardAnnotationUnload(event) {
+  if (hasUnsavedImageAnnotations.value) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+}
 const {
   selectedDots,
   canUndo: canUndoPoints,
@@ -667,12 +745,15 @@ function selectInspectorPage(pageId) {
 onMounted(() => {
   syncZoomCanvasPixelRatio();
   window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('beforeunload', guardAnnotationUnload);
   void restoreWorkspaceSession();
 });
 
 onUnmounted(() => {
   disposed = true;
   disposeImages();
+  disposeImageAnnotations();
+  window.removeEventListener('beforeunload', guardAnnotationUnload);
   window.removeEventListener('keydown', handleKeyDown);
   disposeNotifications();
 });
