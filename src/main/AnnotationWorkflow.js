@@ -1,23 +1,23 @@
 import { normalizeAnnotation } from './AnnotationService.js';
 import {
-  getAnnotationDatasetKey,
+  findAnnotationRecord,
+  getAnnotationRecordKey,
   loadAnnotations,
   resolveAnnotationDatasetPath,
   saveAnnotation,
 } from './AnnotationStore.js';
-import { isRecord, serviceFailure, SERVICE_ERROR_KIND } from '../shared/ServiceResult.js';
+import { isFilePath, isRecord, serviceFailure, SERVICE_ERROR_KIND } from '../shared/ServiceResult.js';
 
 const pendingRecords = new Set();
 
 export async function generateAndSaveAnnotation(request, { appPath, normalize = normalizeAnnotation, onStage } = {}) {
   if (
     !isRecord(request) ||
-    typeof request.recordId !== 'string' ||
-    !request.recordId ||
+    !isFilePath(request.imagePath) ||
     typeof request.text !== 'string' ||
     !request.text.trim()
   ) {
-    return serviceFailure(null, '请提供图片记录标识和非空人工描述。', SERVICE_ERROR_KIND.INVALID_REQUEST);
+    return serviceFailure(null, '请提供图片路径和非空人工描述。', SERVICE_ERROR_KIND.INVALID_REQUEST);
   }
   let datasetPath;
   try {
@@ -25,10 +25,10 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
   } catch (error) {
     return serviceFailure(error, '注解图集路径无效。', SERVICE_ERROR_KIND.INVALID_REQUEST);
   }
-  const recordId = request.recordId;
+  const imagePath = request.imagePath;
   const text = request.text;
-  const context = { datasetPath, recordId };
-  const key = `${getAnnotationDatasetKey(datasetPath)}\0${recordId}`;
+  const context = { datasetPath, imagePath };
+  const key = getAnnotationRecordKey(datasetPath, imagePath);
   if (pendingRecords.has(key))
     return { ...serviceFailure(null, '该图片记录正在生成或保存注解，请等待完成。'), ...context };
   pendingRecords.add(key);
@@ -36,12 +36,16 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
   let stage = 'prepare';
   const reportStage = () => {
     // A closed renderer must not interrupt a valid save.
-    try { onStage?.({ ...context, stage }); } catch { /* Presentation only. */ }
+    try {
+      onStage?.({ ...context, stage });
+    } catch {
+      /* Presentation only. */
+    }
   };
   try {
     const snapshot = await loadAnnotations(datasetPath);
-    if (!snapshot.records.some(record => record.recordId === recordId)) {
-      throw new Error('请求对应的图片记录已变化，请重新加载图集后重试。');
+    if (!findAnnotationRecord(snapshot, imagePath)) {
+      throw new Error('请求对应的图片已不在当前图集中，请重新加载图集后重试。');
     }
     stage = 'generate';
     reportStage();
@@ -50,7 +54,7 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
     if (!generated.success) return { ...generated, ...context, stage };
     stage = 'save';
     reportStage();
-    const saved = await saveAnnotation(datasetPath, recordId, {
+    const saved = await saveAnnotation(datasetPath, imagePath, {
       completed: generated.completed,
       rawDescription: text,
       annotation: generated.annotation,
