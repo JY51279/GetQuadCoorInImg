@@ -105,6 +105,8 @@ npm ci
 npm run dev
 ```
 
+`dev` 和 `start` 会先通过 `install-electron` 检查 Electron 桌面程序；缺失时从本机缓存或网络安装，已安装时直接继续启动。Electron 42 起不再在 `npm ci` / `npm install` 时自动下载桌面程序，而当前 `electron-vite` 5 直接读取其启动路径，因此干净安装后可能出现 `Error: Electron uninstall`。启动脚本已补上这一步，也可手动执行 `npx install-electron --no` 修复。单元测试和生产构建不会启动 Electron 窗口，通过检查不代表桌面程序已安装。
+
 开发服务器支持渲染端热更新。若安装依赖时遇到 `EPERM` 或文件占用错误，请先关闭正在运行的 QuadTool、Electron 开发进程和相关终端。
 
 ## 检查和测试
