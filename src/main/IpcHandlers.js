@@ -1,5 +1,6 @@
 import { IPC_CHANNELS } from '../shared/IpcChannels.js';
-import { dialog, ipcMain } from 'electron';
+import { app, dialog, ipcMain } from 'electron';
+import { normalizeAnnotation } from './AnnotationService.js';
 import {
   getDefaultDialogDirectory,
   getImageDialogDefaultDirectory,
@@ -257,6 +258,26 @@ export async function handleRecordWorkspaceImage(_event, request) {
   }
 }
 
+export async function handleNormalizeAnnotation(_event, request) {
+  if (
+    !isRecord(request) ||
+    !isRequestId(request.requestId) ||
+    typeof request.text !== 'string' ||
+    !request.text.trim()
+  ) {
+    return {
+      ...serviceFailure(null, '注解请求无效，请提供请求标识和非空人工描述。', SERVICE_ERROR_KIND.INVALID_REQUEST),
+      requestId: isRequestId(request?.requestId) ? request.requestId : null,
+      usage: null,
+    };
+  }
+  // Only the text reaches the model service; requestId remains local and lets
+  // the future panel associate an asynchronous response with its submission.
+  const requestId = request.requestId;
+  const result = await normalizeAnnotation(request.text, { appPath: app.getAppPath() });
+  return { ...result, requestId };
+}
+
 export function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.OPEN_IMAGE, handleOpenImageDialog);
   ipcMain.handle(IPC_CHANNELS.PREPARE_IMAGE, handlePrepareImage);
@@ -269,4 +290,5 @@ export function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.GET_WORKSPACE, handleGetWorkspaceSession);
   ipcMain.handle(IPC_CHANNELS.RECORD_DATASET, handleRecordWorkspaceDataset);
   ipcMain.handle(IPC_CHANNELS.RECORD_IMAGE, handleRecordWorkspaceImage);
+  ipcMain.handle(IPC_CHANNELS.NORMALIZE_ANNOTATION, handleNormalizeAnnotation);
 }

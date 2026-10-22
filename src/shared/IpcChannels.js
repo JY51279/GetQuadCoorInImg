@@ -10,4 +10,5 @@ export const IPC_CHANNELS = Object.freeze({
   GET_WORKSPACE: 'get-workspace-session',
   RECORD_DATASET: 'record-workspace-dataset',
   RECORD_IMAGE: 'record-workspace-image',
+  NORMALIZE_ANNOTATION: 'normalize-annotation',
 });

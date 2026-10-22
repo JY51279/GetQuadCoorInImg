@@ -50,6 +50,7 @@ import {
   handleGetWorkspaceSession,
   handleRecordWorkspaceDataset,
   handleRecordWorkspaceImage,
+  handleNormalizeAnnotation,
   registerIpcHandlers,
 } from '../src/main/IpcHandlers.js';
 
@@ -422,6 +423,7 @@ describe('Main-process IPC handlers', () => {
     expect(electronMocks.handle).toHaveBeenCalledWith('get-workspace-session', handleGetWorkspaceSession);
     expect(electronMocks.handle).toHaveBeenCalledWith('record-workspace-dataset', handleRecordWorkspaceDataset);
     expect(electronMocks.handle).toHaveBeenCalledWith('record-workspace-image', handleRecordWorkspaceImage);
+    expect(electronMocks.handle).toHaveBeenCalledWith('normalize-annotation', handleNormalizeAnnotation);
     expect(electronMocks.on).not.toHaveBeenCalled();
   });
 });
