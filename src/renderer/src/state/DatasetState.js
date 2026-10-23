@@ -161,6 +161,44 @@ export function getCurrentAnnotationView() {
     ),
   };
 }
+
+export function getCurrentImageQuadSnapshot() {
+  if (datasetState.currentImageIndex < 0) {
+    return { success: false, error: '当前没有激活的 JSON 图片。' };
+  }
+  if (!Array.isArray(datasetState.currentItems) || datasetState.currentItems.length === 0) {
+    return { success: false, error: '当前图片没有可用于生成注解的码区。' };
+  }
+
+  const quads = [];
+  for (let index = 0; index < datasetState.currentItems.length; index++) {
+    const item = datasetState.currentItems[index];
+    const location = item?.[datasetState.productSchema.ItemKey];
+    if (typeof location !== 'string') {
+      return { success: false, error: `区域 ${index + 1} 的码区坐标缺失或格式无效。` };
+    }
+    if (location.trim().replace(/\s+/g, ' ') === DEFAULT_LOCATION) {
+      return { success: false, error: `区域 ${index + 1} 仍是占位坐标，请先完成该码区标注。` };
+    }
+
+    const points = parsePointString2Array(location.trim().replace(/\s+/g, ' '), POINT_SEPARATOR);
+    const prepared = prepareQuad(points, item?.['Barcode Type'] ?? '');
+    if (!prepared.success) {
+      return { success: false, error: `区域 ${index + 1} 的码区坐标无效：${prepared.error}` };
+    }
+    quads.push({
+      regionIndex: index,
+      points: points.map(point => ({ x: point.x, y: point.y })),
+    });
+  }
+
+  return {
+    success: true,
+    imageIndex: datasetState.currentImageIndex,
+    quads,
+  };
+}
+
 export function getJsonFileInfo() {
   return {
     str: transJson2Str(datasetState.dataset),

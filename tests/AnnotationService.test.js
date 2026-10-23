@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { normalizeAnnotation } from '../src/main/AnnotationService.js';
+import { normalizeAnnotation, normalizeVisualAnnotation } from '../src/main/AnnotationService.js';
 
 const question = {
   id: 'q1',
@@ -73,7 +73,10 @@ describe('annotation feedback context', () => {
     const options = { appPath: process.cwd(), env: { DEEPSEEK_API_KEY: 'test-key' }, fetchImpl };
     const first = await normalizeAnnotation('右侧码区模糊。', options);
     expect(first).toMatchObject({ success: true, status: 'needs_feedback', questions: [question] });
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).messages[1].content).toBe('右侧码区模糊。');
+    const firstMessages = JSON.parse(fetchImpl.mock.calls[0][1].body).messages;
+    expect(firstMessages[0].content).toContain('# 图片注解生成与多轮反馈规则');
+    expect(firstMessages[0].content).toContain('本次输入模式为文字入口');
+    expect(firstMessages[1].content).toBe('右侧码区模糊。');
 
     for (const answers of [[], [{ questionId: 'q1', optionIds: ['other'], text: '' }]]) {
       const result = await normalizeAnnotation('右侧码区模糊。', {
@@ -83,6 +86,130 @@ describe('annotation feedback context', () => {
       expect(result).toMatchObject({ success: false, errorKind: 'invalid-request' });
     }
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('visual annotation context', () => {
+  it('resends the same mapped region images and complete feedback history on every request', async () => {
+    const requests = [];
+    const fetchImpl = async (_url, options) => {
+      requests.push(JSON.parse(options.body));
+      return modelResponse(
+        requests.length === 1
+          ? { status: 'needs_feedback', questions: [question] }
+          : { status: 'final', completed: true, annotation: '区域 1（左上）的码区存在模糊。' },
+      );
+    };
+    const regions = [
+      {
+        regionIndex: 0,
+        label: '区域 1（左上）',
+        position: '左上',
+        imageUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      },
+      {
+        regionIndex: 1,
+        label: '区域 2（右下）',
+        position: '右下',
+        imageUrl: 'data:image/png;base64,iVBORw0KGgoAAA=',
+      },
+    ];
+    const options = {
+      appPath: process.cwd(),
+      env: { DEEPSEEK_API_KEY: 'test-key' },
+      fetchImpl,
+    };
+
+    await expect(normalizeVisualAnnotation(regions, options)).resolves.toMatchObject({
+      success: true,
+      status: 'needs_feedback',
+    });
+    const feedbackTurns = [
+      {
+        questions: [question],
+        answers: [{ questionId: 'q1', optionIds: ['keep'], text: '' }],
+        message: '按可见现象结束细化。',
+      },
+    ];
+    await expect(normalizeVisualAnnotation(regions, { ...options, feedbackTurns })).resolves.toMatchObject({
+      success: true,
+      status: 'final',
+      completed: true,
+    });
+
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      expect(request.messages[0].content).toContain('# 图片注解生成与多轮反馈规则');
+      expect(request.messages[0].content).toContain('本次输入模式为图像入口');
+      expect(request.messages[0].content).toContain('只依据本次请求附带的可见图像');
+      expect(request.messages[0].content).not.toContain('只理解文字，不读取或分析图片');
+      expect(request.messages[1].content.slice(1)).toEqual(
+        regions.map(region => ({
+          type: 'image_url',
+          image_url: { url: region.imageUrl, detail: 'high' },
+        })),
+      );
+    }
+    expect(JSON.parse(requests[0].messages[1].content[0].text)).toEqual({
+      inputSource: 'region_images',
+      regionMapping: [
+        { regionIndex: 0, label: '区域 1（左上）', position: '左上' },
+        { regionIndex: 1, label: '区域 2（右下）', position: '右下' },
+      ],
+      feedbackHistory: [],
+    });
+    expect(JSON.parse(requests[1].messages[1].content[0].text).feedbackHistory).toEqual([
+      {
+        modelQuestions: [question],
+        userAnswers: feedbackTurns[0].answers,
+        userMessage: feedbackTurns[0].message,
+      },
+    ]);
+  });
+
+  it('rejects missing region mappings and invalid feedback before calling the model', async () => {
+    const fetchImpl = vi.fn();
+    const options = { appPath: process.cwd(), env: { DEEPSEEK_API_KEY: 'test-key' }, fetchImpl };
+    await expect(normalizeVisualAnnotation([], options)).resolves.toMatchObject({
+      success: false,
+      errorKind: 'invalid-request',
+    });
+    await expect(
+      normalizeVisualAnnotation(
+        [
+          {
+            regionIndex: 0,
+            label: '区域 1（左上）',
+            position: '左上',
+            imageUrl: 'data:image/png;base64,iVBORw0KGgo=',
+          },
+        ],
+        { ...options, feedbackTurns: [{ questions: [question], answers: [], message: '' }] },
+      ),
+    ).resolves.toMatchObject({ success: false, errorKind: 'invalid-request' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty completed visual annotation instead of treating it as no abnormality', async () => {
+    const regions = [
+      {
+        regionIndex: 0,
+        label: '区域 1（左上）',
+        position: '左上',
+        imageUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      },
+    ];
+    const result = await normalizeVisualAnnotation(regions, {
+      appPath: process.cwd(),
+      env: { DEEPSEEK_API_KEY: 'test-key' },
+      fetchImpl: async () => modelResponse({ status: 'final', completed: true, annotation: '' }),
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      errorKind: 'invalid-response',
+      error: expect.stringContaining('视觉模型返回了空注解'),
+    });
   });
 });
 

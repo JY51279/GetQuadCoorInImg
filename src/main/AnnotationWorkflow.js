@@ -1,4 +1,5 @@
-import { normalizeAnnotation } from './AnnotationService.js';
+import { normalizeAnnotation, normalizeVisualAnnotation } from './AnnotationService.js';
+import { loadAnnotationRegionImages } from './ImageFileReader.js';
 import {
   findAnnotationRecord,
   getAnnotationRecordKey,
@@ -7,17 +8,31 @@ import {
   saveAnnotation,
 } from './AnnotationStore.js';
 import { isFilePath, isRecord, serviceFailure, SERVICE_ERROR_KIND } from '../shared/ServiceResult.js';
+import { ANNOTATION_INPUT_SOURCE } from '../shared/AnnotationInputSource.js';
 
 const pendingRecords = new Set();
 
-export async function generateAndSaveAnnotation(request, { appPath, normalize = normalizeAnnotation, onStage } = {}) {
+export async function generateAndSaveAnnotation(
+  request,
+  {
+    appPath,
+    normalize = normalizeAnnotation,
+    normalizeVisual = normalizeVisualAnnotation,
+    loadRegions = loadAnnotationRegionImages,
+    onStage,
+  } = {},
+) {
+  const inputSource = request?.inputSource ?? ANNOTATION_INPUT_SOURCE.TEXT;
+  const isTextInput = inputSource === ANNOTATION_INPUT_SOURCE.TEXT;
+  const isImageInput = inputSource === ANNOTATION_INPUT_SOURCE.IMAGE;
   if (
     !isRecord(request) ||
     !isFilePath(request.imagePath) ||
-    typeof request.text !== 'string' ||
-    !request.text.trim()
+    (!isTextInput && !isImageInput) ||
+    (isTextInput && (typeof request.text !== 'string' || !request.text.trim())) ||
+    (isImageInput && (!Array.isArray(request.regions) || request.regions.length === 0))
   ) {
-    return serviceFailure(null, '请提供图片路径和非空人工描述。', SERVICE_ERROR_KIND.INVALID_REQUEST);
+    return serviceFailure(null, '请提供图片路径及有效的文字或图像输入。', SERVICE_ERROR_KIND.INVALID_REQUEST);
   }
   let datasetPath;
   try {
@@ -26,7 +41,7 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
     return serviceFailure(error, '注解图集路径无效。', SERVICE_ERROR_KIND.INVALID_REQUEST);
   }
   const imagePath = request.imagePath;
-  const text = request.text;
+  const text = isTextInput ? request.text : '';
   const context = { datasetPath, imagePath };
   const key = getAnnotationRecordKey(datasetPath, imagePath);
   if (pendingRecords.has(key))
@@ -49,7 +64,12 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
     }
     stage = 'generate';
     reportStage();
-    const generated = await normalize(text, { appPath, feedbackTurns: request.feedbackTurns });
+    const generated = isImageInput
+      ? await normalizeVisual(await loadRegions(request.regions), {
+          appPath,
+          feedbackTurns: request.feedbackTurns,
+        })
+      : await normalize(text, { appPath, feedbackTurns: request.feedbackTurns });
     usage = generated.usage ?? null;
     if (!generated.success) return { ...generated, ...context, stage };
     if (generated.status === 'needs_feedback' && Array.isArray(generated.questions) && generated.questions.length) {
@@ -75,6 +95,7 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
     reportStage();
     const saved = await saveAnnotation(datasetPath, imagePath, {
       completed: generated.completed,
+      inputSource,
       rawDescription: text,
       annotation: generated.annotation,
     });

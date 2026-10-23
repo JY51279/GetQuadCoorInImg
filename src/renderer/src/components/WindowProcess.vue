@@ -250,10 +250,18 @@
             :feedback="imageAnnotationFeedback"
             :can-respond="canRespondImageAnnotation"
             :can-submit-feedback="canSubmitImageAnnotationFeedback"
+            :can-restart-feedback="canRestartImageAnnotationFeedback"
             :image-number="currentImageAnnotation ? currentImageAnnotation.imageIndex + 1 : 0"
             :image-name="imgFileName"
             :saved="currentImageAnnotation?.saved ?? null"
+            :can-prepare-images="canPrepareAnnotationImages"
+            :preparing-images="preparingAnnotationImages"
+            :image-regions="annotationImageRegions"
+            :image-input-error="annotationImageInputError"
+            :can-submit-images="canSubmitPreparedAnnotationImages"
             @submit="submitImageAnnotation"
+            @prepare-images="prepareCurrentAnnotationImages"
+            @submit-images="submitPreparedAnnotationImages"
             @feedback-option="setImageAnnotationFeedbackOption($event.questionId, $event.optionId, $event.checked)"
             @feedback-text="setImageAnnotationFeedbackText($event.questionId, $event.text)"
             @feedback-clear-options="clearImageAnnotationFeedbackOptions"
@@ -392,7 +400,7 @@ import HistoryView from './HistoryView.vue';
 import { useWorkspaceEditing } from '../composables/useWorkspaceEditing.js';
 import { usePointSelectionHistory } from '../composables/usePointSelectionHistory.js';
 import { useToastNotifications } from '../composables/useToastNotifications.js';
-import { getCurrentAnnotationView, getJsonFileInfo } from '../state/DatasetState.js';
+import { getCurrentAnnotationView, getCurrentImageQuadSnapshot, getJsonFileInfo } from '../state/DatasetState.js';
 import { createJsonFileService } from '../services/JsonFileService.js';
 import {
   createWorkspaceSessionService,
@@ -512,6 +520,11 @@ const imgFileName = computed(() => imageSession.value?.fileName ?? '');
 const imageAnnotationPanelRef = ref(null);
 const imageCoordinateScale = computed(() => imageSession.value?.coordinateScale ?? { x: 1, y: 1 });
 const currentImageOriginalSize = computed(() => imageSession.value?.originalSize ?? null);
+const preparingAnnotationImages = ref(false);
+const annotationImageRegions = ref([]);
+const annotationImageInputError = ref('');
+const preparedAnnotationVisualInput = ref(null);
+let annotationImageRequestId = 0;
 const selectedDataset = computed(() => workflowState.value.datasetTarget ?? { path: '', fileName: '' });
 const jsonFileName = computed(() => selectedDataset.value.fileName);
 const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
@@ -521,6 +534,13 @@ const canOperate = computed(
     hasCurrentImageSession.value &&
     imageSession.value.imageIndex >= 0 &&
     imageSession.value.imageIndex === imagePositionView.value.currentIndex,
+);
+const canPrepareAnnotationImages = computed(
+  () =>
+    canOperate.value &&
+    !imageAnnotationsBusy.value &&
+    !imageAnnotationFeedback.value &&
+    !preparingAnnotationImages.value,
 );
 const {
   loadedProductType,
@@ -561,12 +581,14 @@ const {
   feedback: imageAnnotationFeedback,
   canRespond: canRespondImageAnnotation,
   canSubmitFeedback: canSubmitImageAnnotationFeedback,
+  canRestartFeedback: canRestartImageAnnotationFeedback,
   hasPending: hasPendingImageAnnotations,
   busy: imageAnnotationsBusy,
   open: openImageAnnotationDataset,
   clear: clearImageAnnotations,
   reload: reloadImageAnnotations,
   submit: submitImageAnnotation,
+  submitVisual: submitVisualImageAnnotation,
   setFeedbackOption: setImageAnnotationFeedbackOption,
   setFeedbackText: setImageAnnotationFeedbackText,
   clearFeedbackOptions: clearImageAnnotationFeedbackOptions,
@@ -581,6 +603,7 @@ const {
   notify: outputMessage,
   subscribeProgress: listener =>
     ipcRenderer.on?.(IPC_CHANNELS.ANNOTATION_PROGRESS, (_event, progress) => listener(progress)),
+  isVisualSessionCurrent: snapshot => isPreparedVisualSnapshotCurrent(snapshot),
 });
 
 function chooseImgFile() {
@@ -605,6 +628,77 @@ function guardAnnotationUnload(event) {
     event.preventDefault();
     event.returnValue = '';
   }
+}
+
+function clearPreparedAnnotationImages(message = '') {
+  annotationImageRequestId++;
+  preparingAnnotationImages.value = false;
+  annotationImageRegions.value = [];
+  preparedAnnotationVisualInput.value = null;
+  annotationImageInputError.value = message;
+}
+
+async function prepareCurrentAnnotationImages() {
+  if (!canPrepareAnnotationImages.value) return;
+  const snapshot = getCurrentImageQuadSnapshot();
+  if (!snapshot.success) {
+    annotationImageInputError.value = snapshot.error;
+    annotationImageRegions.value = [];
+    return;
+  }
+
+  const requestId = ++annotationImageRequestId;
+  preparingAnnotationImages.value = true;
+  annotationImageInputError.value = '';
+  annotationImageRegions.value = [];
+  try {
+    const result = await ipcRenderer.invoke(IPC_CHANNELS.PREPARE_ANNOTATION_IMAGES, {
+      requestId,
+      imagePath: imageSession.value.path,
+      quads: snapshot.quads,
+    });
+    if (disposed || requestId !== annotationImageRequestId) return;
+    if (!result?.success || result.requestId !== requestId) {
+      annotationImageInputError.value = result?.error || '生成码区局部图失败。';
+      return;
+    }
+    annotationImageRegions.value = result.regions;
+    preparedAnnotationVisualInput.value = {
+      regions: result.regions,
+      snapshot: {
+        imagePath: imageSession.value.path,
+        quadSignature: JSON.stringify(snapshot.quads),
+        quads: snapshot.quads,
+      },
+    };
+  } catch (error) {
+    if (!disposed && requestId === annotationImageRequestId) {
+      annotationImageInputError.value = error instanceof Error ? error.message : '生成码区局部图失败。';
+    }
+  } finally {
+    if (!disposed && requestId === annotationImageRequestId) preparingAnnotationImages.value = false;
+  }
+}
+const canSubmitPreparedAnnotationImages = computed(
+  () =>
+    canPrepareAnnotationImages.value &&
+    annotationImageRegions.value.length > 0 &&
+    preparedAnnotationVisualInput.value !== null,
+);
+
+function isPreparedVisualSnapshotCurrent(snapshot) {
+  if (!snapshot || !imageSession.value) return false;
+  const currentSnapshot = getCurrentImageQuadSnapshot();
+  return (
+    currentSnapshot.success &&
+    snapshot.imagePath === imageSession.value.path &&
+    snapshot.quadSignature === JSON.stringify(currentSnapshot.quads)
+  );
+}
+
+function submitPreparedAnnotationImages() {
+  if (!canSubmitPreparedAnnotationImages.value) return;
+  return submitVisualImageAnnotation(preparedAnnotationVisualInput.value);
 }
 const {
   selectedDots,
@@ -805,6 +899,23 @@ function syncZoomCanvasPixelRatio() {
 }
 
 watch(displayPixelRatio, syncZoomCanvasPixelRatio);
+watch(
+  () => imageSession.value?.path ?? '',
+  () => {
+    if (annotationImageRegions.value.length || preparingAnnotationImages.value) clearPreparedAnnotationImages();
+  },
+);
+watch(
+  () => JSON.stringify(annotationView.value.quads),
+  (nextSnapshot, previousSnapshot) => {
+    if (
+      nextSnapshot !== previousSnapshot &&
+      (annotationImageRegions.value.length > 0 || preparingAnnotationImages.value)
+    ) {
+      clearPreparedAnnotationImages('码区坐标已变化，请重新生成局部图。');
+    }
+  },
+);
 
 // Keyboard shortcuts
 const shortcutCommands = createWorkspaceShortcutCommands({

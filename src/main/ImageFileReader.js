@@ -11,6 +11,11 @@ export const MAX_DISPLAY_DIMENSION = 4096;
 export const MAX_INPUT_FILE_BYTES = 64 * 1024 * 1024;
 export const MAX_INPUT_PIXELS = 40_000_000;
 const MAX_CACHE_BYTES = 512 * 1024 * 1024;
+const ANNOTATION_CROP_PADDING_RATIO = 0.12;
+const ANNOTATION_CROP_MIN_PADDING = 8;
+const ANNOTATION_CROP_MAX_PADDING = 96;
+const MAX_ANNOTATION_REGION_BYTES = 8 * 1024 * 1024;
+const MAX_ANNOTATION_IMAGES_BYTES = 32 * 1024 * 1024;
 const BMP_MIN_HEADER_BYTES = 26;
 const BMP_HEADER_READ_BYTES = 54;
 const BMP_CORE_HEADER_SIZE = 12;
@@ -310,7 +315,84 @@ async function renderCachedPng(filePath, description, displaySize, cachePath) {
   await writeCacheFileAtomically(cachePath, tempPath => fs.promises.writeFile(tempPath, resizedImage.toPNG()));
 }
 
-async function pruneImageCache(protectedPath = '') {
+function getOriginalImagePipeline(filePath, description) {
+  if (description.decoder === 'sharp') {
+    return sharp(filePath, {
+      page: 0,
+      sequentialRead: true,
+      limitInputPixels: MAX_INPUT_PIXELS,
+    }).autoOrient();
+  }
+  if (description.decoder === 'bmp') return createBmpSharpPipeline(filePath, description);
+  return sharp(description.nativeImage.toPNG(), { limitInputPixels: MAX_INPUT_PIXELS });
+}
+
+function getAnnotationRegionPosition(bounds, imageSize) {
+  const centerX = (bounds.left + bounds.right) / 2 / imageSize.width;
+  const centerY = (bounds.top + bounds.bottom) / 2 / imageSize.height;
+  const horizontal = centerX < 1 / 3 ? 'left' : centerX > 2 / 3 ? 'right' : 'center';
+  const vertical = centerY < 1 / 3 ? 'top' : centerY > 2 / 3 ? 'bottom' : 'middle';
+  const positions = {
+    'top-left': '左上',
+    'top-center': '上方',
+    'top-right': '右上',
+    'middle-left': '左侧',
+    'middle-center': '中央',
+    'middle-right': '右侧',
+    'bottom-left': '左下',
+    'bottom-center': '下方',
+    'bottom-right': '右下',
+  };
+  return positions[`${vertical}-${horizontal}`];
+}
+
+function prepareAnnotationCrop(points, imageSize, regionNumber) {
+  if (
+    !Array.isArray(points) ||
+    points.length !== 4 ||
+    !points.every(point => Number.isSafeInteger(point?.x) && Number.isSafeInteger(point?.y))
+  ) {
+    throw new Error(`区域 ${regionNumber} 的码区坐标无效，必须包含四个整数坐标点。`);
+  }
+  if (points.every(point => point.x === 0 && point.y === 0)) {
+    throw new Error(`区域 ${regionNumber} 仍是占位坐标，请先完成该码区标注。`);
+  }
+
+  const xs = points.map(point => point.x);
+  const ys = points.map(point => point.y);
+  const bounds = {
+    left: Math.min(...xs),
+    top: Math.min(...ys),
+    right: Math.max(...xs),
+    bottom: Math.max(...ys),
+  };
+  if (bounds.left === bounds.right || bounds.top === bounds.bottom) {
+    throw new Error(`区域 ${regionNumber} 的码区外接范围没有有效面积。`);
+  }
+  if (bounds.right < 0 || bounds.bottom < 0 || bounds.left >= imageSize.width || bounds.top >= imageSize.height) {
+    throw new Error(`区域 ${regionNumber} 完全位于原图范围之外。`);
+  }
+
+  const padding = Math.min(
+    ANNOTATION_CROP_MAX_PADDING,
+    Math.max(
+      ANNOTATION_CROP_MIN_PADDING,
+      Math.round(Math.max(bounds.right - bounds.left, bounds.bottom - bounds.top) * ANNOTATION_CROP_PADDING_RATIO),
+    ),
+  );
+  const left = Math.max(0, Math.floor(bounds.left - padding));
+  const top = Math.max(0, Math.floor(bounds.top - padding));
+  const right = Math.min(imageSize.width - 1, Math.ceil(bounds.right + padding));
+  const bottom = Math.min(imageSize.height - 1, Math.ceil(bounds.bottom + padding));
+  return {
+    bounds,
+    extract: { left, top, width: right - left + 1, height: bottom - top + 1 },
+    position: getAnnotationRegionPosition(bounds, imageSize),
+  };
+}
+
+async function pruneImageCache(protectedPaths = []) {
+  const protectedPathSet = new Set(Array.isArray(protectedPaths) ? protectedPaths : [protectedPaths]);
   const entries = await fs.promises.readdir(imageCacheDirectory, { withFileTypes: true });
   const files = [];
   let totalBytes = 0;
@@ -326,7 +408,7 @@ async function pruneImageCache(protectedPath = '') {
   files.sort((left, right) => left.mtimeMs - right.mtimeMs);
   for (const file of files) {
     if (totalBytes <= MAX_CACHE_BYTES) break;
-    if (file.filePath === protectedPath) continue;
+    if (protectedPathSet.has(file.filePath)) continue;
     try {
       await fs.promises.unlink(file.filePath);
       totalBytes -= file.size;
@@ -415,4 +497,112 @@ export async function prepareImageFile(filePath, limits = {}) {
     coordinateScaleY: calculateCoordinateScale(description.height, displaySize.height),
     mimeType,
   };
+}
+
+export async function prepareAnnotationImages(filePath, quads) {
+  if (!imageCacheDirectory) throw new Error('图片读取服务尚未初始化。');
+  if (!Array.isArray(quads) || quads.length === 0) throw new Error('当前图片没有可用于生成注解的码区。');
+
+  const extension = path.extname(filePath).slice(1).toLowerCase();
+  if (!IMAGE_EXTENSIONS.includes(extension)) throw new Error('不支持该图片格式。');
+  const stats = await fs.promises.stat(filePath);
+  if (!stats.isFile()) throw new Error('原图路径没有指向文件。');
+  if (stats.size > MAX_INPUT_FILE_BYTES) throw new Error('原图文件超过 64 MB 输入限制。');
+
+  const description = await getImageDescription(filePath, extension, stats.size);
+  const imageSize = { width: description.width, height: description.height };
+  const preparedCrops = quads.map((quad, index) => {
+    const regionNumber = index + 1;
+    if (quad?.regionIndex !== index) throw new Error(`区域 ${regionNumber} 的编号与码区顺序不一致。`);
+    return prepareAnnotationCrop(quad.points, imageSize, regionNumber);
+  });
+
+  const regions = [];
+  const protectedAssetPaths = [];
+  for (let index = 0; index < preparedCrops.length; index++) {
+    const crop = preparedCrops[index];
+    const token = crypto
+      .createHash('sha256')
+      .update(
+        `${filePath}\0${stats.size}\0${stats.mtimeMs}\0annotation-crop\0${index}\0${JSON.stringify(crop.extract)}`,
+      )
+      .digest('hex');
+    const assetPath = path.join(imageCacheDirectory, `${token}.png`);
+    if (!(await fileExists(assetPath))) {
+      await writeCacheFileAtomically(assetPath, async tempPath => {
+        const pipeline = await getOriginalImagePipeline(filePath, description);
+        await pipeline.extract(crop.extract).png().toFile(tempPath);
+      });
+    }
+    const annotationRegion = {
+      regionIndex: index,
+      label: `区域 ${index + 1}（${crop.position}）`,
+      position: crop.position,
+    };
+    imageAssets.set(token, {
+      path: assetPath,
+      mimeType: 'image/png',
+      annotationRegion,
+      sourceImage: { path: filePath, size: stats.size, mtimeMs: stats.mtimeMs },
+    });
+    protectedAssetPaths.push(assetPath);
+    regions.push({
+      ...annotationRegion,
+      url: `${IMAGE_PROTOCOL_SCHEME}://cache/${token}`,
+      width: crop.extract.width,
+      height: crop.extract.height,
+      crop: { ...crop.extract },
+    });
+  }
+  await pruneImageCache(protectedAssetPaths);
+  return { imageSize, regions };
+}
+
+export async function loadAnnotationRegionImages(regions) {
+  if (!Array.isArray(regions) || regions.length === 0) throw new Error('图像注解请求没有包含码区局部图。');
+
+  let totalBytes = 0;
+  const loaded = [];
+  for (let index = 0; index < regions.length; index++) {
+    const region = regions[index];
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(region?.url);
+    } catch {
+      throw new Error(`区域 ${index + 1} 的局部图引用无效，请重新生成局部图。`);
+    }
+    const token =
+      parsedUrl.protocol === `${IMAGE_PROTOCOL_SCHEME}:` && parsedUrl.hostname === 'cache'
+        ? parsedUrl.pathname.slice(1)
+        : '';
+    const asset = imageAssets.get(token);
+    const expected = asset?.annotationRegion;
+    if (
+      !asset ||
+      !expected ||
+      region?.regionIndex !== index ||
+      region.label !== expected.label ||
+      region.position !== expected.position ||
+      !(await fileExists(asset.path))
+    ) {
+      throw new Error(`区域 ${index + 1} 的局部图已失效或对应关系不一致，请重新生成局部图。`);
+    }
+
+    const sourceStats = await fs.promises.stat(asset.sourceImage.path);
+    if (sourceStats.size !== asset.sourceImage.size || sourceStats.mtimeMs !== asset.sourceImage.mtimeMs) {
+      throw new Error('原图在反馈期间发生变化，请重新生成局部图并开始新的注解。');
+    }
+    const stats = await fs.promises.stat(asset.path);
+    if (stats.size > MAX_ANNOTATION_REGION_BYTES) {
+      throw new Error(`区域 ${index + 1} 的局部图超过 8 MB，无法提交模型。`);
+    }
+    totalBytes += stats.size;
+    if (totalBytes > MAX_ANNOTATION_IMAGES_BYTES) throw new Error('全部码区局部图超过 32 MB，无法提交模型。');
+    const data = await fs.promises.readFile(asset.path);
+    loaded.push({
+      ...expected,
+      imageUrl: `data:${asset.mimeType};base64,${data.toString('base64')}`,
+    });
+  }
+  return loaded;
 }

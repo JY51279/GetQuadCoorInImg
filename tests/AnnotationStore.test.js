@@ -6,7 +6,8 @@ import { loadAnnotations, saveAnnotation } from '../src/main/AnnotationStore.js'
 import { generateAndSaveAnnotation } from '../src/main/AnnotationWorkflow.js';
 
 const temporaryDirectories = [];
-const HEADER = '\uFEFFimage_path,raw_description,annotation\r\n';
+const HEADER = '\uFEFFimage_path,input_source,raw_description,annotation\r\n';
+const LEGACY_HEADER = '\uFEFFimage_path,raw_description,annotation\r\n';
 const completed = (rawDescription, annotation = '') => ({ completed: true, rawDescription, annotation });
 
 async function createDataset(imagePaths, csvText = null) {
@@ -35,7 +36,7 @@ describe('Annotation store', () => {
 
     const { records } = await loadAnnotations(datasetPath);
     expect(records.map(record => record.saved)).toEqual([null, null]);
-    expect(await fs.readFile(csvPath, 'utf8')).toBe(`${HEADER}"a.jpg","",""\r\n"b.jpg","",""\r\n`);
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(`${HEADER}"a.jpg","","",""\r\n"b.jpg","","",""\r\n`);
   });
 
   it('binds rows by image path and round-trips CSV-sensitive text', async () => {
@@ -45,12 +46,20 @@ describe('Annotation store', () => {
     await saveAnnotation(datasetPath, 'img/a.jpg', completed('整张图片没有异常。'));
 
     expect(await fs.readFile(csvPath, 'utf8')).toBe(
-      `${HEADER}"img/a.jpg","整张图片没有异常。",""\r\n"img/b.jpg","左边,""码""\n有拖影","左侧码区存在拖影。"\r\n`,
+      `${HEADER}"img/a.jpg","text","整张图片没有异常。",""\r\n"img/b.jpg","text","左边,""码""\n有拖影","左侧码区存在拖影。"\r\n`,
     );
     const { records } = await loadAnnotations(datasetPath);
     expect(records).toEqual([
-      { imageIndex: 0, imagePath: 'img/a.jpg', saved: { rawDescription: '整张图片没有异常。', annotation: '' } },
-      { imageIndex: 1, imagePath: 'img/b.jpg', saved: { rawDescription: raw, annotation: '左侧码区存在拖影。' } },
+      {
+        imageIndex: 0,
+        imagePath: 'img/a.jpg',
+        saved: { inputSource: 'text', rawDescription: '整张图片没有异常。', annotation: '' },
+      },
+      {
+        imageIndex: 1,
+        imagePath: 'img/b.jpg',
+        saved: { inputSource: 'text', rawDescription: raw, annotation: '左侧码区存在拖影。' },
+      },
     ]);
   });
 
@@ -65,14 +74,49 @@ describe('Annotation store', () => {
       ['b.jpg', '反光'],
       ['a.jpg', null],
     ]);
-    expect(await fs.readFile(csvPath, 'utf8')).toBe(`${HEADER}"c.jpg","",""\r\n"b.jpg","反光",""\r\n"a.jpg","",""\r\n`);
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(
+      `${HEADER}"c.jpg","","",""\r\n"b.jpg","text","反光",""\r\n"a.jpg","","",""\r\n`,
+    );
   });
 
   it('updates the existing row instead of appending another one', async () => {
     const { datasetPath, csvPath } = await createDataset(['a.jpg']);
     await saveAnnotation(datasetPath, 'a.jpg', completed('旧描述'));
     await saveAnnotation(datasetPath, 'a.jpg', completed('新描述'));
-    expect(await fs.readFile(csvPath, 'utf8')).toBe(`${HEADER}"a.jpg","新描述",""\r\n`);
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(`${HEADER}"a.jpg","text","新描述",""\r\n`);
+  });
+
+  it('persists image input with an empty raw description and distinguishes an empty completed annotation', async () => {
+    const { datasetPath, csvPath } = await createDataset(['a.jpg', 'b.jpg']);
+    await saveAnnotation(datasetPath, 'a.jpg', {
+      completed: true,
+      inputSource: 'image',
+      rawDescription: '',
+      annotation: '',
+    });
+
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(`${HEADER}"a.jpg","image","",""\r\n"b.jpg","","",""\r\n`);
+    const { records } = await loadAnnotations(datasetPath);
+    expect(records[0].saved).toEqual({ inputSource: 'image', rawDescription: '', annotation: '' });
+    expect(records[1].saved).toBeNull();
+  });
+
+  it('reads and upgrades an existing three-column CSV including empty rows', async () => {
+    const csvText = `${LEGACY_HEADER}"a.jpg","反光","有反光。"\r\n"b.jpg","",""\r\n`;
+    const { datasetPath, csvPath } = await createDataset(['a.jpg', 'b.jpg'], csvText);
+
+    const { records } = await loadAnnotations(datasetPath);
+    expect(records).toEqual([
+      {
+        imageIndex: 0,
+        imagePath: 'a.jpg',
+        saved: { inputSource: 'text', rawDescription: '反光', annotation: '有反光。' },
+      },
+      { imageIndex: 1, imagePath: 'b.jpg', saved: null },
+    ]);
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(
+      `${HEADER}"a.jpg","text","反光","有反光。"\r\n"b.jpg","","",""\r\n`,
+    );
   });
 
   it.each([
@@ -93,34 +137,34 @@ describe('Annotation store', () => {
   });
 
   it('moves unmatched rows to the end, preserves them on save, and restores them if JSON adds the path', async () => {
-    const csvText = `${HEADER}"gone.jpg","拖影",""\r\n"a.jpg","反光",""\r\n"old.jpg","污损",""\r\n`;
+    const csvText = `${LEGACY_HEADER}"gone.jpg","拖影",""\r\n"a.jpg","反光",""\r\n"old.jpg","污损",""\r\n`;
     const { datasetPath, csvPath } = await createDataset(['a.jpg', 'b.jpg'], csvText);
 
     const { records } = await loadAnnotations(datasetPath);
     expect(records.map(record => record.saved?.rawDescription ?? null)).toEqual(['反光', null]);
     expect(await fs.readFile(csvPath, 'utf8')).toBe(
-      `${HEADER}"a.jpg","反光",""\r\n"b.jpg","",""\r\n"gone.jpg","拖影",""\r\n"old.jpg","污损",""\r\n`,
+      `${HEADER}"a.jpg","text","反光",""\r\n"b.jpg","","",""\r\n"gone.jpg","text","拖影",""\r\n"old.jpg","text","污损",""\r\n`,
     );
 
     await saveAnnotation(datasetPath, 'b.jpg', completed('模糊'));
     expect(await fs.readFile(csvPath, 'utf8')).toContain(
-      '"b.jpg","模糊",""\r\n"gone.jpg","拖影",""\r\n"old.jpg","污损",""\r\n',
+      '"b.jpg","text","模糊",""\r\n"gone.jpg","text","拖影",""\r\n"old.jpg","text","污损",""\r\n',
     );
 
     await writeDataset(datasetPath, ['gone.jpg', 'a.jpg', 'b.jpg']);
     const restored = await loadAnnotations(datasetPath);
     expect(restored.records.map(record => record.saved?.rawDescription ?? null)).toEqual(['拖影', '反光', '模糊']);
     expect(await fs.readFile(csvPath, 'utf8')).toBe(
-      `${HEADER}"gone.jpg","拖影",""\r\n"a.jpg","反光",""\r\n"b.jpg","模糊",""\r\n"old.jpg","污损",""\r\n`,
+      `${HEADER}"gone.jpg","text","拖影",""\r\n"a.jpg","text","反光",""\r\n"b.jpg","text","模糊",""\r\n"old.jpg","text","污损",""\r\n`,
     );
   });
 
   it.each([
     ['legacy header', '\uFEFFrecord_id,image_path,raw_description,annotation\r\n', '表头不匹配'],
-    ['duplicate rows', `${HEADER}"a.jpg","反光",""\r\n"./a.jpg","拖影",""\r\n`, '重复记录'],
-    ['annotation without description', `${HEADER}"a.jpg","","反光"\r\n`, '空的人工描述'],
-    ['empty image path', `${HEADER}"","反光",""\r\n`, '空的图片路径'],
-    ['wrong column count', `${HEADER}"a.jpg","反光"\r\n`, '列数不正确'],
+    ['duplicate rows', `${HEADER}"a.jpg","text","反光",""\r\n"./a.jpg","text","拖影",""\r\n`, '重复记录'],
+    ['annotation without description', `${HEADER}"a.jpg","text","","反光"\r\n`, '空的人工描述'],
+    ['empty image path', `${HEADER}"","text","反光",""\r\n`, '空的图片路径'],
+    ['wrong column count', `${HEADER}"a.jpg","text","反光"\r\n`, '列数不正确'],
   ])('rejects invalid CSV content: %s', async (_name, csvText, message) => {
     const { datasetPath } = await createDataset(['a.jpg'], csvText);
     await expect(loadAnnotations(datasetPath)).rejects.toThrow(message);
@@ -153,7 +197,11 @@ describe('Annotation workflow', () => {
     expect(result).toMatchObject({
       success: true,
       imagePath: 'b.jpg',
-      record: { imageIndex: 1, imagePath: 'b.jpg', saved: { rawDescription: '反光', annotation: '规范：反光' } },
+      record: {
+        imageIndex: 1,
+        imagePath: 'b.jpg',
+        saved: { inputSource: 'text', rawDescription: '反光', annotation: '规范：反光' },
+      },
     });
     expect(stages.map(progress => [progress.imagePath, progress.stage])).toEqual([
       ['b.jpg', 'generate'],
@@ -218,6 +266,61 @@ describe('Annotation workflow', () => {
     expect(received).toEqual({ text: '右码模糊', feedbackTurns });
   });
 
+  it('loads the same visual regions, forwards feedback, and saves an image-source final result', async () => {
+    const { datasetPath } = await createDataset(['a.jpg']);
+    const regionReferences = [{ regionIndex: 0, label: '区域 1（左上）', position: '左上', url: 'quad-image://one' }];
+    const loadedRegions = [
+      {
+        regionIndex: 0,
+        label: '区域 1（左上）',
+        position: '左上',
+        imageUrl: 'data:image/png;base64,aQ==',
+      },
+    ];
+    const feedbackTurns = [
+      {
+        questions: [
+          {
+            id: 'q1',
+            purpose: 'refine',
+            prompt: '是否保持模糊描述？',
+            selection: 'single',
+            options: [{ id: 'keep', label: '保持' }],
+          },
+        ],
+        answers: [{ questionId: 'q1', optionIds: ['keep'], text: '' }],
+        message: '',
+      },
+    ];
+    let received;
+    const result = await generateAndSaveAnnotation(
+      {
+        datasetPath,
+        imagePath: 'a.jpg',
+        inputSource: 'image',
+        regions: regionReferences,
+        feedbackTurns,
+      },
+      {
+        loadRegions: async regions => {
+          expect(regions).toEqual(regionReferences);
+          return loadedRegions;
+        },
+        normalizeVisual: async (regions, options) => {
+          received = { regions, feedbackTurns: options.feedbackTurns };
+          return { success: true, status: 'final', completed: true, annotation: '区域 1（左上）存在模糊。' };
+        },
+      },
+    );
+
+    expect(received).toEqual({ regions: loadedRegions, feedbackTurns });
+    expect(result.record.saved).toEqual({
+      inputSource: 'image',
+      rawDescription: '',
+      annotation: '区域 1（左上）存在模糊。',
+    });
+  });
+
   it('returns an incomplete final result without saving', async () => {
     const { datasetPath, csvPath } = await createDataset(['a.jpg']);
     await saveAnnotation(datasetPath, 'a.jpg', completed('旧描述', '旧注解'));
@@ -251,7 +354,7 @@ describe('Annotation workflow', () => {
 
   it('rejects a request without an image path', async () => {
     const result = await generateAndSaveAnnotation({ datasetPath: '/x/A.json', text: '反光' }, { normalize });
-    expect(result).toMatchObject({ success: false, error: '请提供图片路径和非空人工描述。' });
+    expect(result).toMatchObject({ success: false, error: '请提供图片路径及有效的文字或图像输入。' });
   });
 
   it('rejects an unknown image path before calling the model', async () => {
@@ -268,12 +371,18 @@ describe('Annotation workflow', () => {
   it('rejects a concurrent request for the same image written in another path form', async () => {
     const { datasetPath } = await createDataset(['img/a.jpg']);
     let release;
-    const slowNormalize = () => new Promise(resolve => (release = () => resolve(normalize('反光'))));
+    let markStarted;
+    const started = new Promise(resolve => (markStarted = resolve));
+    const slowNormalize = () =>
+      new Promise(resolve => {
+        release = () => resolve(normalize('反光'));
+        markStarted();
+      });
     const first = generateAndSaveAnnotation(
       { datasetPath, imagePath: 'img/a.jpg', text: '反光' },
       { normalize: slowNormalize },
     );
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await started;
     const second = await generateAndSaveAnnotation(
       { datasetPath, imagePath: 'img\\a.jpg', text: '拖影' },
       { normalize },

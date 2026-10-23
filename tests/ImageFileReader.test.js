@@ -13,6 +13,8 @@ import {
   calculateCoordinateScale,
   calculateDisplaySize,
   initializeImageFileReader,
+  loadAnnotationRegionImages,
+  prepareAnnotationImages,
   prepareImageFile,
   registerImageProtocol,
 } from '../src/main/ImageFileReader.js';
@@ -96,6 +98,102 @@ describe('Main-process image file reader', () => {
     expect(IMAGE_EXTENSIONS).toEqual(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'svgz']);
     expect(DIRECT_IMAGE_MIME_TYPES.jpg).toBe('image/jpeg');
     expect(DIRECT_IMAGE_MIME_TYPES.svg).toBe('image/svg+xml');
+  });
+
+  it('crops annotation regions from original pixels with padding and position labels', async () => {
+    const { directory, cacheDirectory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'large.png');
+    await createSolidImage(imagePath, 100, 80);
+    await prepareImageFile(imagePath, { maxPixels: 400, maxDimension: 20 });
+
+    const result = await prepareAnnotationImages(imagePath, [
+      {
+        regionIndex: 0,
+        points: [
+          { x: 40, y: 20 },
+          { x: 60, y: 20 },
+          { x: 60, y: 40 },
+          { x: 40, y: 40 },
+        ],
+      },
+    ]);
+
+    expect(result.imageSize).toEqual({ width: 100, height: 80 });
+    expect(result.regions).toEqual([
+      expect.objectContaining({
+        regionIndex: 0,
+        label: '区域 1（中央）',
+        position: '中央',
+        width: 37,
+        height: 37,
+        crop: { left: 32, top: 12, width: 37, height: 37 },
+        url: expect.stringMatching(/^quad-image:\/\/cache\/[a-f0-9]{64}$/),
+      }),
+    ]);
+    const cropFiles = (await fs.readdir(cacheDirectory)).filter(file => file.endsWith('.png'));
+    const cropMetadata = await Promise.all(cropFiles.map(file => sharp(path.join(cacheDirectory, file)).metadata()));
+    expect(cropMetadata).toContainEqual(expect.objectContaining({ width: 37, height: 37 }));
+  });
+
+  it('rejects placeholder and out-of-image regions instead of skipping them', async () => {
+    const { directory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'sample.png');
+    await createSolidImage(imagePath, 20, 20);
+
+    await expect(
+      prepareAnnotationImages(imagePath, [
+        {
+          regionIndex: 0,
+          points: Array.from({ length: 4 }, () => ({ x: 0, y: 0 })),
+        },
+      ]),
+    ).rejects.toThrow('区域 1 仍是占位坐标');
+    await expect(
+      prepareAnnotationImages(imagePath, [
+        {
+          regionIndex: 0,
+          points: [
+            { x: 30, y: 30 },
+            { x: 40, y: 30 },
+            { x: 40, y: 40 },
+            { x: 30, y: 40 },
+          ],
+        },
+      ]),
+    ).rejects.toThrow('区域 1 完全位于原图范围之外');
+  });
+
+  it('loads only registered annotation crops with their original region mapping', async () => {
+    const { directory } = await createImageEnvironment();
+    const imagePath = path.join(directory, 'sample.png');
+    await createSolidImage(imagePath, 30, 30);
+    const prepared = await prepareAnnotationImages(imagePath, [
+      {
+        regionIndex: 0,
+        points: [
+          { x: 2, y: 2 },
+          { x: 12, y: 2 },
+          { x: 12, y: 12 },
+          { x: 2, y: 12 },
+        ],
+      },
+    ]);
+
+    const loaded = await loadAnnotationRegionImages(prepared.regions);
+    expect(loaded).toEqual([
+      {
+        regionIndex: 0,
+        label: '区域 1（左上）',
+        position: '左上',
+        imageUrl: expect.stringMatching(/^data:image\/png;base64,/),
+      },
+    ]);
+    await expect(loadAnnotationRegionImages([{ ...prepared.regions[0], position: '右下' }])).rejects.toThrow(
+      '区域 1 的局部图已失效或对应关系不一致',
+    );
+    const changedTime = new Date(Date.now() + 5_000);
+    await fs.utimes(imagePath, changedTime, changedTime);
+    await expect(loadAnnotationRegionImages(prepared.regions)).rejects.toThrow('原图在反馈期间发生变化');
   });
 
   it('calculates a display size constrained by both dimensions and pixel count', () => {

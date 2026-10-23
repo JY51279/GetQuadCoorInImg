@@ -4,10 +4,18 @@ import { isRecord, serviceFailure, SERVICE_ERROR_KIND } from '../shared/ServiceR
 
 const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_TOKENS = 2048;
+const INPUT_MODE_RULES = Object.freeze({
+  text: '本次输入模式为文字入口。只依据人工原始描述及反馈，不读取或分析图片。',
+  image: '本次输入模式为图像入口。只依据本次请求附带的可见图像、regionMapping 给定的区域方位及反馈判断。',
+});
 
 function hasExactKeys(value, keys) {
   const actual = Object.keys(value);
   return actual.length === keys.length && keys.every(key => Object.hasOwn(value, key));
+}
+
+function rulesForInputMode(rules, mode) {
+  return `${rules.trim()}\n\n## 本次输入模式\n\n${INPUT_MODE_RULES[mode]}`;
 }
 
 function validFeedbackTurns(turns) {
@@ -69,6 +77,50 @@ function annotationMessages(rules, text, feedbackTurns) {
     { role: 'system', content: rules },
     { role: 'user', content },
   ];
+}
+
+function visualAnnotationMessages(rules, regions, feedbackTurns) {
+  const context = {
+    inputSource: 'region_images',
+    regionMapping: regions.map(({ regionIndex, label, position }) => ({ regionIndex, label, position })),
+    feedbackHistory: feedbackTurns.map(turn => ({
+      modelQuestions: turn.questions,
+      userAnswers: turn.answers,
+      userMessage: turn.message,
+    })),
+  };
+  return [
+    { role: 'system', content: rules },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: JSON.stringify(context) },
+        ...regions.map(region => ({
+          type: 'image_url',
+          image_url: { url: region.imageUrl, detail: 'high' },
+        })),
+      ],
+    },
+  ];
+}
+
+function validVisualRegions(regions) {
+  return (
+    Array.isArray(regions) &&
+    regions.length > 0 &&
+    regions.every(
+      (region, index) =>
+        isRecord(region) &&
+        hasExactKeys(region, ['regionIndex', 'label', 'position', 'imageUrl']) &&
+        region.regionIndex === index &&
+        typeof region.label === 'string' &&
+        region.label.trim() &&
+        typeof region.position === 'string' &&
+        region.position.trim() &&
+        typeof region.imageUrl === 'string' &&
+        /^data:image\/png;base64,[a-zA-Z0-9+/]+=*$/u.test(region.imageUrl),
+    )
+  );
 }
 
 function normalizeTokenUsage(usage) {
@@ -146,26 +198,10 @@ function transportFailure(error, signal) {
   return serviceFailure(null, message, SERVICE_ERROR_KIND.TRANSPORT);
 }
 
-// This service runs in the main process. appPath is app.getAppPath(); the fetch
-// dependency also permits a small local check without a key or a paid API call.
-export async function normalizeAnnotation(
-  text,
-  { appPath, feedbackTurns = [], env = process.env, fetchImpl = fetch } = {},
-) {
+async function requestAnnotation(messages, { env, fetchImpl }) {
   let usage = null;
-  if (typeof text !== 'string' || !text.trim()) {
-    return { ...serviceFailure(null, '请先输入人工描述。', SERVICE_ERROR_KIND.INVALID_REQUEST), usage };
-  }
-  if (!validFeedbackTurns(feedbackTurns)) {
-    return {
-      ...serviceFailure(null, '注解反馈记录无效，请重新开始本条注解。', SERVICE_ERROR_KIND.INVALID_REQUEST),
-      usage,
-    };
-  }
-
   try {
     const config = readAnnotationConfig(env);
-    const rules = await loadAnnotationRules(appPath);
     const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     let response;
     try {
@@ -174,7 +210,7 @@ export async function normalizeAnnotation(
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
         body: JSON.stringify({
           model: config.model,
-          messages: annotationMessages(rules, text, feedbackTurns),
+          messages,
           response_format: { type: 'json_object' },
           thinking: { type: 'disabled' },
           temperature: 0.2,
@@ -236,5 +272,69 @@ export async function normalizeAnnotation(
     }
   } catch (error) {
     return { ...serviceFailure(error, '无法准备图片注解请求，请检查本地配置与规则文件。'), usage };
+  }
+}
+
+// This service runs in the main process. appPath is app.getAppPath(); fetchImpl
+// permits local contract tests without a key or a paid API call.
+export async function normalizeAnnotation(
+  text,
+  { appPath, feedbackTurns = [], env = process.env, fetchImpl = fetch } = {},
+) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return { ...serviceFailure(null, '请先输入人工描述。', SERVICE_ERROR_KIND.INVALID_REQUEST), usage: null };
+  }
+  if (!validFeedbackTurns(feedbackTurns)) {
+    return {
+      ...serviceFailure(null, '注解反馈记录无效，请重新开始本条注解。', SERVICE_ERROR_KIND.INVALID_REQUEST),
+      usage: null,
+    };
+  }
+  try {
+    const rules = rulesForInputMode(await loadAnnotationRules(appPath), 'text');
+    return requestAnnotation(annotationMessages(rules, text, feedbackTurns), { env, fetchImpl });
+  } catch (error) {
+    return {
+      ...serviceFailure(error, '无法准备图片注解请求，请检查本地配置与规则文件。'),
+      usage: null,
+    };
+  }
+}
+
+export async function normalizeVisualAnnotation(
+  regions,
+  { appPath, feedbackTurns = [], env = process.env, fetchImpl = fetch } = {},
+) {
+  if (!validVisualRegions(regions)) {
+    return {
+      ...serviceFailure(null, '码区局部图或区域对应关系无效，请重新生成局部图。', SERVICE_ERROR_KIND.INVALID_REQUEST),
+      usage: null,
+    };
+  }
+  if (!validFeedbackTurns(feedbackTurns)) {
+    return {
+      ...serviceFailure(null, '注解反馈记录无效，请重新开始本条注解。', SERVICE_ERROR_KIND.INVALID_REQUEST),
+      usage: null,
+    };
+  }
+  try {
+    const rules = rulesForInputMode(await loadAnnotationRules(appPath), 'image');
+    const result = await requestAnnotation(visualAnnotationMessages(rules, regions, feedbackTurns), { env, fetchImpl });
+    if (result.success && result.status === 'final' && result.completed === true && !result.annotation.trim()) {
+      return {
+        ...serviceFailure(
+          null,
+          '视觉模型返回了空注解，无法确认所有码区均已检查；本次结果不会保存，请重试。',
+          SERVICE_ERROR_KIND.INVALID_RESPONSE,
+        ),
+        usage: result.usage ?? null,
+      };
+    }
+    return result;
+  } catch (error) {
+    return {
+      ...serviceFailure(error, '无法准备视觉注解请求，请检查本地配置与视觉规则文件。'),
+      usage: null,
+    };
   }
 }

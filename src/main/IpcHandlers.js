@@ -1,6 +1,6 @@
 import { IPC_CHANNELS } from '../shared/IpcChannels.js';
 import { app, dialog, ipcMain } from 'electron';
-import { normalizeAnnotation } from './AnnotationService.js';
+import { normalizeAnnotation, normalizeVisualAnnotation } from './AnnotationService.js';
 import { loadAnnotations } from './AnnotationStore.js';
 import { generateAndSaveAnnotation } from './AnnotationWorkflow.js';
 import {
@@ -12,7 +12,12 @@ import {
   resolveJsonImagePath,
   saveJsonFileAtomically,
 } from './FileOperations.js';
-import { IMAGE_EXTENSIONS, prepareImageFile } from './ImageFileReader.js';
+import {
+  IMAGE_EXTENSIONS,
+  loadAnnotationRegionImages,
+  prepareAnnotationImages,
+  prepareImageFile,
+} from './ImageFileReader.js';
 import {
   getWorkspaceSession,
   recordWorkspaceDatasetImage,
@@ -91,6 +96,34 @@ export async function handlePrepareImage(_event, request) {
       requestId,
       error: toUserErrorMessage(error, USER_MESSAGES.IMAGE_READ_FAILED),
       path: resolvedImagePath,
+    };
+  }
+}
+
+export async function handlePrepareAnnotationImages(_event, request) {
+  const requestId = request?.requestId ?? null;
+  if (
+    !isRecord(request) ||
+    !isRequestId(requestId) ||
+    !isFilePath(request.imagePath) ||
+    !Array.isArray(request.quads)
+  ) {
+    return {
+      ...serviceFailure(null, '图像注解准备请求无效。', SERVICE_ERROR_KIND.INVALID_REQUEST),
+      requestId,
+    };
+  }
+  try {
+    return {
+      success: true,
+      requestId,
+      ...(await prepareAnnotationImages(request.imagePath, request.quads)),
+    };
+  } catch (error) {
+    console.error('Failed to prepare annotation images:', error);
+    return {
+      ...serviceFailure(error, '生成码区局部图失败。'),
+      requestId,
     };
   }
 }
@@ -283,6 +316,36 @@ export async function handleNormalizeAnnotation(_event, request) {
   return { ...result, requestId };
 }
 
+export async function handleNormalizeVisualAnnotation(_event, request) {
+  const requestId = request?.requestId ?? null;
+  if (
+    !isRecord(request) ||
+    !isRequestId(requestId) ||
+    !Array.isArray(request.regions) ||
+    (request.feedbackTurns !== undefined && !Array.isArray(request.feedbackTurns))
+  ) {
+    return {
+      ...serviceFailure(null, '视觉注解请求无效。', SERVICE_ERROR_KIND.INVALID_REQUEST),
+      requestId: isRequestId(requestId) ? requestId : null,
+      usage: null,
+    };
+  }
+  try {
+    const regions = await loadAnnotationRegionImages(request.regions);
+    const result = await normalizeVisualAnnotation(regions, {
+      appPath: app.getAppPath(),
+      feedbackTurns: request.feedbackTurns,
+    });
+    return { ...result, requestId };
+  } catch (error) {
+    return {
+      ...serviceFailure(error, '无法读取码区局部图，请重新生成后重试。'),
+      requestId,
+      usage: null,
+    };
+  }
+}
+
 export async function handleLoadAnnotations(_event, request) {
   if (!isRecord(request) || !isRequestId(request.requestId) || !isFilePath(request.datasetPath)) {
     return { ...serviceFailure(null, '读取注解的请求无效。', SERVICE_ERROR_KIND.INVALID_REQUEST), requestId: null };
@@ -316,6 +379,7 @@ export async function handleGenerateAndSaveAnnotation(event, request) {
 export function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.OPEN_IMAGE, handleOpenImageDialog);
   ipcMain.handle(IPC_CHANNELS.PREPARE_IMAGE, handlePrepareImage);
+  ipcMain.handle(IPC_CHANNELS.PREPARE_ANNOTATION_IMAGES, handlePrepareAnnotationImages);
   ipcMain.handle(IPC_CHANNELS.OPEN_DATASET, handleOpenJsonDialog);
   ipcMain.handle(IPC_CHANNELS.ADJACENT_DATASET, handleOpenAdjacentJson);
   ipcMain.handle(IPC_CHANNELS.READ_DATASET, handleReadJsonFile);
@@ -326,6 +390,7 @@ export function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.RECORD_DATASET, handleRecordWorkspaceDataset);
   ipcMain.handle(IPC_CHANNELS.RECORD_IMAGE, handleRecordWorkspaceImage);
   ipcMain.handle(IPC_CHANNELS.NORMALIZE_ANNOTATION, handleNormalizeAnnotation);
+  ipcMain.handle(IPC_CHANNELS.NORMALIZE_VISUAL_ANNOTATION, handleNormalizeVisualAnnotation);
   ipcMain.handle(IPC_CHANNELS.LOAD_ANNOTATIONS, handleLoadAnnotations);
   ipcMain.handle(IPC_CHANNELS.GENERATE_AND_SAVE_ANNOTATION, handleGenerateAndSaveAnnotation);
 }

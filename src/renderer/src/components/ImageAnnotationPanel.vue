@@ -8,7 +8,42 @@
       {{ imageNumber > 0 ? `第 ${imageNumber} 张图片` : '随当前图片切换'
       }}<span v-if="imageName"> · {{ imageName }}</span>
     </p>
-    <p class="note-hint">根据人工描述生成规范注解，仅发送文字。完成规范化后自动保存到对应的 CSV。</p>
+    <p class="note-hint">可先按当前码区从原图生成局部图并核对；现有人工描述流程保持不变。</p>
+    <section class="image-input-card" aria-label="图像输入准备">
+      <div class="image-input-heading">
+        <div>
+          <h3>图像输入准备</h3>
+          <p class="note-hint">从原图按码区外接范围略微外扩裁剪，不做透视矫正或锐化。</p>
+        </div>
+        <button
+          type="button"
+          class="action-button primary"
+          :disabled="!canPrepareImages || preparingImages"
+          @click="$emit('prepare-images')"
+        >
+          {{ preparingImages ? '正在生成局部图…' : '根据当前码区图片生成注解' }}
+        </button>
+      </div>
+      <div v-if="imageInputError" class="note-error image-input-error" role="alert">{{ imageInputError }}</div>
+      <div v-if="imageRegions.length" class="region-preview-list" aria-label="将要提交的码区局部图">
+        <figure v-for="region in imageRegions" :key="region.regionIndex" class="region-preview">
+          <figcaption>
+            <strong>{{ region.label }}</strong>
+            <span>{{ region.width }} × {{ region.height }} px</span>
+          </figcaption>
+          <img :src="region.url" :alt="`${region.label}的原图局部裁剪`" />
+        </figure>
+        <button
+          type="button"
+          class="action-button primary submit-region-images"
+          :disabled="!canSubmitImages"
+          @click="$emit('submit-images')"
+        >
+          确认局部图并生成注解
+        </button>
+        <p class="note-hint preview-note">确认后将把以上全部局部图和区域对应关系提交给模型。</p>
+      </div>
+    </section>
     <label class="note-label" for="image-annotation-input">人工描述</label>
     <textarea
       ref="inputRef"
@@ -99,7 +134,7 @@
         <button type="button" class="action-button" :disabled="!canRespond" @click="handleFeedbackSubmit(true)">
           按现有信息结束细化
         </button>
-        <button type="button" class="action-button" :disabled="!canRespond" @click="handleRestartFeedback">
+        <button type="button" class="action-button" :disabled="!canRestartFeedback" @click="handleRestartFeedback">
           重新编辑描述
         </button>
       </div>
@@ -121,6 +156,9 @@
     </button>
     <div class="saved-note">
       <h3>已保存的规范注解</h3>
+      <p v-if="saved" class="note-hint saved-source">
+        输入来源：{{ saved.inputSource === 'image' ? '码区局部图' : '人工描述' }}
+      </p>
       <p v-if="saved === null" class="note-hint">尚无已保存结果。</p>
       <p v-else-if="saved.annotation === ''" class="empty-note">已完成：无异常（注解正文为空）。</p>
       <p v-else class="note-result">{{ saved.annotation }}</p>
@@ -141,9 +179,15 @@ const props = defineProps({
   feedback: { type: Object, default: null },
   canRespond: Boolean,
   canSubmitFeedback: Boolean,
+  canRestartFeedback: Boolean,
   imageNumber: { type: Number, default: 0 },
   imageName: { type: String, default: '' },
   saved: { type: Object, default: null },
+  canPrepareImages: Boolean,
+  preparingImages: Boolean,
+  imageRegions: { type: Array, default: () => [] },
+  imageInputError: { type: String, default: '' },
+  canSubmitImages: Boolean,
 });
 const emit = defineEmits([
   'update:modelValue',
@@ -155,6 +199,8 @@ const emit = defineEmits([
   'feedback-message',
   'submit-feedback',
   'restart-feedback',
+  'prepare-images',
+  'submit-images',
 ]);
 const busy = computed(() => ['生成中', '保存中'].includes(props.status));
 const pageRef = ref(null);
@@ -199,7 +245,7 @@ function handleFeedbackSubmit(finish = false) {
 }
 
 function handleRestartFeedback() {
-  if (!props.canRespond) return;
+  if (!props.canRestartFeedback) return;
   emit('restart-feedback');
   void nextTick(() => focusInput());
 }
@@ -287,6 +333,66 @@ defineExpose({ focusInput });
   display: block;
   margin: 20px 0 8px;
   font-weight: 600;
+}
+.image-input-card {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+.image-input-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.image-input-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.image-input-heading .note-hint {
+  margin: 4px 0 0;
+}
+.image-input-error {
+  margin: 12px 0 0;
+}
+.region-preview-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+.region-preview {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: var(--surface-raised);
+}
+.region-preview figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.region-preview figcaption span {
+  color: var(--text-secondary);
+}
+.region-preview img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  background: #151a1d;
+}
+.preview-note {
+  margin: 0;
+}
+.submit-region-images {
+  width: 100%;
+  min-height: 38px;
 }
 textarea {
   box-sizing: border-box;
@@ -394,6 +500,9 @@ textarea:disabled {
 .saved-note h3 {
   margin: 0 0 12px;
   font-size: 13px;
+}
+.saved-source {
+  margin: -6px 0 10px;
 }
 .note-result,
 .empty-note {

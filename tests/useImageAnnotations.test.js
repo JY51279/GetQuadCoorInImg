@@ -27,6 +27,84 @@ function loadResponse(request, saved = null) {
 }
 
 describe('image annotation feedback flow', () => {
+  it('reuses feedback for image input while resending the same region snapshot on every round', async () => {
+    const requests = [];
+    const visualSessionCurrent = ref(true);
+    const invoke = vi.fn((channel, request) => {
+      if (channel === 'load-annotations') return Promise.resolve(loadResponse(request));
+      requests.push(structuredClone(request));
+      return Promise.resolve(
+        requests.length === 1
+          ? {
+              success: true,
+              status: 'needs_feedback',
+              questions: [question('q1', '是否保持可见的模糊描述？')],
+              requestId: request.requestId,
+              datasetPath,
+              imagePath: 'a.jpg',
+            }
+          : {
+              success: true,
+              status: 'final',
+              completed: true,
+              requestId: request.requestId,
+              datasetPath,
+              imagePath: 'a.jpg',
+              record: {
+                imageIndex: 0,
+                imagePath: 'a.jpg',
+                saved: { inputSource: 'image', rawDescription: '', annotation: '区域 1（左上）存在模糊。' },
+              },
+            },
+      );
+    });
+    const visualInput = {
+      regions: [{ regionIndex: 0, label: '区域 1（左上）', position: '左上', url: 'quad-image://cache/one' }],
+      snapshot: {
+        imagePath: 'a.jpg',
+        quadSignature: 'quad-one',
+        quads: [{ regionIndex: 0, points: [{ x: 1, y: 1 }] }],
+      },
+    };
+    const scope = effectScope();
+    const annotations = scope.run(() =>
+      useImageAnnotations({
+        imageIndex: ref(0),
+        canEdit: ref(true),
+        invoke,
+        notify: vi.fn(),
+        isVisualSessionCurrent: () => visualSessionCurrent.value,
+      }),
+    );
+
+    try {
+      await annotations.open({ path: datasetPath, imagePaths: ['a.jpg', 'b.jpg'] });
+      await annotations.submitVisual(visualInput);
+      expect(requests[0]).toMatchObject({
+        inputSource: 'image',
+        text: '',
+        regions: visualInput.regions,
+      });
+      expect(annotations.feedback.value.inputSource).toBe('image');
+      expect(annotations.feedback.value.visualInput.snapshot.quads).toEqual(visualInput.snapshot.quads);
+
+      visualSessionCurrent.value = false;
+      expect(annotations.canRespond.value).toBe(false);
+      expect(annotations.canRestartFeedback.value).toBe(true);
+      expect(annotations.error.value).toContain('原图或码区坐标已在反馈期间变化');
+      visualSessionCurrent.value = true;
+
+      annotations.setFeedbackOption('q1', 'keep', true);
+      await annotations.submitFeedback();
+      expect(requests[1].regions).toEqual(requests[0].regions);
+      expect(requests[1].feedbackTurns).toHaveLength(1);
+      expect(annotations.current.value.saved.inputSource).toBe('image');
+    } finally {
+      annotations.dispose();
+      scope.stop();
+    }
+  });
+
   it('shows the concrete save failure reason in the panel state and notification', async () => {
     const notify = vi.fn();
     const invoke = vi.fn((channel, request) =>
@@ -116,7 +194,11 @@ describe('image annotation feedback flow', () => {
         record: {
           imageIndex: 0,
           imagePath: 'a.jpg',
-          saved: { rawDescription: '右侧码区模糊。', annotation: '右侧码区存在运动模糊；左侧码区有反光。' },
+          saved: {
+            inputSource: 'text',
+            rawDescription: '右侧码区模糊。',
+            annotation: '右侧码区存在运动模糊；左侧码区有反光。',
+          },
         },
       });
     });
@@ -177,7 +259,7 @@ describe('image annotation feedback flow', () => {
 
   it('does not send an empty reply and treats explicit finish as a user reply without overwriting saved text', async () => {
     const requests = [];
-    const saved = { rawDescription: '旧描述', annotation: '旧注解' };
+    const saved = { inputSource: 'text', rawDescription: '旧描述', annotation: '旧注解' };
     const invoke = vi.fn((channel, request) => {
       if (channel === 'load-annotations') return Promise.resolve(loadResponse(request, saved));
       requests.push(request);

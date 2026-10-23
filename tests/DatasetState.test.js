@@ -6,6 +6,7 @@ import {
   commitPreparedJsonProcess,
   getAdjacentJsonImageTarget,
   getCurrentAnnotationView,
+  getCurrentImageQuadSnapshot,
   getCurrentJsonImageIndex,
   getJsonFileInfo,
   getJsonImagePosition,
@@ -70,6 +71,53 @@ describe('Dataset state operations', () => {
 
     annotationView.quads[0][0].x = 999;
     expect(getCurrentAnnotationView().quads[0][0].x).toBe(0);
+  });
+
+  it('creates a complete detached Quad snapshot and reports placeholders', () => {
+    const placeholderData = {
+      Picture: [createPicture('DBR', 'C:/images/placeholder.png')],
+    };
+    placeholderData.Picture[0]['Barcode Info'][0]['Barcode Location'] = '0 0 0 0 0 0 0 0';
+    const placeholderPrepared = prepareJsonProcess({
+      str: JSON.stringify(placeholderData),
+      path: 'C:/datasets/placeholder.json',
+    });
+    expect(commitPreparedJsonProcess(placeholderPrepared)).toBe(true);
+    expect(resetPicJson('C:/images/placeholder.png', 0).success).toBe(true);
+    expect(getCurrentImageQuadSnapshot()).toEqual({
+      success: false,
+      error: '区域 1 仍是占位坐标，请先完成该码区标注。',
+    });
+
+    const data = {
+      Picture: [createPicture('DBR', 'C:/images/valid.png')],
+    };
+    data.Picture[0]['Barcode Info'][0]['Barcode Location'] = '10 10 30 10 30 30 10 30';
+    const prepared = prepareJsonProcess({
+      str: JSON.stringify(data),
+      path: 'C:/datasets/valid.json',
+    });
+    expect(commitPreparedJsonProcess(prepared)).toBe(true);
+    expect(resetPicJson('C:/images/valid.png', 0).success).toBe(true);
+
+    const snapshot = getCurrentImageQuadSnapshot();
+    expect(snapshot).toEqual({
+      success: true,
+      imageIndex: 0,
+      quads: [
+        {
+          regionIndex: 0,
+          points: [
+            { x: 10, y: 10 },
+            { x: 30, y: 10 },
+            { x: 30, y: 30 },
+            { x: 10, y: 30 },
+          ],
+        },
+      ],
+    });
+    snapshot.quads[0].points[0].x = 999;
+    expect(getCurrentImageQuadSnapshot().quads[0].points[0].x).toBe(10);
   });
 
   it('navigates images with wrapping and rejects invalid targets', () => {

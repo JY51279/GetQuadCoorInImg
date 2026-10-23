@@ -2,8 +2,10 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { isFilePath, isRecord } from '../shared/ServiceResult.js';
+import { ANNOTATION_INPUT_SOURCE, isAnnotationInputSource } from '../shared/AnnotationInputSource.js';
 
-const COLUMNS = ['image_path', 'raw_description', 'annotation'];
+const LEGACY_COLUMNS = ['image_path', 'raw_description', 'annotation'];
+const COLUMNS = ['image_path', 'input_source', 'raw_description', 'annotation'];
 const operations = new Map();
 
 export function resolveAnnotationDatasetPath(datasetPath) {
@@ -89,16 +91,24 @@ function parseCsv(text) {
     rows.push(row);
   }
   const header = rows.shift();
-  if (!header || header.length !== COLUMNS.length || !COLUMNS.every((column, index) => column === header[index])) {
+  const isCurrent = header?.length === COLUMNS.length && COLUMNS.every((column, index) => column === header[index]);
+  const isLegacy =
+    header?.length === LEGACY_COLUMNS.length && LEGACY_COLUMNS.every((column, index) => column === header[index]);
+  if (!isCurrent && !isLegacy) {
     throw new Error('注解 CSV 表头不匹配，已停止读取和保存。');
   }
-  return rows;
+  return { legacy: isLegacy, rows };
 }
 
 function serializeCsv(records, extraRows) {
   const quote = value => `"${value.replace(/"/g, '""')}"`;
   const rows = records
-    .map(record => [record.imagePath, record.saved?.rawDescription ?? '', record.saved?.annotation ?? ''])
+    .map(record => [
+      record.imagePath,
+      record.saved?.inputSource ?? '',
+      record.saved?.rawDescription ?? '',
+      record.saved?.annotation ?? '',
+    ])
     .concat(extraRows);
   return `\uFEFF${COLUMNS.join(',')}\r\n${rows.map(row => row.map(quote).join(',') + '\r\n').join('')}`;
 }
@@ -153,21 +163,31 @@ async function readSnapshot(datasetPath) {
 
   const extraRows = [];
   const seenRecords = new Set();
-  for (const row of parseCsv(csvText)) {
-    if (row.length !== COLUMNS.length) throw new Error('注解 CSV 数据列数不正确，已停止读取和保存。');
-    const [imagePath, rawDescription, annotation] = row;
+  const parsedCsv = parseCsv(csvText);
+  for (const row of parsedCsv.rows) {
+    const expectedColumns = parsedCsv.legacy ? LEGACY_COLUMNS.length : COLUMNS.length;
+    if (row.length !== expectedColumns) throw new Error('注解 CSV 数据列数不正确，已停止读取和保存。');
+    const [imagePath, inputSource, rawDescription, annotation] = parsedCsv.legacy
+      ? [row[0], ANNOTATION_INPUT_SOURCE.TEXT, row[1], row[2]]
+      : row;
     if (!isFilePath(imagePath)) throw new Error('注解 CSV 存在空的图片路径，已停止读取和保存。');
     const key = imageRecordKey(datasetPath, imagePath);
     const record = byKey.get(key);
     if (!record) {
-      extraRows.push(row);
+      extraRows.push([imagePath, inputSource, rawDescription, annotation]);
       continue;
     }
     if (seenRecords.has(key)) throw new Error('注解 CSV 存在重复记录，已停止读取和保存。');
     seenRecords.add(key);
-    if (rawDescription === '' && annotation === '') continue;
-    if (!rawDescription.trim()) throw new Error('注解 CSV 存在空的人工描述，已停止读取和保存。');
-    record.saved = { rawDescription, annotation };
+    if (rawDescription === '' && annotation === '' && (parsedCsv.legacy || inputSource === '')) continue;
+    if (!isAnnotationInputSource(inputSource)) throw new Error('注解 CSV 存在无效的输入来源，已停止读取和保存。');
+    if (inputSource === ANNOTATION_INPUT_SOURCE.TEXT && !rawDescription.trim()) {
+      throw new Error('注解 CSV 的文字输入记录存在空的人工描述，已停止读取和保存。');
+    }
+    if (inputSource === ANNOTATION_INPUT_SOURCE.IMAGE && rawDescription !== '') {
+      throw new Error('注解 CSV 的图像输入记录不应包含人工描述，已停止读取和保存。');
+    }
+    record.saved = { inputSource, rawDescription, annotation };
   }
   return { datasetPath, csvPath, records, extraRows, csvText };
 }
@@ -189,18 +209,25 @@ export async function loadAnnotations(datasetPath) {
 
 export async function saveAnnotation(datasetPath, imagePath, result) {
   const resolvedPath = resolveAnnotationDatasetPath(datasetPath);
+  const inputSource = result?.inputSource ?? ANNOTATION_INPUT_SOURCE.TEXT;
   if (
     !isFilePath(imagePath) ||
     !isRecord(result) ||
     result.completed !== true ||
+    !isAnnotationInputSource(inputSource) ||
     typeof result.rawDescription !== 'string' ||
-    !result.rawDescription.trim() ||
+    (inputSource === ANNOTATION_INPUT_SOURCE.TEXT && !result.rawDescription.trim()) ||
+    (inputSource === ANNOTATION_INPUT_SOURCE.IMAGE && result.rawDescription !== '') ||
     typeof result.annotation !== 'string'
   ) {
-    throw new Error('只能保存带有原始描述且已成功完成的注解。');
+    throw new Error('只能保存输入来源有效且已成功完成的注解。');
   }
   // Snapshot the caller's strings before waiting behind another write.
-  const saved = { rawDescription: result.rawDescription, annotation: result.annotation };
+  const saved = {
+    inputSource,
+    rawDescription: result.rawDescription,
+    annotation: result.annotation,
+  };
   return inDatasetQueue(resolvedPath, async () => {
     // Reread inside the queue so concurrent records never overwrite each other.
     const snapshot = await readSnapshot(resolvedPath);

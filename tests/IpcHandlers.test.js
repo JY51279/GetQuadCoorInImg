@@ -18,6 +18,8 @@ const fileOperationMocks = vi.hoisted(() => ({
 }));
 
 const imageReaderMocks = vi.hoisted(() => ({
+  loadAnnotationRegionImages: vi.fn(),
+  prepareAnnotationImages: vi.fn(),
   prepareImageFile: vi.fn(),
 }));
 
@@ -35,6 +37,8 @@ vi.mock('electron', () => ({
 vi.mock('../src/main/FileOperations.js', () => fileOperationMocks);
 vi.mock('../src/main/ImageFileReader.js', () => ({
   IMAGE_EXTENSIONS: ['png'],
+  loadAnnotationRegionImages: imageReaderMocks.loadAnnotationRegionImages,
+  prepareAnnotationImages: imageReaderMocks.prepareAnnotationImages,
   prepareImageFile: imageReaderMocks.prepareImageFile,
 }));
 vi.mock('../src/main/WorkspaceSessionStore.js', () => workspaceSessionMocks);
@@ -44,6 +48,7 @@ import {
   handleOpenImageDialog,
   handleOpenJsonDialog,
   handlePrepareImage,
+  handlePrepareAnnotationImages,
   handleReadJsonFile,
   handleResolveJsonImagePaths,
   handleSaveJsonFile,
@@ -51,6 +56,7 @@ import {
   handleRecordWorkspaceDataset,
   handleRecordWorkspaceImage,
   handleNormalizeAnnotation,
+  handleNormalizeVisualAnnotation,
   handleLoadAnnotations,
   handleGenerateAndSaveAnnotation,
   registerIpcHandlers,
@@ -318,6 +324,26 @@ describe('Main-process IPC handlers', () => {
     expect(fileOperationMocks.resolveJsonImagePath).toHaveBeenCalledWith('images/one.png', 'C:/datasets/sample.json');
   });
 
+  it('prepares annotation crops through the original-image reader', async () => {
+    const prepared = {
+      imageSize: { width: 100, height: 80 },
+      regions: [{ regionIndex: 0, label: '区域 1（左上）' }],
+    };
+    imageReaderMocks.prepareAnnotationImages.mockResolvedValue(prepared);
+    const request = {
+      requestId: 55,
+      imagePath: 'C:/images/one.png',
+      quads: [{ regionIndex: 0, points: [{ x: 1, y: 1 }] }],
+    };
+
+    await expect(handlePrepareAnnotationImages(null, request)).resolves.toEqual({
+      success: true,
+      requestId: 55,
+      ...prepared,
+    });
+    expect(imageReaderMocks.prepareAnnotationImages).toHaveBeenCalledWith(request.imagePath, request.quads);
+  });
+
   it('rejects an invalid image preparation path without decoding it', async () => {
     fileOperationMocks.resolveJsonImagePath.mockReturnValue('');
 
@@ -417,6 +443,7 @@ describe('Main-process IPC handlers', () => {
 
     expect(electronMocks.handle).toHaveBeenCalledWith('open-image-file-dialog', handleOpenImageDialog);
     expect(electronMocks.handle).toHaveBeenCalledWith('prepare-image', handlePrepareImage);
+    expect(electronMocks.handle).toHaveBeenCalledWith('prepare-annotation-images', handlePrepareAnnotationImages);
     expect(electronMocks.handle).toHaveBeenCalledWith('open-json-file-dialog', handleOpenJsonDialog);
     expect(electronMocks.handle).toHaveBeenCalledWith('open-adjacent-json-file', handleOpenAdjacentJson);
     expect(electronMocks.handle).toHaveBeenCalledWith('read-json-file', handleReadJsonFile);
@@ -426,6 +453,7 @@ describe('Main-process IPC handlers', () => {
     expect(electronMocks.handle).toHaveBeenCalledWith('record-workspace-dataset', handleRecordWorkspaceDataset);
     expect(electronMocks.handle).toHaveBeenCalledWith('record-workspace-image', handleRecordWorkspaceImage);
     expect(electronMocks.handle).toHaveBeenCalledWith('normalize-annotation', handleNormalizeAnnotation);
+    expect(electronMocks.handle).toHaveBeenCalledWith('normalize-visual-annotation', handleNormalizeVisualAnnotation);
     expect(electronMocks.handle).toHaveBeenCalledWith('load-annotations', handleLoadAnnotations);
     expect(electronMocks.handle).toHaveBeenCalledWith('generate-and-save-annotation', handleGenerateAndSaveAnnotation);
     expect(electronMocks.on).not.toHaveBeenCalled();

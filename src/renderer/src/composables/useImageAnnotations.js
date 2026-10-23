@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue';
 import { IPC_CHANNELS } from '../../../shared/IpcChannels.js';
 import { toUserErrorMessage } from '../../../shared/UserMessages.js';
+import { ANNOTATION_INPUT_SOURCE, isAnnotationInputSource } from '../../../shared/AnnotationInputSource.js';
 
 function pathKey(path) {
   const normalized = path.replace(/\\/g, '/');
@@ -11,16 +12,39 @@ function isSaved(value) {
   return (
     value !== null &&
     typeof value === 'object' &&
+    isAnnotationInputSource(value.inputSource) &&
     typeof value.rawDescription === 'string' &&
     typeof value.annotation === 'string'
   );
 }
 
-function createFeedback(text, turns, questions) {
+function cloneVisualInput(visualInput) {
+  if (!visualInput) return null;
+  return {
+    regions: visualInput.regions.map(region => ({
+      regionIndex: region.regionIndex,
+      label: region.label,
+      position: region.position,
+      url: region.url,
+    })),
+    snapshot: {
+      imagePath: visualInput.snapshot.imagePath,
+      quadSignature: visualInput.snapshot.quadSignature,
+      quads: visualInput.snapshot.quads.map(quad => ({
+        regionIndex: quad.regionIndex,
+        points: quad.points.map(point => ({ x: point.x, y: point.y })),
+      })),
+    },
+  };
+}
+
+function createFeedback(text, turns, questions, inputSource, visualInput) {
   return {
     text,
     turns,
     questions,
+    inputSource,
+    visualInput: cloneVisualInput(visualInput),
     answers: questions.map(question => ({ questionId: question.id, optionIds: [], text: '' })),
     message: '',
   };
@@ -44,7 +68,14 @@ function snapshotFeedbackTurns(turns) {
   }));
 }
 
-export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subscribeProgress }) {
+export function useImageAnnotations({
+  imageIndex,
+  canEdit,
+  invoke,
+  notify,
+  subscribeProgress,
+  isVisualSessionCurrent = () => true,
+}) {
   const dataset = ref(null);
   const records = ref([]);
   const inputText = ref('');
@@ -89,7 +120,22 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
   );
   const canSubmit = computed(() => canInput.value && Boolean(inputText.value.trim()));
   const feedback = computed(() => current.value?.feedback ?? null);
+  const visualFeedbackStale = computed(
+    () =>
+      feedback.value?.inputSource === ANNOTATION_INPUT_SOURCE.IMAGE &&
+      !isVisualSessionCurrent(feedback.value.visualInput?.snapshot),
+  );
   const canRespond = computed(() =>
+    Boolean(
+      feedback.value &&
+        !visualFeedbackStale.value &&
+        canEdit.value &&
+        !loading.value &&
+        !loadError.value &&
+        !current.value.pending,
+    ),
+  );
+  const canRestartFeedback = computed(() =>
     Boolean(feedback.value && canEdit.value && !loading.value && !loadError.value && !current.value.pending),
   );
   const canSubmitFeedback = computed(
@@ -98,7 +144,11 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
       (Boolean(feedback.value.message.trim()) ||
         feedback.value.answers.some(answer => answer.optionIds.length || answer.text.trim())),
   );
-  const error = computed(() => loadError.value || current.value?.error || '');
+  const error = computed(() =>
+    visualFeedbackStale.value
+      ? '原图或码区坐标已在反馈期间变化，请重新开始本条图像注解。'
+      : loadError.value || current.value?.error || '',
+  );
   const hasPending = computed(() => records.value.some(record => Boolean(record.pending)));
   const busy = computed(() => loading.value || hasPending.value);
 
@@ -169,7 +219,7 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
     return reload();
   }
 
-  async function run(entry, text, feedbackTurns = null) {
+  async function run(entry, text, feedbackTurns = null, visualInput = null) {
     const datasetPath = dataset.value.path;
     const imagePath = entry.imagePath;
     const requestId = ++nextRequestId;
@@ -183,6 +233,8 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
         datasetPath,
         imagePath,
         text,
+        inputSource: visualInput ? ANNOTATION_INPUT_SOURCE.IMAGE : ANNOTATION_INPUT_SOURCE.TEXT,
+        ...(visualInput ? { regions: cloneVisualInput(visualInput).regions } : {}),
         ...(feedbackTurns === null ? {} : { feedbackTurns: snapshotFeedbackTurns(feedbackTurns) }),
       });
       if (disposed) return;
@@ -198,7 +250,13 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
       if (response.status === 'needs_feedback') {
         if (!Array.isArray(response.questions) || !response.questions.length)
           throw new Error('模型返回的反馈问题无效。');
-        entry.feedback = createFeedback(text, feedbackTurns ?? [], response.questions);
+        entry.feedback = createFeedback(
+          text,
+          feedbackTurns ?? [],
+          response.questions,
+          visualInput ? ANNOTATION_INPUT_SOURCE.IMAGE : ANNOTATION_INPUT_SOURCE.TEXT,
+          visualInput,
+        );
         if (current.value === entry) inputText.value = text;
         return;
       }
@@ -215,7 +273,9 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
         response.record?.imagePath !== imagePath ||
         response.record.imageIndex !== entry.imageIndex ||
         !isSaved(response.record.saved) ||
-        response.record.saved.rawDescription !== text
+        response.record.saved.rawDescription !== text ||
+        response.record.saved.inputSource !==
+          (visualInput ? ANNOTATION_INPUT_SOURCE.IMAGE : ANNOTATION_INPUT_SOURCE.TEXT)
       )
         throw new Error('注解保存结果与提交的图片或文本不匹配，请重新读取确认保存状态。');
       entry.saved = response.record.saved;
@@ -235,6 +295,21 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
   function submit() {
     if (!canSubmit.value) return;
     return run(current.value, inputText.value);
+  }
+
+  function submitVisual(visualInput) {
+    if (
+      !current.value ||
+      !canEdit.value ||
+      loading.value ||
+      loadError.value ||
+      current.value.pending ||
+      current.value.feedback ||
+      !Array.isArray(visualInput?.regions) ||
+      !visualInput.regions.length
+    )
+      return;
+    return run(current.value, '', null, visualInput);
   }
 
   function setFeedbackOption(questionId, optionId, checked) {
@@ -286,11 +361,16 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
       ? [session.message.trim(), '结束细化，请根据已确认的信息生成最终注解。'].filter(Boolean).join('\n')
       : session.message;
     const turn = { questions: session.questions, answers, message };
-    return run(entry, session.text, [...session.turns, turn]);
+    return run(
+      entry,
+      session.text,
+      [...session.turns, turn],
+      session.inputSource === ANNOTATION_INPUT_SOURCE.IMAGE ? session.visualInput : null,
+    );
   }
 
   function restartFeedback() {
-    if (!canRespond.value) return;
+    if (!canRestartFeedback.value) return;
     current.value.feedback = null;
     current.value.error = '';
   }
@@ -324,6 +404,7 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
     canSubmit,
     feedback,
     canRespond,
+    canRestartFeedback,
     canSubmitFeedback,
     hasPending,
     busy,
@@ -331,6 +412,7 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
     clear,
     reload,
     submit,
+    submitVisual,
     setFeedbackOption,
     setFeedbackText,
     clearFeedbackOptions,

@@ -25,6 +25,31 @@ afterEach(() => {
 });
 
 describe('Image annotation keyboard flow', () => {
+  it('prepares and displays labeled image-region previews without submitting them', async () => {
+    const wrapper = mountPanel({
+      canPrepareImages: true,
+      canSubmitImages: true,
+      imageRegions: [
+        {
+          regionIndex: 0,
+          label: '区域 1（左上）',
+          width: 120,
+          height: 80,
+          url: 'quad-image://cache/region-one',
+        },
+      ],
+    });
+
+    await wrapper.find('.image-input-heading button').trigger('click');
+    expect(wrapper.emitted('prepare-images')).toHaveLength(1);
+    expect(wrapper.emitted('submit')).toBeUndefined();
+    expect(wrapper.find('.region-preview figcaption').text()).toContain('区域 1（左上）');
+    expect(wrapper.find('.region-preview img').attributes('src')).toBe('quad-image://cache/region-one');
+    expect(wrapper.text()).toContain('确认后将把以上全部局部图和区域对应关系提交给模型');
+    await wrapper.find('.submit-region-images').trigger('click');
+    expect(wrapper.emitted('submit-images')).toHaveLength(1);
+  });
+
   it('submits with Enter and exits the editor while keeping Shift+Enter and composition for text', async () => {
     const wrapper = mountPanel();
     const input = wrapper.find('textarea');
