@@ -38,6 +38,13 @@ export const WORKSPACE_SHORTCUT_DEFINITIONS = Object.freeze([
     shortcuts: [{ key: '4', ctrl: true }],
   },
   {
+    id: 'image.annotation.edit',
+    group: SHORTCUT_GROUP.NAVIGATION,
+    label: '开始图片注解',
+    shortcuts: [{ key: 'F2' }],
+    allowInEditable: true,
+  },
+  {
     id: 'quad.previous',
     group: SHORTCUT_GROUP.NAVIGATION,
     label: '上一个 Quad',

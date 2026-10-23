@@ -238,6 +238,7 @@
           </section>
 
           <ImageAnnotationPanel
+            ref="imageAnnotationPanelRef"
             v-show="activeInspectorPage === INSPECTOR_PAGE.IMAGE_ANNOTATION"
             v-model="imageAnnotationInput"
             :status="imageAnnotationStatus"
@@ -442,7 +443,7 @@ const INSPECTOR_PAGE = Object.freeze({
 const inspectorPages = Object.freeze([
   { id: INSPECTOR_PAGE.DATASET, label: '图集与图片', icon: '▤', shortcut: 'Ctrl+1' },
   { id: INSPECTOR_PAGE.ANNOTATION, label: 'Quad 标注', icon: '◇', shortcut: 'Ctrl+2' },
-  { id: INSPECTOR_PAGE.IMAGE_ANNOTATION, label: '图片注解', icon: '✎' },
+  { id: INSPECTOR_PAGE.IMAGE_ANNOTATION, label: '图片注解', icon: '✎', shortcut: 'F2' },
   { id: INSPECTOR_PAGE.DISPLAY, label: '视图与交互', icon: '◐', shortcut: 'Ctrl+3' },
   { id: INSPECTOR_PAGE.HISTORY, label: '操作历史', icon: '↶', shortcut: 'Ctrl+4' },
 ]);
@@ -499,6 +500,7 @@ const {
 });
 const imageObj = computed(() => imageSession.value?.image ?? null);
 const imgFileName = computed(() => imageSession.value?.fileName ?? '');
+const imageAnnotationPanelRef = ref(null);
 const imageCoordinateScale = computed(() => imageSession.value?.coordinateScale ?? { x: 1, y: 1 });
 const currentImageOriginalSize = computed(() => imageSession.value?.originalSize ?? null);
 const selectedDataset = computed(() => workflowState.value.datasetTarget ?? { path: '', fileName: '' });
@@ -747,6 +749,15 @@ function selectInspectorPage(pageId) {
   activeInspectorPage.value = pageId;
 }
 
+function startImageAnnotation() {
+  selectInspectorPage(INSPECTOR_PAGE.IMAGE_ANNOTATION);
+  void nextTick(() => {
+    if (disposed || activeInspectorPage.value !== INSPECTOR_PAGE.IMAGE_ANNOTATION || !canInputImageAnnotation.value)
+      return;
+    imageAnnotationPanelRef.value?.focusInput?.();
+  });
+}
+
 onMounted(() => {
   syncZoomCanvasPixelRatio();
   window.addEventListener('keydown', handleKeyDown);
@@ -779,6 +790,7 @@ const shortcutCommands = createWorkspaceShortcutCommands({
   'inspector.annotation': () => selectInspectorPage(INSPECTOR_PAGE.ANNOTATION),
   'inspector.display': () => selectInspectorPage(INSPECTOR_PAGE.DISPLAY),
   'inspector.history': () => selectInspectorPage(INSPECTOR_PAGE.HISTORY),
+  'image.annotation.edit': () => startImageAnnotation(),
   'quad.previous': () => changeJsonItemSelection(KEYS.PREVIOUS),
   'quad.next': () => changeJsonItemSelection(KEYS.NEXT),
   'image.previous': () => changeImageByArrowKeys(KEYS.PREVIOUS),

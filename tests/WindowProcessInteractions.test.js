@@ -54,6 +54,20 @@ describe('WindowProcess interactions', () => {
     vi.unstubAllGlobals();
   });
 
+  it('opens the image annotation page with F2 from another page', async () => {
+    const wrapper = shallowMount(WindowProcess, { attachTo: document.body });
+    await flushPromises();
+    await wrapper.find('button[aria-label="Quad 标注"]').trigger('click');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
+    await nextTick();
+
+    const annotationTab = wrapper.find('button[aria-label="图片注解"]');
+    expect(annotationTab.attributes('aria-pressed')).toBe('true');
+    expect(annotationTab.attributes('title')).toBe('图片注解（F2）');
+    wrapper.unmount();
+  });
+
   it('shows the current dataset name in the toolbar and opens the dataset page before the file dialog', async () => {
     ipcRenderer.invoke.mockImplementation(channel => {
       if (channel === 'get-workspace-session') return Promise.resolve({ success: true, session: null });

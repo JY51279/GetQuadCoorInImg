@@ -72,6 +72,16 @@ describe('workspace shortcut configuration', () => {
     expect(actions['image.zoom.out']).not.toHaveBeenCalled();
   });
 
+  it('starts image annotation with F2 even when another input has focus', () => {
+    const actions = createActions();
+    const commands = createWorkspaceShortcutCommands(actions);
+    const event = createKeyEvent({ key: 'F2', target: { tagName: 'INPUT' } });
+
+    expect(dispatchShortcut(event, commands)).toBe(true);
+    expect(actions['image.annotation.edit']).toHaveBeenCalledOnce();
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+  });
+
   it('fails fast when a command action is missing', () => {
     const actions = createActions();
     delete actions['image.next'];

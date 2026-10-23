@@ -1,5 +1,5 @@
 <template>
-  <section class="inspector-page image-annotation-page" aria-label="图片注解">
+  <section ref="pageRef" class="inspector-page image-annotation-page" aria-label="图片注解" tabindex="-1">
     <header class="note-header">
       <h2>图片注解</h2>
       <span class="note-status" :class="{ failed: Boolean(error), busy }" role="status">{{ status }}</span>
@@ -11,6 +11,7 @@
     <p class="note-hint">根据人工描述生成规范注解，仅发送文字。成功后自动保存到对应的 CSV。</p>
     <label class="note-label" for="image-annotation-input">人工描述</label>
     <textarea
+      ref="inputRef"
       id="image-annotation-input"
       :value="modelValue"
       :disabled="!canInput"
@@ -18,15 +19,20 @@
       rows="7"
       spellcheck="false"
       @input="$emit('update:modelValue', $event.target.value)"
+      @keydown="handleInputKeyDown"
+      @compositionstart="composing = true"
+      @compositionend="composing = false"
     ></textarea>
-    <p class="note-hint draft-hint">未提交输入在切换图片时丢弃。</p>
+    <p class="note-hint draft-hint">
+      F2 聚焦输入；Enter 生成并保存；Shift+Enter 换行；Esc 退出输入。未提交输入在切换图片时丢弃。
+    </p>
     <div v-if="error" class="note-error" role="alert">
       <p>{{ error }}</p>
       <button v-if="loadError" type="button" class="action-button" :disabled="loading" @click="$emit('reload')">
         重试读取
       </button>
     </div>
-    <button type="button" class="action-button primary submit-note" :disabled="!canSubmit" @click="$emit('submit')">
+    <button type="button" class="action-button primary submit-note" :disabled="!canSubmit" @click="handleSubmit">
       {{ busy ? `${status}…` : '生成并保存' }}
     </button>
     <div class="saved-note">
@@ -39,7 +45,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 const props = defineProps({
   modelValue: { type: String, default: '' },
   status: { type: String, required: true },
@@ -52,8 +58,43 @@ const props = defineProps({
   imageName: { type: String, default: '' },
   saved: { type: Object, default: null },
 });
-defineEmits(['update:modelValue', 'submit', 'reload']);
+const emit = defineEmits(['update:modelValue', 'submit', 'reload']);
 const busy = computed(() => ['生成中', '保存中'].includes(props.status));
+const pageRef = ref(null);
+const inputRef = ref(null);
+let composing = false;
+
+function focusInput() {
+  if (!props.canInput) return false;
+  inputRef.value?.focus();
+  return document.activeElement === inputRef.value;
+}
+
+function leaveInput() {
+  pageRef.value?.focus({ preventScroll: true });
+}
+
+function handleSubmit() {
+  if (!props.canSubmit) return;
+  emit('submit');
+  leaveInput();
+}
+
+function handleInputKeyDown(event) {
+  if (composing || event.isComposing || event.keyCode === 229) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    leaveInput();
+    return;
+  }
+  if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!event.repeat) handleSubmit();
+}
+
+defineExpose({ focusInput });
 </script>
 
 <style scoped src="../assets/workspace-controls.css"></style>
