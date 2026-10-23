@@ -303,7 +303,8 @@ export async function handleGenerateAndSaveAnnotation(event, request) {
   const result = await generateAndSaveAnnotation(request, {
     appPath: app.getAppPath(),
     onStage: progress => {
-      if (event?.sender && !event.sender.isDestroyed()) event.sender.send(IPC_CHANNELS.ANNOTATION_PROGRESS, { ...progress, requestId });
+      if (event?.sender && !event.sender.isDestroyed())
+        event.sender.send(IPC_CHANNELS.ANNOTATION_PROGRESS, { ...progress, requestId });
     },
   });
   return { ...result, requestId };
