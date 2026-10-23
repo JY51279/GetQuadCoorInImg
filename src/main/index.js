@@ -69,9 +69,9 @@ async function createWindow() {
       buttons: ['继续编辑', '离开'],
       defaultId: 0,
       cancelId: 0,
-      title: '图片注解尚未保存',
-      message: '有未提交的注解输入或正在生成、保存的请求。',
-      detail: '离开可能丢失草稿或中断请求。确定离开？',
+      title: '图片注解尚未完成',
+      message: '图片注解正在生成或保存。',
+      detail: '离开可能中断请求。确定离开？',
     });
     if (choice === 1) event.preventDefault();
     else isQuitting = false;

@@ -15,13 +15,14 @@ vi.mock('../src/renderer/src/utils/RendererImageLoader.js', () => ({
 const paths = ['C:/images/one.png', 'C:/images/two.png'];
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
-function createWorkspace() {
+function createWorkspace({ sourcePaths = paths } = {}) {
   let active = true;
   const workflowState = ref(createWorkflowState());
   const presentImageSession = vi.fn(() => true);
   const recordImage = vi.fn();
   const recordDatasetTarget = vi.fn();
   const outputMessage = vi.fn();
+  const onDatasetLoaded = vi.fn();
   const getWorkspaceSession = vi.fn(async () => ({
     success: true,
     session: { datasetPath: 'C:/datasets/sample.json', imagePath: paths[1], imageIndex: 1 },
@@ -43,7 +44,7 @@ function createWorkspace() {
   }));
   const readDataset = vi.fn(async request =>
     createJsonResponse(
-      paths.map(path => createPicture('DBR', path)),
+      sourcePaths.map(path => createPicture('DBR', path)),
       {
         requestId: request.requestId,
         path: request.filePath || 'C:/datasets/sample.json',
@@ -76,6 +77,7 @@ function createWorkspace() {
     confirmLossyRepair: () => true,
     saveJsonFile,
     onDatasetReset: images.resetForDatasetChange,
+    onDatasetLoaded,
     startDatasetImageRequest: images.startDatasetImageRequest,
     showDatasetPanel: vi.fn(),
     showAnnotationPanel: vi.fn(),
@@ -92,6 +94,7 @@ function createWorkspace() {
     recordImage,
     recordDatasetTarget,
     outputMessage,
+    onDatasetLoaded,
     saveJsonFile,
     dispose() {
       active = false;
@@ -103,6 +106,18 @@ function createWorkspace() {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Workspace loading controllers without a mounted page', () => {
+  it('passes JSON record paths to CSV loading while keeping resolved display paths', async () => {
+    const sourcePaths = ['images/one.png', 'images/two.png'];
+    const workspace = createWorkspace({ sourcePaths });
+    await workspace.dataset.chooseJsonFile();
+
+    expect(workspace.onDatasetLoaded).toHaveBeenCalledExactlyOnceWith({
+      path: 'C:/datasets/sample.json',
+      imagePaths: sourcePaths,
+    });
+    expect(workspace.prepareImage.mock.calls[0][0].imagePath).toBe(paths[0]);
+  });
+
   it('reports a failed startup restore once and closes loading instead of pretending it was canceled', async () => {
     const workspace = createWorkspace();
     workspace.getWorkspaceSession.mockResolvedValueOnce({

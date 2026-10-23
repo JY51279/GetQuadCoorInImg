@@ -91,6 +91,7 @@ beforeEach(() => {
       loadFile: mocks.loadFile,
       loadURL: mocks.loadURL,
       webContents: {
+        on: vi.fn(),
         setZoomMode: vi.fn(),
         setZoomFactor: vi.fn(),
         setWindowOpenHandler: mocks.setWindowOpenHandler,

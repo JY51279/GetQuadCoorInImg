@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { IPC_CHANNELS } from '../../../shared/IpcChannels.js';
 import { toUserErrorMessage } from '../../../shared/UserMessages.js';
 
@@ -6,9 +6,7 @@ function pathKey(path) {
   const normalized = path.replace(/\\/g, '/');
   return /^[a-z]:\//i.test(normalized) || normalized.startsWith('//') ? normalized.toLowerCase() : normalized;
 }
-function entryKey(path, imagePath) {
-  return `${pathKey(path)}\0${imagePath}`;
-}
+
 function isSaved(value) {
   return (
     value !== null &&
@@ -18,35 +16,22 @@ function isSaved(value) {
   );
 }
 
-export function useImageAnnotations({
-  dataset,
-  imageIndex,
-  canEdit,
-  invoke,
-  confirmNavigation,
-  notify,
-  subscribeProgress,
-}) {
-  const entries = reactive(new Map());
+export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subscribeProgress }) {
+  const dataset = ref(null);
   const records = ref([]);
+  const inputText = ref('');
   const loading = ref(false);
   const loadError = ref('');
   let nextRequestId = 0;
-  let loadSequence = 0;
-  let savedRevision = 0;
   let disposed = false;
 
-  const current = computed(() => {
-    const record = records.value[imageIndex.value];
-    return dataset.value && record ? entries.get(entryKey(dataset.value.path, record.imagePath)) ?? null : null;
-  });
-  const isDirty = entry => Boolean(entry && entry.draft !== (entry.saved?.rawDescription ?? ''));
-  const draft = computed({
-    get: () => current.value?.draft ?? '',
+  const current = computed(() => records.value[imageIndex.value] ?? null);
+  const input = computed({
+    get: () => inputText.value,
     set: value => {
-      if (current.value && canEdit.value && !loading.value && !loadError.value) {
-        current.value.draft = value;
-        current.value.error = '';
+      if (canInput.value) {
+        inputText.value = value;
+        if (current.value) current.value.error = '';
       }
     },
   });
@@ -57,26 +42,47 @@ export function useImageAnnotations({
     if (!current.value) return '请选择图集中的图片';
     if (current.value.pending) return current.value.pending.stage === 'save' ? '保存中' : '生成中';
     if (current.value.error) return '失败';
-    if (isDirty(current.value)) return '未提交修改';
+    if (inputText.value !== (current.value.saved?.rawDescription ?? '')) return '未提交修改';
     return current.value.saved ? '已保存' : '未注解';
   });
-  const canInput = computed(() => Boolean(current.value && canEdit.value && !loading.value && !loadError.value));
-  const canSubmit = computed(() => canInput.value && Boolean(draft.value.trim()) && !current.value.pending);
+  const canInput = computed(() =>
+    Boolean(current.value && canEdit.value && !loading.value && !loadError.value && !current.value.pending),
+  );
+  const canSubmit = computed(() => canInput.value && Boolean(inputText.value.trim()));
   const error = computed(() => loadError.value || current.value?.error || '');
-  const hasUnsavedWork = computed(() => [...entries.values()].some(entry => isDirty(entry) || entry.pending));
+  const hasPending = computed(() => records.value.some(record => Boolean(record.pending)));
+  const busy = computed(() => loading.value || hasPending.value);
+
+  watch(
+    current,
+    record => {
+      inputText.value = record?.saved?.rawDescription ?? '';
+    },
+    { flush: 'sync' },
+  );
+
+  function clear() {
+    dataset.value = null;
+    records.value = [];
+    inputText.value = '';
+    loadError.value = '';
+    loading.value = false;
+  }
 
   async function reload() {
-    const sequence = ++loadSequence;
     const context = dataset.value;
-    records.value = [];
-    loadError.value = '';
-    loading.value = Boolean(context);
-    if (!context) return;
+    if (!context || loading.value) return;
     const requestId = ++nextRequestId;
-    const startedRevision = savedRevision;
+    records.value = [];
+    inputText.value = '';
+    loadError.value = '';
+    loading.value = true;
     try {
-      const response = await invoke(IPC_CHANNELS.LOAD_ANNOTATIONS, { requestId, datasetPath: context.path });
-      if (disposed || sequence !== loadSequence) return;
+      const response = await invoke(IPC_CHANNELS.LOAD_ANNOTATIONS, {
+        requestId,
+        datasetPath: context.path,
+      });
+      if (disposed) return;
       if (response?.requestId !== requestId) throw new Error('注解读取响应与本次请求不匹配。');
       if (!response.success) throw new Error(response.error || '读取图集注解失败。');
       if (
@@ -89,34 +95,23 @@ export function useImageAnnotations({
             record?.imageIndex === index &&
             record.imagePath === context.imagePaths[index] &&
             (record.saved === null || isSaved(record.saved)),
-        ) ||
-        new Set(response.records.map(record => record.imagePath)).size !== response.records.length
+        )
       )
         throw new Error('注解记录与当前已加载的图片列表不一致，请重新打开图集。');
 
-      for (const record of response.records) {
-        const key = entryKey(context.path, record.imagePath);
-        const existing = entries.get(key);
-        if (!existing) {
-          entries.set(key, {
-            ...record,
-            draft: record.saved?.rawDescription ?? '',
-            error: '',
-            pending: null,
-            savedRevision: 0,
-          });
-        } else if (existing.savedRevision <= startedRevision) {
-          const keepDraft = isDirty(existing) || existing.pending;
-          existing.saved = record.saved;
-          if (!keepDraft) existing.draft = record.saved?.rawDescription ?? '';
-        }
-      }
-      records.value = response.records;
+      records.value = response.records.map(record => ({ ...record, error: '', pending: null }));
     } catch (failure) {
-      if (!disposed && sequence === loadSequence) loadError.value = toUserErrorMessage(failure, '读取图集注解失败。');
+      if (!disposed) loadError.value = toUserErrorMessage(failure, '读取图集注解失败。');
     } finally {
-      if (!disposed && sequence === loadSequence) loading.value = false;
+      if (!disposed) loading.value = false;
     }
+  }
+
+  function open(context) {
+    clear();
+    if (!context || typeof context.path !== 'string' || !context.path || !Array.isArray(context.imagePaths)) return;
+    dataset.value = { path: context.path, imagePaths: [...context.imagePaths] };
+    return reload();
   }
 
   async function submit() {
@@ -124,10 +119,10 @@ export function useImageAnnotations({
     const entry = current.value;
     const datasetPath = dataset.value.path;
     const imagePath = entry.imagePath;
-    const text = entry.draft;
+    const text = inputText.value;
     const requestId = ++nextRequestId;
     const label = `${datasetPath.split(/[\\/]/).at(-1)} · 第 ${entry.imageIndex + 1} 张图片`;
-    entry.pending = { requestId, text, stage: 'generate' };
+    entry.pending = { requestId, stage: 'generate' };
     entry.error = '';
     try {
       const response = await invoke(IPC_CHANNELS.GENERATE_AND_SAVE_ANNOTATION, {
@@ -151,8 +146,7 @@ export function useImageAnnotations({
       )
         throw new Error('注解保存结果与提交的图片或文本不匹配，请重新读取确认保存状态。');
       entry.saved = response.record.saved;
-      entry.savedRevision = ++savedRevision;
-      // Do not replace draft: the user may have typed a newer revision meanwhile.
+      if (current.value === entry) inputText.value = text;
       notify(`${label}：注解已保存。`);
     } catch (failure) {
       if (!disposed) {
@@ -164,39 +158,39 @@ export function useImageAnnotations({
     }
   }
 
-  function allowNavigation() {
-    const entry = current.value;
-    if (!isDirty(entry) || (entry.pending && entry.draft === entry.pending.text)) return true;
-    return confirmNavigation(
-      '当前图片有未提交的注解修改，是否继续切换？\n输入会保留在本次会话中，返回后可继续编辑；关闭应用后不会保留草稿。',
-    );
-  }
-
   const unsubscribe = subscribeProgress?.(progress => {
-    if (disposed || typeof progress?.datasetPath !== 'string' || !['generate', 'save'].includes(progress.stage)) return;
-    const entry = entries.get(entryKey(progress.datasetPath, progress.imagePath));
+    if (
+      disposed ||
+      typeof progress?.datasetPath !== 'string' ||
+      !dataset.value ||
+      pathKey(progress.datasetPath) !== pathKey(dataset.value.path) ||
+      !['generate', 'save'].includes(progress.stage)
+    )
+      return;
+    const entry = records.value.find(record => record.imagePath === progress.imagePath);
     if (entry?.pending?.requestId === progress.requestId) entry.pending.stage = progress.stage;
   });
-  const stopWatching = watch(dataset, reload, { immediate: true });
+
   function dispose() {
     disposed = true;
-    loadSequence++;
-    stopWatching();
     if (typeof unsubscribe === 'function') unsubscribe();
   }
+
   return {
     current,
-    draft,
+    input,
     status,
     error,
     loading,
     loadError,
     canInput,
     canSubmit,
-    hasUnsavedWork,
+    hasPending,
+    busy,
+    open,
+    clear,
     reload,
     submit,
-    allowNavigation,
     dispose,
   };
 }

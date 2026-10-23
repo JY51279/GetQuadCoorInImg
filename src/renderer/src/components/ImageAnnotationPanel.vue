@@ -16,7 +16,7 @@
       spellcheck="false"
       @input="$emit('update:modelValue', $event.target.value)"
     ></textarea>
-    <p class="note-hint draft-hint">未提交输入仅保留在本次会话中。</p>
+    <p class="note-hint draft-hint">未提交输入在切换图片时丢弃。</p>
     <div v-if="error" class="note-error" role="alert">
       <p>{{ error }}</p>
       <button v-if="loadError" type="button" class="action-button" :disabled="loading" @click="$emit('reload')">重试读取</button>

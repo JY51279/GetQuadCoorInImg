@@ -239,7 +239,7 @@
 
           <ImageAnnotationPanel
             v-show="activeInspectorPage === INSPECTOR_PAGE.IMAGE_ANNOTATION"
-            v-model="imageAnnotationDraft"
+            v-model="imageAnnotationInput"
             :status="imageAnnotationStatus"
             :error="imageAnnotationError"
             :load-error="imageAnnotationLoadError"
@@ -382,7 +382,7 @@ import HistoryView from './HistoryView.vue';
 import { useWorkspaceEditing } from '../composables/useWorkspaceEditing.js';
 import { usePointSelectionHistory } from '../composables/usePointSelectionHistory.js';
 import { useToastNotifications } from '../composables/useToastNotifications.js';
-import { getCurrentAnnotationView, getJsonFileInfo, getJsonImagePaths } from '../state/DatasetState.js';
+import { getCurrentAnnotationView, getJsonFileInfo } from '../state/DatasetState.js';
 import { createJsonFileService } from '../services/JsonFileService.js';
 import {
   createWorkspaceSessionService,
@@ -511,74 +511,77 @@ const canOperate = computed(
     imageSession.value.imageIndex >= 0 &&
     imageSession.value.imageIndex === imagePositionView.value.currentIndex,
 );
-const { loadedProductType, datasetLoadError, restoreWorkspaceSession, chooseJsonFile: chooseJsonFileInternal, changeDatasetByDirection: changeDatasetByDirectionInternal } =
-  useWorkspaceDataset({
-    workflowState,
-    invoke: (channel, request) => ipcRenderer.invoke(channel, request),
-    isActive: () => !disposed,
-    outputMessage,
-    saveJsonFile: saveJsonFileRequest,
-    confirmLossyRepair: message => window.confirm(message),
-    getWorkspaceSession: () => workspaceSessionService.get(),
-    recordDatasetTarget: path => reportWorkspaceSessionRecord(workspaceSessionService.recordDatasetTarget(path)),
-    onDatasetReset: resetImageForDatasetChange,
-    startDatasetImageRequest,
-    showDatasetPanel: () => selectInspectorPage(INSPECTOR_PAGE.DATASET),
-    showAnnotationPanel: () => selectInspectorPage(INSPECTOR_PAGE.ANNOTATION),
-  });
+const {
+  loadedProductType,
+  datasetLoadError,
+  restoreWorkspaceSession,
+  chooseJsonFile: chooseJsonFileInternal,
+  changeDatasetByDirection: changeDatasetByDirectionInternal,
+} = useWorkspaceDataset({
+  workflowState,
+  invoke: (channel, request) => ipcRenderer.invoke(channel, request),
+  isActive: () => !disposed,
+  outputMessage,
+  saveJsonFile: saveJsonFileRequest,
+  confirmLossyRepair: message => window.confirm(message),
+  getWorkspaceSession: () => workspaceSessionService.get(),
+  recordDatasetTarget: path => reportWorkspaceSessionRecord(workspaceSessionService.recordDatasetTarget(path)),
+  onDatasetReset: resetWorkspaceForDatasetChange,
+  onDatasetLoaded: openImageAnnotations,
+  startDatasetImageRequest,
+  showDatasetPanel: () => selectInspectorPage(INSPECTOR_PAGE.DATASET),
+  showAnnotationPanel: () => selectInspectorPage(INSPECTOR_PAGE.ANNOTATION),
+});
 
-const imageAnnotationDataset = computed(() => loadedProductType.value ? {
-  path: selectedDataset.value.path,
-  version: workflowState.value.datasetVersion,
-  imagePaths: getJsonImagePaths(),
-} : null);
-const imageAnnotationIndex = computed(() => hasCurrentImageSession.value && imageSession.value.imageIndex === imagePositionView.value.currentIndex ? imageSession.value.imageIndex : -1);
+const imageAnnotationIndex = computed(() =>
+  hasCurrentImageSession.value && imageSession.value.imageIndex === imagePositionView.value.currentIndex
+    ? imageSession.value.imageIndex
+    : -1,
+);
 const {
   current: currentImageAnnotation,
-  draft: imageAnnotationDraft,
+  input: imageAnnotationInput,
   status: imageAnnotationStatus,
   error: imageAnnotationError,
   loadError: imageAnnotationLoadError,
   loading: imageAnnotationsLoading,
   canInput: canInputImageAnnotation,
   canSubmit: canSubmitImageAnnotation,
-  hasUnsavedWork: hasUnsavedImageAnnotations,
+  hasPending: hasPendingImageAnnotations,
+  busy: imageAnnotationsBusy,
+  open: openImageAnnotationDataset,
+  clear: clearImageAnnotations,
   reload: reloadImageAnnotations,
   submit: submitImageAnnotation,
-  allowNavigation: allowImageAnnotationNavigation,
   dispose: disposeImageAnnotations,
 } = useImageAnnotations({
-  dataset: imageAnnotationDataset,
   imageIndex: imageAnnotationIndex,
   canEdit: canOperate,
   invoke: (channel, request) => ipcRenderer.invoke(channel, request),
-  confirmNavigation: message => window.confirm(message),
   notify: outputMessage,
-  subscribeProgress: listener => ipcRenderer.on?.(IPC_CHANNELS.ANNOTATION_PROGRESS, (_event, progress) => listener(progress)),
+  subscribeProgress: listener =>
+    ipcRenderer.on?.(IPC_CHANNELS.ANNOTATION_PROGRESS, (_event, progress) => listener(progress)),
 });
 
 function chooseImgFile() {
-  if (canLoadImage.value && !allowImageAnnotationNavigation()) return;
   return chooseImgFileInternal();
 }
 function changeImageByArrowKeys(direction) {
-  if (canLoadImage.value && !allowImageAnnotationNavigation()) return;
   return changeImageByArrowKeysInternal(direction);
 }
 function jumpToImageIndex() {
-  if (canLoadImage.value && Number(jumpImageIndex.value) !== imagePositionView.value.currentIndex + 1 && !allowImageAnnotationNavigation()) return;
   return jumpToImageIndexInternal();
 }
 function chooseJsonFile() {
-  if (canLoadDataset.value && !allowImageAnnotationNavigation()) return;
+  if (!canLoadDataset.value) return;
   return chooseJsonFileInternal();
 }
 function changeDatasetByDirection(direction) {
-  if (canLoadDataset.value && !allowImageAnnotationNavigation()) return;
+  if (!canNavigateDataset.value) return;
   return changeDatasetByDirectionInternal(direction);
 }
 function guardAnnotationUnload(event) {
-  if (hasUnsavedImageAnnotations.value) {
+  if (hasPendingImageAnnotations.value) {
     event.preventDefault();
     event.returnValue = '';
   }
@@ -594,7 +597,9 @@ const {
   clear: clearDots,
   reset: resetDots,
 } = usePointSelectionHistory({ canEdit: canOperate });
-const canLoadDataset = computed(() => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET));
+const canLoadDataset = computed(
+  () => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET) && !imageAnnotationsBusy.value,
+);
 const canNavigateDataset = computed(() => canLoadDataset.value && Boolean(selectedDataset.value.path));
 const canInteractWithImage = computed(
   () =>
@@ -932,7 +937,12 @@ function clearCurrentAnnotations(errorMessage = '') {
   annotationView.value = { formattedItems: [], quads: [], errorMessage };
   renderAnnotationQuads({ resetVisibility: true });
 }
-function resetImageForDatasetChange() {
+function openImageAnnotations(context) {
+  void openImageAnnotationDataset(context);
+}
+
+function resetWorkspaceForDatasetChange() {
+  clearImageAnnotations();
   viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.DATASET_CHANGED);
   clearJsonHistory();
   resetImageSessionForDatasetChange();

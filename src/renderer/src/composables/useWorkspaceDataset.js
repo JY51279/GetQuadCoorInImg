@@ -18,6 +18,7 @@ export function useWorkspaceDataset({
   getWorkspaceSession,
   recordDatasetTarget,
   onDatasetReset,
+  onDatasetLoaded = () => {},
   startDatasetImageRequest,
   showDatasetPanel,
   showAnnotationPanel,
@@ -103,6 +104,10 @@ export function useWorkspaceDataset({
     const { preparedJson } = result;
     loadedProductType.value = preparedJson.productType;
     datasetLoadError.value = null;
+    onDatasetLoaded({
+      path: result.target.path,
+      imagePaths: preparedJson.data.Picture.map(picture => picture['Image Source'].replace(/\\/g, '/')),
+    });
     showAnnotationPanel();
     if (preparedJson.repairSummary) outputMessage(preparedJson.repairSummary);
 
