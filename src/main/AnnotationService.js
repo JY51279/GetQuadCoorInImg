@@ -83,7 +83,22 @@ function normalizeTokenUsage(usage) {
   };
 }
 
-function httpErrorMessage(status) {
+function providerErrorCode(payload) {
+  const value = payload?.error?.code ?? payload?.error?.type;
+  return typeof value === 'string' && /^[a-zA-Z0-9_.-]+$/u.test(value) ? value : '';
+}
+
+function httpErrorMessage(status, payload) {
+  const providerMessage = typeof payload?.error?.message === 'string' ? payload.error.message : '';
+  if (/context.{0,20}(length|token)|maximum.{0,20}token/iu.test(providerMessage)) {
+    return '提交给 DeepSeek 的注解上下文过长，请重新开始本条注解或缩短人工描述。';
+  }
+  if (/model.{0,30}(not found|not exist|unavailable|invalid)/iu.test(providerMessage)) {
+    return 'DeepSeek 模型不可用，请检查 DEEPSEEK_MODEL。';
+  }
+  if (/response[_ ]format|json.{0,20}(mode|format)/iu.test(providerMessage)) {
+    return '当前 DeepSeek 模型不支持所需的 JSON 输出格式，请更换模型。';
+  }
   switch (status) {
     case 400:
     case 422:
@@ -99,18 +114,36 @@ function httpErrorMessage(status) {
     case 429:
       return 'DeepSeek 请求过于频繁，请稍后重试。';
     default:
-      return status >= 500
-        ? `DeepSeek 服务暂时不可用（HTTP ${status}），请稍后重试。`
-        : `DeepSeek 请求失败（HTTP ${status}），请检查接口配置后重试。`;
+      break;
   }
+  const message =
+    status >= 500
+      ? `DeepSeek 服务暂时不可用（HTTP ${status}），请稍后重试。`
+      : `DeepSeek 请求失败（HTTP ${status}），请检查接口配置后重试。`;
+  const code = providerErrorCode(payload);
+  return code ? `${message} 服务错误代码：${code}。` : message;
 }
 
-function transportFailure(signal) {
-  return serviceFailure(
-    null,
-    signal.aborted ? 'DeepSeek 请求超时（60 秒），请稍后重试。' : '无法完成 DeepSeek 请求，请检查网络后重试。',
-    SERVICE_ERROR_KIND.TRANSPORT,
-  );
+function transportFailure(error, signal) {
+  if (signal.aborted) {
+    return serviceFailure(null, 'DeepSeek 请求超时（60 秒），请稍后重试。', SERVICE_ERROR_KIND.TRANSPORT);
+  }
+  const code = error?.code ?? error?.cause?.code;
+  const message =
+    {
+      ENOTFOUND: '无法解析 DeepSeek 服务地址，请检查网络、DNS 和 DEEPSEEK_BASE_URL。',
+      EAI_AGAIN: '暂时无法解析 DeepSeek 服务地址，请检查网络或稍后重试。',
+      ECONNREFUSED: 'DeepSeek 服务拒绝连接，请检查 DEEPSEEK_BASE_URL、代理或服务状态。',
+      ECONNRESET: '与 DeepSeek 的连接被中断，请检查网络后重试。',
+      ETIMEDOUT: '连接 DeepSeek 超时，请检查网络后重试。',
+      UND_ERR_CONNECT_TIMEOUT: '连接 DeepSeek 超时，请检查网络后重试。',
+      UND_ERR_SOCKET: '与 DeepSeek 的连接被中断，请检查网络后重试。',
+      CERT_HAS_EXPIRED: 'DeepSeek 服务证书已过期，请检查接口地址或系统时间。',
+      DEPTH_ZERO_SELF_SIGNED_CERT: 'DeepSeek 服务使用了不受信任的自签名证书。',
+      SELF_SIGNED_CERT_IN_CHAIN: 'DeepSeek 服务证书链包含不受信任的自签名证书。',
+      UNABLE_TO_VERIFY_LEAF_SIGNATURE: '无法验证 DeepSeek 服务证书，请检查接口地址或代理设置。',
+    }[code] ?? '无法完成 DeepSeek 请求，请检查网络、代理和接口地址后重试。';
+  return serviceFailure(null, message, SERVICE_ERROR_KIND.TRANSPORT);
 }
 
 // This service runs in the main process. appPath is app.getAppPath(); the fetch
@@ -151,13 +184,18 @@ export async function normalizeAnnotation(
         signal,
         redirect: 'error',
       });
-    } catch {
+    } catch (error) {
       // Never forward raw request errors: they may contain headers or text.
-      return { ...transportFailure(signal), usage };
+      return { ...transportFailure(error, signal), usage };
     }
     if (!response.ok) {
-      await response.body?.cancel().catch(() => {});
-      return { ...serviceFailure(null, httpErrorMessage(response.status)), usage };
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch {
+        await response.body?.cancel().catch(() => {});
+      }
+      return { ...serviceFailure(null, httpErrorMessage(response.status, payload)), usage };
     }
 
     let payload;
@@ -167,7 +205,7 @@ export async function normalizeAnnotation(
       const failure =
         !signal.aborted && error instanceof SyntaxError
           ? serviceFailure(null, 'DeepSeek 接口返回的内容不是有效的 JSON。', SERVICE_ERROR_KIND.INVALID_RESPONSE)
-          : transportFailure(signal);
+          : transportFailure(error, signal);
       return { ...failure, usage };
     }
 

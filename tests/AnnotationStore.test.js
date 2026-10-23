@@ -231,6 +231,24 @@ describe('Annotation workflow', () => {
     expect(await fs.readFile(csvPath, 'utf8')).toBe(before);
   });
 
+  it('identifies an unexpected model-service exception as a generation failure', async () => {
+    const { datasetPath } = await createDataset(['a.jpg']);
+    const result = await generateAndSaveAnnotation(
+      { datasetPath, imagePath: 'a.jpg', text: '玻璃幕墙。' },
+      {
+        normalize: async () => {
+          throw new Error('unexpected provider failure');
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      stage: 'generate',
+      error: '生成注解失败，请重试；若仍失败，请检查模型服务配置。',
+    });
+  });
+
   it('rejects a request without an image path', async () => {
     const result = await generateAndSaveAnnotation({ datasetPath: '/x/A.json', text: '反光' }, { normalize });
     expect(result).toMatchObject({ success: false, error: '请提供图片路径和非空人工描述。' });

@@ -15,10 +15,17 @@ export const USER_MESSAGES = Object.freeze({
 const SYSTEM_ERROR_MESSAGES = Object.freeze({
   ENOENT: '文件不存在或已被移动。',
   EACCES: '没有访问该文件的权限。',
-  EPERM: '当前系统不允许执行此文件操作。',
+  EPERM: '文件可能被占用或设为只读，请关闭占用程序或检查文件属性后重试。',
   ENOSPC: '磁盘剩余空间不足。',
   EBUSY: '文件正被其他程序占用。',
   EISDIR: '所选路径指向文件夹而不是文件。',
+  EROFS: '目标磁盘或目录为只读，无法写入。',
+  EDQUOT: '当前用户或磁盘的存储配额已用尽。',
+  EMFILE: '程序打开的文件过多，请关闭部分文件后重试。',
+  ENFILE: '系统打开的文件过多，请关闭其他程序后重试。',
+  ENAMETOOLONG: '文件路径过长，请缩短图集路径后重试。',
+  ENOTDIR: '文件路径中的某一部分不是文件夹。',
+  EEXIST: '目标文件已存在但无法替换，可能正被其他程序占用。',
 });
 
 function containsChineseText(value) {
@@ -31,5 +38,8 @@ export function toUserErrorMessage(error, fallback = USER_MESSAGES.UNKNOWN_ERROR
 
   const errorCode = typeof error === 'object' && error !== null ? error.code : '';
   const systemMessage = SYSTEM_ERROR_MESSAGES[errorCode];
-  return systemMessage ? `${fallback} ${systemMessage}` : fallback;
+  if (systemMessage) return `${fallback} ${systemMessage}`;
+  return typeof errorCode === 'string' && /^[A-Z][A-Z0-9_]+$/u.test(errorCode)
+    ? `${fallback} 系统错误代码：${errorCode}。`
+    : fallback;
 }

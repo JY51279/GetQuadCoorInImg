@@ -206,7 +206,7 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
       notify(`${label}：注解已保存。`);
     } catch (failure) {
       if (!disposed) {
-        entry.error = toUserErrorMessage(failure, '生成并保存注解失败。');
+        entry.error = toUserErrorMessage(failure, '无法调用注解服务，请重试；若仍失败，请重启应用。');
         notify(`${label}：${entry.error}`);
       }
     } finally {

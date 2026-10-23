@@ -85,3 +85,66 @@ describe('annotation feedback context', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('annotation service failures', () => {
+  it.each([
+    ['ENOTFOUND', '无法解析 DeepSeek 服务地址，请检查网络、DNS 和 DEEPSEEK_BASE_URL。'],
+    ['ECONNREFUSED', 'DeepSeek 服务拒绝连接，请检查 DEEPSEEK_BASE_URL、代理或服务状态。'],
+    ['UND_ERR_CONNECT_TIMEOUT', '连接 DeepSeek 超时，请检查网络后重试。'],
+    ['CERT_HAS_EXPIRED', 'DeepSeek 服务证书已过期，请检查接口地址或系统时间。'],
+  ])('explains transport error %s without exposing the raw request error', async (code, message) => {
+    const fetchImpl = vi.fn(async () => {
+      throw Object.assign(new Error('request with sensitive internal details'), { cause: { code } });
+    });
+
+    const result = await normalizeAnnotation('玻璃幕墙。', {
+      appPath: process.cwd(),
+      env: { DEEPSEEK_API_KEY: 'test-key' },
+      fetchImpl,
+    });
+
+    expect(result).toMatchObject({ success: false, errorKind: 'transport', error: message });
+  });
+
+  it.each([
+    [
+      400,
+      { error: { message: 'maximum context length exceeded', code: 'invalid_request_error' } },
+      '提交给 DeepSeek 的注解上下文过长，请重新开始本条注解或缩短人工描述。',
+    ],
+    [
+      400,
+      { error: { message: 'requested model not found', code: 'model_not_found' } },
+      'DeepSeek 模型不可用，请检查 DEEPSEEK_MODEL。',
+    ],
+    [
+      409,
+      { error: { message: 'request conflict', code: 'request_conflict' } },
+      'DeepSeek 请求失败（HTTP 409），请检查接口配置后重试。 服务错误代码：request_conflict。',
+    ],
+  ])('explains provider failure HTTP %s from safe response fields', async (status, payload, message) => {
+    const result = await normalizeAnnotation('玻璃幕墙。', {
+      appPath: process.cwd(),
+      env: { DEEPSEEK_API_KEY: 'test-key' },
+      fetchImpl: async () => ({ ok: false, status, json: async () => payload }),
+    });
+
+    expect(result).toMatchObject({ success: false, error: message });
+  });
+
+  it('reports configuration failures before making a request', async () => {
+    const fetchImpl = vi.fn();
+
+    const result = await normalizeAnnotation('玻璃幕墙。', {
+      appPath: process.cwd(),
+      env: {},
+      fetchImpl,
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining('DEEPSEEK_API_KEY'),
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});

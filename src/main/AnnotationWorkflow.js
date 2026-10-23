@@ -80,8 +80,13 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
     });
     return { success: true, status: 'final', completed: true, ...context, ...saved, usage };
   } catch (error) {
+    const fallback = {
+      prepare: '读取图集及注解 CSV 失败。',
+      generate: '生成注解失败，请重试；若仍失败，请检查模型服务配置。',
+      save: '保存注解 CSV 失败。',
+    }[stage];
     return {
-      ...serviceFailure(error, stage === 'save' ? '保存注解 CSV 失败。' : '无法完成图片注解，请检查图集及配套 CSV。'),
+      ...serviceFailure(error, fallback),
       ...context,
       stage,
       usage,

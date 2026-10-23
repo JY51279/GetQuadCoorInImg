@@ -27,6 +27,64 @@ function loadResponse(request, saved = null) {
 }
 
 describe('image annotation feedback flow', () => {
+  it('shows the concrete save failure reason in the panel state and notification', async () => {
+    const notify = vi.fn();
+    const invoke = vi.fn((channel, request) =>
+      channel === 'load-annotations'
+        ? Promise.resolve(loadResponse(request))
+        : Promise.resolve({
+            success: false,
+            requestId: request.requestId,
+            datasetPath,
+            imagePath: 'a.jpg',
+            stage: 'save',
+            error: '保存注解 CSV 失败。 文件正被其他程序占用。',
+          }),
+    );
+    const scope = effectScope();
+    const annotations = scope.run(() =>
+      useImageAnnotations({ imageIndex: ref(0), canEdit: ref(true), invoke, notify }),
+    );
+
+    try {
+      await annotations.open({ path: datasetPath, imagePaths: ['a.jpg', 'b.jpg'] });
+      annotations.input.value = '玻璃幕墙立面。';
+      await annotations.submit();
+
+      expect(annotations.error.value).toBe('保存注解 CSV 失败。 文件正被其他程序占用。');
+      expect(annotations.status.value).toBe('失败');
+      expect(notify).toHaveBeenCalledWith('A.json · 第 1 张图片：保存注解 CSV 失败。 文件正被其他程序占用。');
+    } finally {
+      annotations.dispose();
+      scope.stop();
+    }
+  });
+
+  it('shows an actionable service message when the IPC request itself fails', async () => {
+    const notify = vi.fn();
+    const invoke = vi.fn((channel, request) =>
+      channel === 'load-annotations'
+        ? Promise.resolve(loadResponse(request))
+        : Promise.reject(new Error('Error invoking remote method with internal details')),
+    );
+    const scope = effectScope();
+    const annotations = scope.run(() =>
+      useImageAnnotations({ imageIndex: ref(0), canEdit: ref(true), invoke, notify }),
+    );
+
+    try {
+      await annotations.open({ path: datasetPath, imagePaths: ['a.jpg', 'b.jpg'] });
+      annotations.input.value = '玻璃幕墙立面。';
+      await annotations.submit();
+
+      expect(annotations.error.value).toBe('无法调用注解服务，请重试；若仍失败，请重启应用。');
+      expect(notify).toHaveBeenCalledWith('A.json · 第 1 张图片：无法调用注解服务，请重试；若仍失败，请重启应用。');
+    } finally {
+      annotations.dispose();
+      scope.stop();
+    }
+  });
+
   it('keeps feedback with its image through navigation and sends the full history before saving', async () => {
     const imageIndex = ref(0);
     let resolveFirst;
