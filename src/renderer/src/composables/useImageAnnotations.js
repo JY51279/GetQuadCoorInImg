@@ -26,6 +26,24 @@ function createFeedback(text, turns, questions) {
   };
 }
 
+function snapshotFeedbackTurns(turns) {
+  return turns.map(turn => ({
+    questions: turn.questions.map(question => ({
+      id: question.id,
+      purpose: question.purpose,
+      prompt: question.prompt,
+      selection: question.selection,
+      options: question.options.map(option => ({ id: option.id, label: option.label })),
+    })),
+    answers: turn.answers.map(answer => ({
+      questionId: answer.questionId,
+      optionIds: [...answer.optionIds],
+      text: answer.text,
+    })),
+    message: turn.message,
+  }));
+}
+
 export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subscribeProgress }) {
   const dataset = ref(null);
   const records = ref([]);
@@ -165,7 +183,7 @@ export function useImageAnnotations({ imageIndex, canEdit, invoke, notify, subsc
         datasetPath,
         imagePath,
         text,
-        ...(feedbackTurns === null ? {} : { feedbackTurns }),
+        ...(feedbackTurns === null ? {} : { feedbackTurns: snapshotFeedbackTurns(feedbackTurns) }),
       });
       if (disposed) return;
       if (response?.requestId !== requestId) throw new Error('注解保存响应与本次请求不匹配，请重新读取确认保存状态。');

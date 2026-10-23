@@ -92,8 +92,9 @@ describe('image annotation feedback flow', () => {
     const requests = [];
     const notify = vi.fn();
     const invoke = vi.fn((channel, request) => {
-      if (channel === 'load-annotations') return Promise.resolve(loadResponse(request));
-      requests.push(request);
+      const clonedRequest = structuredClone(request);
+      if (channel === 'load-annotations') return Promise.resolve(loadResponse(clonedRequest));
+      requests.push(clonedRequest);
       if (requests.length === 1) return firstResponse;
       if (requests.length === 2) {
         return Promise.resolve({
