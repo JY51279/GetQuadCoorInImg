@@ -30,6 +30,14 @@ afterEach(async () => {
 });
 
 describe('Annotation store', () => {
+  it('creates one empty CSV row per JSON image when annotations do not exist yet', async () => {
+    const { datasetPath, csvPath } = await createDataset(['a.jpg', 'b.jpg']);
+
+    const { records } = await loadAnnotations(datasetPath);
+    expect(records.map(record => record.saved)).toEqual([null, null]);
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(`${HEADER}"a.jpg","",""\r\n"b.jpg","",""\r\n`);
+  });
+
   it('binds rows by image path and round-trips CSV-sensitive text', async () => {
     const { datasetPath, csvPath } = await createDataset(['img\\a.jpg', 'img/b.jpg']);
     const raw = '左边,"码"\n有拖影';
@@ -47,7 +55,7 @@ describe('Annotation store', () => {
   });
 
   it('keeps annotations attached after the dataset is reordered or extended', async () => {
-    const { datasetPath } = await createDataset(['a.jpg', 'b.jpg']);
+    const { datasetPath, csvPath } = await createDataset(['a.jpg', 'b.jpg']);
     await saveAnnotation(datasetPath, 'b.jpg', completed('反光'));
     await writeDataset(datasetPath, ['c.jpg', 'b.jpg', 'a.jpg']);
 
@@ -57,6 +65,7 @@ describe('Annotation store', () => {
       ['b.jpg', '反光'],
       ['a.jpg', null],
     ]);
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(`${HEADER}"c.jpg","",""\r\n"b.jpg","反光",""\r\n"a.jpg","",""\r\n`);
   });
 
   it('updates the existing row instead of appending another one', async () => {
@@ -83,18 +92,33 @@ describe('Annotation store', () => {
     await expect(loadAnnotations(datasetPath)).rejects.toThrow('图片路径重复');
   });
 
-  it('refuses to read or save when CSV rows have no matching image path, leaving the file intact', async () => {
-    const csvText = `${HEADER}"a.jpg","反光",""\r\n"gone.jpg","拖影",""\r\n`;
+  it('moves unmatched rows to the end, preserves them on save, and restores them if JSON adds the path', async () => {
+    const csvText = `${HEADER}"gone.jpg","拖影",""\r\n"a.jpg","反光",""\r\n"old.jpg","污损",""\r\n`;
     const { datasetPath, csvPath } = await createDataset(['a.jpg', 'b.jpg'], csvText);
 
-    await expect(loadAnnotations(datasetPath)).rejects.toThrow('1 条记录的图片路径不在当前图集中（如 gone.jpg）');
-    await expect(saveAnnotation(datasetPath, 'b.jpg', completed('模糊'))).rejects.toThrow('不在当前图集中');
-    expect(await fs.readFile(csvPath, 'utf8')).toBe(csvText);
+    const { records } = await loadAnnotations(datasetPath);
+    expect(records.map(record => record.saved?.rawDescription ?? null)).toEqual(['反光', null]);
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(
+      `${HEADER}"a.jpg","反光",""\r\n"b.jpg","",""\r\n"gone.jpg","拖影",""\r\n"old.jpg","污损",""\r\n`,
+    );
+
+    await saveAnnotation(datasetPath, 'b.jpg', completed('模糊'));
+    expect(await fs.readFile(csvPath, 'utf8')).toContain(
+      '"b.jpg","模糊",""\r\n"gone.jpg","拖影",""\r\n"old.jpg","污损",""\r\n',
+    );
+
+    await writeDataset(datasetPath, ['gone.jpg', 'a.jpg', 'b.jpg']);
+    const restored = await loadAnnotations(datasetPath);
+    expect(restored.records.map(record => record.saved?.rawDescription ?? null)).toEqual(['拖影', '反光', '模糊']);
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(
+      `${HEADER}"gone.jpg","拖影",""\r\n"a.jpg","反光",""\r\n"b.jpg","模糊",""\r\n"old.jpg","污损",""\r\n`,
+    );
   });
 
   it.each([
     ['legacy header', '\uFEFFrecord_id,image_path,raw_description,annotation\r\n', '表头不匹配'],
     ['duplicate rows', `${HEADER}"a.jpg","反光",""\r\n"./a.jpg","拖影",""\r\n`, '重复记录'],
+    ['annotation without description', `${HEADER}"a.jpg","","反光"\r\n`, '空的人工描述'],
     ['empty image path', `${HEADER}"","反光",""\r\n`, '空的图片路径'],
     ['wrong column count', `${HEADER}"a.jpg","反光"\r\n`, '列数不正确'],
   ])('rejects invalid CSV content: %s', async (_name, csvText, message) => {

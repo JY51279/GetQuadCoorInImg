@@ -95,12 +95,23 @@ function parseCsv(text) {
   return rows;
 }
 
-function serializeCsv(records) {
+function serializeCsv(records, extraRows) {
   const quote = value => `"${value.replace(/"/g, '""')}"`;
   const rows = records
-    .filter(record => record.saved !== null)
-    .map(record => [record.imagePath, record.saved.rawDescription, record.saved.annotation]);
+    .map(record => [record.imagePath, record.saved?.rawDescription ?? '', record.saved?.annotation ?? ''])
+    .concat(extraRows);
   return `\uFEFF${COLUMNS.join(',')}\r\n${rows.map(row => row.map(quote).join(',') + '\r\n').join('')}`;
+}
+
+async function writeCsv(csvPath, csvText) {
+  const temporaryPath = path.join(path.dirname(csvPath), `.${path.basename(csvPath)}.${randomUUID()}.tmp`);
+  try {
+    await fs.writeFile(temporaryPath, csvText, { encoding: 'utf8', flag: 'wx' });
+    await fs.rename(temporaryPath, csvPath);
+  } catch (error) {
+    await fs.unlink(temporaryPath).catch(() => {});
+    throw error;
+  }
 }
 
 async function readSnapshot(datasetPath) {
@@ -137,30 +148,28 @@ async function readSnapshot(datasetPath) {
     csvText = await fs.readFile(csvPath, 'utf8');
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    return { datasetPath, csvPath, records };
+    return { datasetPath, csvPath, records, extraRows: [], csvText: null };
   }
 
-  const orphanPaths = [];
+  const extraRows = [];
+  const seenRecords = new Set();
   for (const row of parseCsv(csvText)) {
     if (row.length !== COLUMNS.length) throw new Error('注解 CSV 数据列数不正确，已停止读取和保存。');
     const [imagePath, rawDescription, annotation] = row;
     if (!isFilePath(imagePath)) throw new Error('注解 CSV 存在空的图片路径，已停止读取和保存。');
-    const record = byKey.get(imageRecordKey(datasetPath, imagePath));
+    const key = imageRecordKey(datasetPath, imagePath);
+    const record = byKey.get(key);
     if (!record) {
-      orphanPaths.push(imagePath);
+      extraRows.push(row);
       continue;
     }
-    if (record.saved !== null) throw new Error('注解 CSV 存在重复记录，已停止读取和保存。');
+    if (seenRecords.has(key)) throw new Error('注解 CSV 存在重复记录，已停止读取和保存。');
+    seenRecords.add(key);
+    if (rawDescription === '' && annotation === '') continue;
     if (!rawDescription.trim()) throw new Error('注解 CSV 存在空的人工描述，已停止读取和保存。');
     record.saved = { rawDescription, annotation };
   }
-  // Saving rewrites the CSV from dataset records; unmatched rows must never be dropped silently.
-  if (orphanPaths.length > 0) {
-    throw new Error(
-      `注解 CSV 中有 ${orphanPaths.length} 条记录的图片路径不在当前图集中（如 ${orphanPaths[0]}），已停止读取和保存；请核对图集和 CSV，未自动删除这些记录。`,
-    );
-  }
-  return { datasetPath, csvPath, records };
+  return { datasetPath, csvPath, records, extraRows, csvText };
 }
 
 export function findAnnotationRecord(snapshot, imagePath) {
@@ -170,7 +179,12 @@ export function findAnnotationRecord(snapshot, imagePath) {
 
 export async function loadAnnotations(datasetPath) {
   const resolvedPath = resolveAnnotationDatasetPath(datasetPath);
-  return inDatasetQueue(resolvedPath, () => readSnapshot(resolvedPath));
+  return inDatasetQueue(resolvedPath, async () => {
+    const snapshot = await readSnapshot(resolvedPath);
+    const normalizedCsv = serializeCsv(snapshot.records, snapshot.extraRows);
+    if (snapshot.csvText !== normalizedCsv) await writeCsv(snapshot.csvPath, normalizedCsv);
+    return { datasetPath: snapshot.datasetPath, csvPath: snapshot.csvPath, records: snapshot.records };
+  });
 }
 
 export async function saveAnnotation(datasetPath, imagePath, result) {
@@ -193,17 +207,7 @@ export async function saveAnnotation(datasetPath, imagePath, result) {
     const record = findAnnotationRecord(snapshot, imagePath);
     if (!record) throw new Error('请求对应的图片已不在当前图集中，请重新加载图集后重试。');
     record.saved = saved;
-    const temporaryPath = path.join(
-      path.dirname(snapshot.csvPath),
-      `.${path.basename(snapshot.csvPath)}.${randomUUID()}.tmp`,
-    );
-    try {
-      await fs.writeFile(temporaryPath, serializeCsv(snapshot.records), { encoding: 'utf8', flag: 'wx' });
-      await fs.rename(temporaryPath, snapshot.csvPath);
-    } catch (error) {
-      await fs.unlink(temporaryPath).catch(() => {});
-      throw error;
-    }
+    await writeCsv(snapshot.csvPath, serializeCsv(snapshot.records, snapshot.extraRows));
     return { datasetPath: resolvedPath, csvPath: snapshot.csvPath, record };
   });
 }
