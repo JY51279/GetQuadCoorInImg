@@ -134,7 +134,13 @@ describe('Annotation store', () => {
 });
 
 describe('Annotation workflow', () => {
-  const normalize = async text => ({ success: true, completed: true, annotation: `规范：${text}`, usage: null });
+  const normalize = async text => ({
+    success: true,
+    status: 'final',
+    completed: true,
+    annotation: `规范：${text}`,
+    usage: null,
+  });
 
   it('saves the generated annotation to the requested image path', async () => {
     const { datasetPath } = await createDataset(['a.jpg', 'b.jpg']);
@@ -153,6 +159,76 @@ describe('Annotation workflow', () => {
       ['b.jpg', 'generate'],
       ['b.jpg', 'save'],
     ]);
+  });
+
+  it('returns feedback without saving or overwriting the previous annotation', async () => {
+    const { datasetPath, csvPath } = await createDataset(['a.jpg']);
+    await saveAnnotation(datasetPath, 'a.jpg', completed('旧描述', '旧注解'));
+    const before = await fs.readFile(csvPath, 'utf8');
+    const questions = [
+      {
+        id: 'q1',
+        purpose: 'refine',
+        prompt: '能否细化？',
+        selection: 'single',
+        options: [{ id: 'keep', label: '保持原描述' }],
+      },
+    ];
+    const stages = [];
+    const result = await generateAndSaveAnnotation(
+      { datasetPath, imagePath: 'a.jpg', text: '新描述' },
+      {
+        normalize: async () => ({ success: true, status: 'needs_feedback', questions, usage: null }),
+        onStage: progress => stages.push(progress.stage),
+      },
+    );
+
+    expect(result).toMatchObject({ success: true, status: 'needs_feedback', questions, stage: 'generate' });
+    expect(stages).toEqual(['generate']);
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(before);
+  });
+
+  it('forwards feedback history for the requested record', async () => {
+    const { datasetPath } = await createDataset(['a.jpg']);
+    const feedbackTurns = [
+      {
+        questions: [
+          {
+            id: 'q1',
+            purpose: 'refine',
+            prompt: '能否细化？',
+            selection: 'single',
+            options: [{ id: 'keep', label: '保持原描述' }],
+          },
+        ],
+        answers: [{ questionId: 'q1', optionIds: ['keep'], text: '' }],
+        message: '',
+      },
+    ];
+    let received;
+    await generateAndSaveAnnotation(
+      { datasetPath, imagePath: 'a.jpg', text: '右码模糊', feedbackTurns },
+      {
+        normalize: async (text, options) => {
+          received = { text, feedbackTurns: options.feedbackTurns };
+          return { success: true, status: 'final', completed: false, annotation: '' };
+        },
+      },
+    );
+    expect(received).toEqual({ text: '右码模糊', feedbackTurns });
+  });
+
+  it('returns an incomplete final result without saving', async () => {
+    const { datasetPath, csvPath } = await createDataset(['a.jpg']);
+    await saveAnnotation(datasetPath, 'a.jpg', completed('旧描述', '旧注解'));
+    const before = await fs.readFile(csvPath, 'utf8');
+    const result = await generateAndSaveAnnotation(
+      { datasetPath, imagePath: 'a.jpg', text: '新描述' },
+      { normalize: async () => ({ success: true, status: 'final', completed: false, annotation: '', usage: null }) },
+    );
+
+    expect(result).toMatchObject({ success: true, status: 'final', completed: false, stage: 'generate' });
+    expect(await fs.readFile(csvPath, 'utf8')).toBe(before);
   });
 
   it('rejects a request without an image path', async () => {

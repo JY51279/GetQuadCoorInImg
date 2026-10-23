@@ -5,6 +5,72 @@ import { isRecord, serviceFailure, SERVICE_ERROR_KIND } from '../shared/ServiceR
 const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_OUTPUT_TOKENS = 2048;
 
+function hasExactKeys(value, keys) {
+  const actual = Object.keys(value);
+  return actual.length === keys.length && keys.every(key => Object.hasOwn(value, key));
+}
+
+function validFeedbackTurns(turns) {
+  if (!Array.isArray(turns)) return false;
+  for (const turn of turns) {
+    if (
+      !isRecord(turn) ||
+      !hasExactKeys(turn, ['questions', 'answers', 'message']) ||
+      !Array.isArray(turn.answers) ||
+      typeof turn.message !== 'string'
+    )
+      return false;
+    try {
+      parseAnnotationResult(JSON.stringify({ status: 'needs_feedback', questions: turn.questions }));
+    } catch {
+      return false;
+    }
+    const questionsById = new Map(turn.questions.map(question => [question.id, question]));
+    const answeredIds = new Set();
+    for (const answer of turn.answers) {
+      if (
+        !isRecord(answer) ||
+        !hasExactKeys(answer, ['questionId', 'optionIds', 'text']) ||
+        typeof answer.questionId !== 'string' ||
+        !questionsById.has(answer.questionId) ||
+        answeredIds.has(answer.questionId) ||
+        !Array.isArray(answer.optionIds) ||
+        typeof answer.text !== 'string' ||
+        (!answer.optionIds.length && !answer.text.trim())
+      )
+        return false;
+      answeredIds.add(answer.questionId);
+      const question = questionsById.get(answer.questionId);
+      const validOptionIds = new Set(question.options.map(option => option.id));
+      if (
+        (question.selection === 'single' && answer.optionIds.length > 1) ||
+        new Set(answer.optionIds).size !== answer.optionIds.length ||
+        answer.optionIds.some(id => typeof id !== 'string' || !validOptionIds.has(id))
+      )
+        return false;
+    }
+    if (!turn.answers.length && !turn.message.trim()) return false;
+  }
+  return true;
+}
+
+function annotationMessages(rules, text, feedbackTurns) {
+  const content = feedbackTurns.length
+    ? JSON.stringify({
+        originalDescription: text,
+        feedbackHistory: feedbackTurns.map(turn => ({
+          modelQuestions: turn.questions,
+          userAnswers: turn.answers,
+          userMessage: turn.message,
+        })),
+      })
+    : text;
+  return [
+    { role: 'system', content: rules },
+    { role: 'user', content },
+  ];
+}
+
 function normalizeTokenUsage(usage) {
   if (!isRecord(usage)) return null;
   const count = value => (Number.isSafeInteger(value) && value >= 0 ? value : null);
@@ -49,10 +115,19 @@ function transportFailure(signal) {
 
 // This service runs in the main process. appPath is app.getAppPath(); the fetch
 // dependency also permits a small local check without a key or a paid API call.
-export async function normalizeAnnotation(text, { appPath, env = process.env, fetchImpl = fetch } = {}) {
+export async function normalizeAnnotation(
+  text,
+  { appPath, feedbackTurns = [], env = process.env, fetchImpl = fetch } = {},
+) {
   let usage = null;
   if (typeof text !== 'string' || !text.trim()) {
     return { ...serviceFailure(null, '请先输入人工描述。', SERVICE_ERROR_KIND.INVALID_REQUEST), usage };
+  }
+  if (!validFeedbackTurns(feedbackTurns)) {
+    return {
+      ...serviceFailure(null, '注解反馈记录无效，请重新开始本条注解。', SERVICE_ERROR_KIND.INVALID_REQUEST),
+      usage,
+    };
   }
 
   try {
@@ -66,10 +141,7 @@ export async function normalizeAnnotation(text, { appPath, env = process.env, fe
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` },
         body: JSON.stringify({
           model: config.model,
-          messages: [
-            { role: 'system', content: rules },
-            { role: 'user', content: text },
-          ],
+          messages: annotationMessages(rules, text, feedbackTurns),
           response_format: { type: 'json_object' },
           thinking: { type: 'disabled' },
           temperature: 0.2,

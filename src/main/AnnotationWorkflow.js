@@ -49,9 +49,28 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
     }
     stage = 'generate';
     reportStage();
-    const generated = await normalize(text, { appPath });
+    const generated = await normalize(text, { appPath, feedbackTurns: request.feedbackTurns });
     usage = generated.usage ?? null;
     if (!generated.success) return { ...generated, ...context, stage };
+    if (generated.status === 'needs_feedback' && Array.isArray(generated.questions) && generated.questions.length) {
+      return { success: true, status: 'needs_feedback', questions: generated.questions, ...context, stage, usage };
+    }
+    if (
+      generated.status !== 'final' ||
+      typeof generated.completed !== 'boolean' ||
+      typeof generated.annotation !== 'string' ||
+      (!generated.completed && generated.annotation !== '')
+    ) {
+      return {
+        ...serviceFailure(null, '模型返回的注解状态无效。', SERVICE_ERROR_KIND.INVALID_RESPONSE),
+        ...context,
+        stage,
+        usage,
+      };
+    }
+    if (!generated.completed) {
+      return { success: true, status: 'final', completed: false, annotation: '', ...context, stage, usage };
+    }
     stage = 'save';
     reportStage();
     const saved = await saveAnnotation(datasetPath, imagePath, {
@@ -59,7 +78,7 @@ export async function generateAndSaveAnnotation(request, { appPath, normalize = 
       rawDescription: text,
       annotation: generated.annotation,
     });
-    return { success: true, completed: true, ...context, ...saved, usage };
+    return { success: true, status: 'final', completed: true, ...context, ...saved, usage };
   } catch (error) {
     return {
       ...serviceFailure(error, stage === 'save' ? '保存注解 CSV 失败。' : '无法完成图片注解，请检查图集及配套 CSV。'),

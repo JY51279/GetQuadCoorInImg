@@ -273,10 +273,13 @@ export async function handleNormalizeAnnotation(_event, request) {
       usage: null,
     };
   }
-  // Only the text reaches the model service; requestId remains local and lets
-  // the future panel associate an asynchronous response with its submission.
+  // The model service receives only annotation text and feedback history;
+  // requestId remains local to pair the asynchronous response.
   const requestId = request.requestId;
-  const result = await normalizeAnnotation(request.text, { appPath: app.getAppPath() });
+  const result = await normalizeAnnotation(request.text, {
+    appPath: app.getAppPath(),
+    feedbackTurns: request.feedbackTurns,
+  });
   return { ...result, requestId };
 }
 

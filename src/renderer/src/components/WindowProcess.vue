@@ -247,10 +247,19 @@
             :loading="imageAnnotationsLoading"
             :can-input="canInputImageAnnotation"
             :can-submit="canSubmitImageAnnotation"
+            :feedback="imageAnnotationFeedback"
+            :can-respond="canRespondImageAnnotation"
+            :can-submit-feedback="canSubmitImageAnnotationFeedback"
             :image-number="currentImageAnnotation ? currentImageAnnotation.imageIndex + 1 : 0"
             :image-name="imgFileName"
             :saved="currentImageAnnotation?.saved ?? null"
             @submit="submitImageAnnotation"
+            @feedback-option="setImageAnnotationFeedbackOption($event.questionId, $event.optionId, $event.checked)"
+            @feedback-text="setImageAnnotationFeedbackText($event.questionId, $event.text)"
+            @feedback-clear-options="clearImageAnnotationFeedbackOptions"
+            @feedback-message="setImageAnnotationFeedbackMessage"
+            @submit-feedback="submitImageAnnotationFeedback"
+            @restart-feedback="restartImageAnnotationFeedback"
             @reload="reloadImageAnnotations"
           />
 
@@ -549,12 +558,21 @@ const {
   loading: imageAnnotationsLoading,
   canInput: canInputImageAnnotation,
   canSubmit: canSubmitImageAnnotation,
+  feedback: imageAnnotationFeedback,
+  canRespond: canRespondImageAnnotation,
+  canSubmitFeedback: canSubmitImageAnnotationFeedback,
   hasPending: hasPendingImageAnnotations,
   busy: imageAnnotationsBusy,
   open: openImageAnnotationDataset,
   clear: clearImageAnnotations,
   reload: reloadImageAnnotations,
   submit: submitImageAnnotation,
+  setFeedbackOption: setImageAnnotationFeedbackOption,
+  setFeedbackText: setImageAnnotationFeedbackText,
+  clearFeedbackOptions: clearImageAnnotationFeedbackOptions,
+  setFeedbackMessage: setImageAnnotationFeedbackMessage,
+  submitFeedback: submitImageAnnotationFeedback,
+  restartFeedback: restartImageAnnotationFeedback,
   dispose: disposeImageAnnotations,
 } = useImageAnnotations({
   imageIndex: imageAnnotationIndex,
@@ -752,7 +770,11 @@ function selectInspectorPage(pageId) {
 function startImageAnnotation() {
   selectInspectorPage(INSPECTOR_PAGE.IMAGE_ANNOTATION);
   void nextTick(() => {
-    if (disposed || activeInspectorPage.value !== INSPECTOR_PAGE.IMAGE_ANNOTATION || !canInputImageAnnotation.value)
+    if (
+      disposed ||
+      activeInspectorPage.value !== INSPECTOR_PAGE.IMAGE_ANNOTATION ||
+      (!canInputImageAnnotation.value && !canRespondImageAnnotation.value)
+    )
       return;
     imageAnnotationPanelRef.value?.focusInput?.();
   });
