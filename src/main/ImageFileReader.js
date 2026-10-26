@@ -4,6 +4,7 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import { BmpError, decode as decodeBmp, extractCompressedData } from '@nktkas/bmp';
 import sharp from 'sharp';
+import { areFilePathsEqual } from './FileOperations.js';
 
 export const IMAGE_PROTOCOL_SCHEME = 'quad-image';
 export const MAX_DISPLAY_PIXELS = 8_000_000;
@@ -558,7 +559,7 @@ export async function prepareAnnotationImages(filePath, quads) {
   return { imageSize, regions };
 }
 
-export async function loadAnnotationRegionImages(regions) {
+export async function loadAnnotationRegionImages(regions, expectedImagePath = '') {
   if (!Array.isArray(regions) || regions.length === 0) throw new Error('图像注解请求没有包含码区局部图。');
 
   let totalBytes = 0;
@@ -586,6 +587,9 @@ export async function loadAnnotationRegionImages(regions) {
       !(await fileExists(asset.path))
     ) {
       throw new Error(`区域 ${index + 1} 的局部图已失效或对应关系不一致，请重新生成局部图。`);
+    }
+    if (expectedImagePath && !areFilePathsEqual(asset.sourceImage.path, expectedImagePath)) {
+      throw new Error(`区域 ${index + 1} 的局部图不属于当前图片记录，请重新生成局部图。`);
     }
 
     const sourceStats = await fs.promises.stat(asset.sourceImage.path);

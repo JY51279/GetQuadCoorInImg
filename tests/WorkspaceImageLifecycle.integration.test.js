@@ -13,7 +13,13 @@ const ipcRenderer = { invoke: vi.fn() };
 const present = vi.fn();
 const ImageViewStub = defineComponent({
   name: 'ImageView',
-  props: ['canEdit', 'canInteract', 'isLoading', 'imageLoadError', 'selectedDots'],
+  props: {
+    canEdit: Boolean,
+    canInteract: Boolean,
+    isLoading: Boolean,
+    imageLoadError: Object,
+    selectedDots: Array,
+  },
   methods: { presentImageSession: session => present(session) },
   render: () => h('div'),
 });
@@ -50,7 +56,14 @@ beforeAll(async () => {
 async function mountWorkspace() {
   wrapper = shallowMount(WindowProcess, {
     attachTo: document.body,
-    global: { stubs: { WorkspaceToolbar: false, DatasetInfoPanel: false, ImageView: ImageViewStub } },
+    global: {
+      stubs: {
+        WorkspaceToolbar: false,
+        DatasetInfoPanel: false,
+        QuadAnnotationPanel: false,
+        ImageView: ImageViewStub,
+      },
+    },
   });
   await flushPromises();
   return wrapper.findComponent(ImageViewStub);

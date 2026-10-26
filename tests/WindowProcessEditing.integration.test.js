@@ -1,4 +1,5 @@
 /* @vitest-environment jsdom */
+/* eslint-disable vue/one-component-per-file -- Local test doubles intentionally share their integration test. */
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { defineComponent, h, nextTick } from 'vue';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,7 +13,10 @@ vi.mock('../src/renderer/src/utils/RendererImageLoader.js', () => ({
 const ipcRenderer = { invoke: vi.fn() };
 const ImageViewStub = defineComponent({
   name: 'ImageView',
-  props: ['canEdit', 'activeQuadIndex'],
+  props: {
+    canEdit: Boolean,
+    activeQuadIndex: Number,
+  },
   methods: {
     presentImageSession: () => true,
     focusQuad: () => ({ success: true }),
@@ -38,7 +42,13 @@ async function mountEditor() {
   wrapper = shallowMount(WindowProcess, {
     attachTo: document.body,
     global: {
-      stubs: { WorkspaceToolbar: false, DatasetInfoPanel: false, ImageView: ImageViewStub, JsonView: JsonViewStub },
+      stubs: {
+        WorkspaceToolbar: false,
+        DatasetInfoPanel: false,
+        QuadAnnotationPanel: false,
+        ImageView: ImageViewStub,
+        JsonView: JsonViewStub,
+      },
     },
   });
   await flushPromises();

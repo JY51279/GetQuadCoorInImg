@@ -302,8 +302,9 @@ describe('Annotation workflow', () => {
         feedbackTurns,
       },
       {
-        loadRegions: async regions => {
+        loadRegions: async (regions, expectedImagePath) => {
           expect(regions).toEqual(regionReferences);
+          expect(expectedImagePath).toBe(path.join(path.dirname(datasetPath), 'a.jpg'));
           return loadedRegions;
         },
         normalizeVisual: async (regions, options) => {

@@ -72,174 +72,45 @@
         </nav>
 
         <div class="inspector-content">
-          <section v-show="activeInspectorPage === INSPECTOR_PAGE.ANNOTATION" class="inspector-page annotation-page">
-            <header class="panel-header">
-              <h2>Quad {{ activeQuadLabel }}</h2>
-              <div class="panel-header-actions">
-                <button
-                  class="action-button"
-                  :class="{ primary: isQuadFocusModeEnabled }"
-                  :title="isQuadFocusModeEnabled ? '退出 Quad 聚焦模式（F）' : '进入 Quad 聚焦模式（F）'"
-                  :disabled="!isQuadFocusModeEnabled && !canInteractWithImage"
-                  :aria-pressed="isQuadFocusModeEnabled"
-                  @click="toggleQuadFocusMode"
-                >
-                  {{ isQuadFocusModeEnabled ? '退出聚焦模式' : '进入聚焦模式' }}
-                </button>
-              </div>
-            </header>
-
-            <div class="precision-panel">
-              <div class="section-heading">
-                <span>像素预览</span>
-                <small>鼠标所在位置</small>
-              </div>
-              <div class="precision-content">
-                <div class="zoom-view-box">
-                  <canvas ref="zoomView" class="zoom-style" width="120" height="120"></canvas>
-                </div>
-                <ol class="point-list">
-                  <li v-for="index in 4" :key="index" :class="{ empty: !selectedDots[index - 1] }">
-                    <span>P{{ index }}</span>
-                    <code v-if="selectedDots[index - 1]">
-                      {{ selectedDots[index - 1].x }}, {{ selectedDots[index - 1].y }}
-                    </code>
-                    <code v-else>—</code>
-                  </li>
-                </ol>
-              </div>
-              <div class="point-history-actions">
-                <button
-                  class="action-button history-button"
-                  title="撤回选点（Ctrl+Z）"
-                  :disabled="!canUndoPoints"
-                  @click="undoPointEdit"
-                >
-                  撤回选点
-                </button>
-                <button
-                  class="action-button history-button"
-                  title="重做选点（Ctrl+Y）"
-                  :disabled="!canRedoPoints"
-                  @click="redoPointEdit"
-                >
-                  重做选点
-                </button>
-              </div>
-            </div>
-
-            <div class="annotation-list-section">
-              <div class="annotation-list-heading section-heading">
-                <span>标注数据</span>
-                <button
-                  type="button"
-                  class="section-action-button"
-                  :disabled="!canApplyQuadLocationForward"
-                  :aria-expanded="isQuadLocationPropagationOpen"
-                  aria-controls="quad-location-propagation-panel"
-                  title="将当前 Quad 坐标应用到后续图片的同下标 Quad（Ctrl+Shift+E 直接应用）"
-                  @click="toggleQuadLocationPropagation"
-                >
-                  应用到后续…
-                </button>
-              </div>
-              <form
-                v-if="isQuadLocationPropagationOpen"
-                id="quad-location-propagation-panel"
-                class="quad-location-propagation-panel"
-                @submit.prevent="applyQuadLocationForward"
-                @keydown.esc.stop.prevent="closeQuadLocationPropagation"
-              >
-                <div class="propagation-panel-heading">
-                  <strong>应用 Quad {{ activeQuadIndex + 1 }} 的坐标</strong>
-                  <span>仅复制 loc，不缩放</span>
-                </div>
-                <label class="propagation-field">
-                  <span>批次张数</span>
-                  <span class="propagation-count-control">
-                    <input
-                      v-model.number="quadLocationPropagationCount"
-                      type="number"
-                      min="1"
-                      step="1"
-                      :disabled="!canOperate"
-                      aria-label="应用到后续图片的张数"
-                    />
-                    <small>
-                      本次 {{ effectiveQuadLocationPropagationCount }} / 剩余 {{ remainingFollowingImageCount }} 张
-                    </small>
-                  </span>
-                </label>
-                <div class="propagation-panel-actions">
-                  <button type="button" class="action-button" @click="closeQuadLocationPropagation">取消</button>
-                  <button type="submit" class="action-button primary" :disabled="!canSubmitQuadLocationPropagation">
-                    应用
-                  </button>
-                </div>
-              </form>
-            </div>
-            <JsonView
-              ref="jsonView"
-              class="annotation-list"
-              :active-quad-index="activeQuadIndex"
-              :formatted-items="annotationView.formattedItems"
-              :error-message="annotationView.errorMessage"
-              @select-quad-index="selectQuadIndex"
-            ></JsonView>
-
-            <div class="json-history-actions">
-              <button
-                class="action-button history-button"
-                title="撤销 JSON 操作（Ctrl+Shift+Z）"
-                :disabled="!canUndoJson"
-                @click="undoJsonEdit"
-              >
-                撤销 JSON
-              </button>
-              <button
-                class="action-button history-button"
-                title="重做 JSON 操作（Ctrl+Shift+Y）"
-                :disabled="!canRedoJson"
-                @click="redoJsonEdit"
-              >
-                重做 JSON
-              </button>
-            </div>
-
-            <div class="annotation-actions">
-              <button
-                class="action-button copy-location-button"
-                :disabled="!canCopyPreviousQuadLocation"
-                title="将上一张图片中同下标 Quad 的坐标复制到当前 Quad（Ctrl+E）"
-                @click="copyPreviousQuadLocation"
-              >
-                沿用上图坐标
-              </button>
-              <button
-                class="action-button primary"
-                title="更新当前 Quad（Ctrl+S）"
-                :disabled="!canOperate"
-                @click="modifyJsonItem"
-              >
-                更新
-              </button>
-              <button class="action-button" title="新增 Quad（Ctrl+A）" :disabled="!canOperate" @click="addJsonItem">
-                新增
-              </button>
-              <button
-                class="action-button danger"
-                title="删除当前 Quad（Ctrl+D）"
-                :disabled="!canOperate"
-                @click="deleteJsonItem"
-              >
-                删除
-              </button>
-            </div>
-          </section>
+          <QuadAnnotationPanel
+            v-show="activeInspectorPage === INSPECTOR_PAGE.ANNOTATION"
+            ref="quadAnnotationPanelRef"
+            v-model:quad-location-propagation-count="quadLocationPropagationCount"
+            :active-quad-index="activeQuadIndex"
+            :active-quad-label="activeQuadLabel"
+            :annotation-view="annotationView"
+            :selected-dots="selectedDots"
+            :is-quad-focus-mode-enabled="isQuadFocusModeEnabled"
+            :can-interact-with-image="canInteractWithImage"
+            :can-undo-points="canUndoPoints"
+            :can-redo-points="canRedoPoints"
+            :can-apply-quad-location-forward="canApplyQuadLocationForward"
+            :is-quad-location-propagation-open="isQuadLocationPropagationOpen"
+            :effective-propagation-count="effectiveQuadLocationPropagationCount"
+            :remaining-following-image-count="remainingFollowingImageCount"
+            :can-submit-location-propagation="canSubmitQuadLocationPropagation"
+            :can-undo-json="canUndoJson"
+            :can-redo-json="canRedoJson"
+            :can-copy-previous-quad-location="canCopyPreviousQuadLocation"
+            :can-operate="canOperate"
+            @toggle-focus-mode="toggleQuadFocusMode"
+            @undo-point="undoPointEdit"
+            @redo-point="redoPointEdit"
+            @toggle-location-propagation="toggleQuadLocationPropagation"
+            @close-location-propagation="closeQuadLocationPropagation"
+            @apply-location-forward="applyQuadLocationForward"
+            @select-quad-index="selectQuadIndex"
+            @undo-json="undoJsonEdit"
+            @redo-json="redoJsonEdit"
+            @copy-previous-location="copyPreviousQuadLocation"
+            @modify-quad="modifyJsonItem"
+            @add-quad="addJsonItem"
+            @delete-quad="deleteJsonItem"
+          />
 
           <ImageAnnotationPanel
-            ref="imageAnnotationPanelRef"
             v-show="activeInspectorPage === INSPECTOR_PAGE.IMAGE_ANNOTATION"
+            ref="imageAnnotationPanelRef"
             v-model="imageAnnotationInput"
             :status="imageAnnotationStatus"
             :error="imageAnnotationError"
@@ -279,64 +150,18 @@
             :img-file-name="imgFileName"
           />
 
-          <section v-show="activeInspectorPage === INSPECTOR_PAGE.DISPLAY" class="inspector-page">
-            <header class="panel-header">
-              <h2>视图与鼠标操作</h2>
-            </header>
-            <div class="display-card">
-              <div>
-                <strong>鼠标当前行为</strong>
-                <p>
-                  {{ isDirectQuadEditingEnabled ? '悬停选择 Quad；可拖动 Quad 或顶点' : '观察 Quad；通过选点更新标注' }}
-                </p>
-              </div>
-              <button
-                class="action-button direct-edit-mode-button"
-                :class="{ active: isDirectQuadEditingEnabled }"
-                :title="isDirectQuadEditingEnabled ? '返回默认观察模式（Tab）' : '进入直接编辑模式（Tab）'"
-                :disabled="!canInteractWithImage"
-                :aria-pressed="isDirectQuadEditingEnabled"
-                @click="toggleQuadInteraction"
-              >
-                {{ isDirectQuadEditingEnabled ? '返回默认模式' : '进入直接编辑' }}
-              </button>
-            </div>
-            <div class="stacked-actions">
-              <button
-                class="action-button"
-                title="重置图片位置（R）"
-                :disabled="!canInteractWithImage"
-                @click="resetPosition"
-              >
-                重置图片位置
-              </button>
-              <button
-                class="action-button"
-                title="切换当前 Quad 显示（Q）"
-                :disabled="!canFocusQuad"
-                @click="toggleHighlight2ShowQuads"
-              >
-                切换当前 Quad 显示
-              </button>
-              <button
-                class="action-button"
-                title="显示全部 Quad（Ctrl+Shift+Q）"
-                :disabled="!canInteractWithImage || quadTotal === 0"
-                @click="addAll2ShowQuads"
-              >
-                显示全部 Quad
-              </button>
-              <button
-                class="action-button"
-                title="隐藏全部 Quad（Ctrl+Q）"
-                :disabled="!canInteractWithImage"
-                @click="clearShowQuads"
-              >
-                隐藏全部 Quad
-              </button>
-            </div>
-            <p class="panel-note">放大到像素网格后，深色描边框表示鼠标当前对应的单个像素。</p>
-          </section>
+          <DisplaySettingsPanel
+            v-show="activeInspectorPage === INSPECTOR_PAGE.DISPLAY"
+            :is-direct-quad-editing-enabled="isDirectQuadEditingEnabled"
+            :can-interact-with-image="canInteractWithImage"
+            :can-focus-quad="canFocusQuad"
+            :has-quads="quadTotal > 0"
+            @toggle-quad-interaction="toggleQuadInteraction"
+            @reset-position="resetPosition"
+            @toggle-active-quad-visibility="toggleHighlight2ShowQuads"
+            @show-all-quads="addAll2ShowQuads"
+            @hide-all-quads="clearShowQuads"
+          />
 
           <section v-show="activeInspectorPage === INSPECTOR_PAGE.HISTORY" class="inspector-page history-page">
             <header class="panel-header">
@@ -388,11 +213,12 @@ import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useWorkspaceImages } from '../composables/useWorkspaceImages.js';
 import { useWorkspaceDataset } from '../composables/useWorkspaceDataset.js';
 import { useDevicePixelRatio } from '@vueuse/core';
-import JsonView from './JsonView.vue';
 import ImageView from './ImageView.vue';
 import WorkspaceToolbar from './WorkspaceToolbar.vue';
 import DatasetInfoPanel from './DatasetInfoPanel.vue';
 import ImageAnnotationPanel from './ImageAnnotationPanel.vue';
+import QuadAnnotationPanel from './QuadAnnotationPanel.vue';
+import DisplaySettingsPanel from './DisplaySettingsPanel.vue';
 import { useImageAnnotations } from '../composables/useImageAnnotations.js';
 import { IPC_CHANNELS } from '../../../shared/IpcChannels.js';
 import Help from './Help.vue';
@@ -400,6 +226,9 @@ import HistoryView from './HistoryView.vue';
 import { useWorkspaceEditing } from '../composables/useWorkspaceEditing.js';
 import { usePointSelectionHistory } from '../composables/usePointSelectionHistory.js';
 import { useToastNotifications } from '../composables/useToastNotifications.js';
+import { useAnnotationImagePreparation } from '../composables/useAnnotationImagePreparation.js';
+import { useWorkspaceQuadSelection } from '../composables/useWorkspaceQuadSelection.js';
+import { useZoomPreview } from '../composables/useZoomPreview.js';
 import { getCurrentAnnotationView, getCurrentImageQuadSnapshot, getJsonFileInfo } from '../state/DatasetState.js';
 import { createJsonFileService } from '../services/JsonFileService.js';
 import {
@@ -410,15 +239,6 @@ import { KEYS } from '../utils/BasicFuncs.js';
 import { normalizeDevicePixelRatio } from '../utils/CanvasDisplay.js';
 import { createShortcutHelpGroups, dispatchShortcut } from '../utils/KeyboardShortcuts.js';
 import { WORKSPACE_SHORTCUT_HELP_GROUPS, createWorkspaceShortcutCommands } from '../shortcuts/WorkspaceShortcuts.js';
-import { configureZoomCanvas, drawZoomPreview } from '../utils/ZoomViewRenderer.js';
-import { getAdjacentQuadIndex, normalizeQuadIndex } from '../state/QuadSelection.js';
-import {
-  VIEWPORT_MODE,
-  VIEWPORT_MODE_EVENT,
-  isQuadFocusMode,
-  resolveFocusModeQuadIndex,
-  transitionViewportMode,
-} from '../state/QuadFocusMode.js';
 import {
   QUAD_INTERACTION_MODE,
   getQuadInteractionCapabilities,
@@ -428,7 +248,6 @@ import {
 import {
   WORKFLOW_OPERATION,
   WORKFLOW_PHASE,
-  canChangeQuadSelection,
   canEdit as canEditWorkflow,
   canStartOperation,
   createWorkflowState,
@@ -446,8 +265,7 @@ const workspaceSessionService = createWorkspaceSessionService({
 
 // Child component and canvas references
 const imgContainerRef = ref(null);
-const jsonView = ref(null);
-const zoomView = ref(null);
+const quadAnnotationPanelRef = ref(null);
 
 const INSPECTOR_PAGE = Object.freeze({
   ANNOTATION: 'annotation',
@@ -469,18 +287,13 @@ const activeInspectorPage = ref(INSPECTOR_PAGE.DATASET);
 let previousInspectorPage = INSPECTOR_PAGE.DATASET;
 
 // Dataset and current image state
-const activeQuadIndex = ref(-1);
-const quadSelectionLockIndex = ref(-1);
 const annotationView = ref({ formattedItems: [], quads: [], errorMessage: '' });
 const quadTotal = computed(() => annotationView.value.formattedItems.length);
 const isQuadLocationPropagationOpen = ref(false);
 const quadLocationPropagationCount = ref(0);
-let zoomSourceOrigin = null;
 const quadInteractionMode = ref(QUAD_INTERACTION_MODE.DEFAULT);
 const quadInteractionCapabilities = computed(() => getQuadInteractionCapabilities(quadInteractionMode.value));
 const isDirectQuadEditingEnabled = computed(() => isDirectQuadEditingMode(quadInteractionMode.value));
-const viewportMode = ref(VIEWPORT_MODE.FREE);
-const isQuadFocusModeEnabled = computed(() => isQuadFocusMode(viewportMode.value));
 const { pixelRatio: rawDisplayPixelRatio } = useDevicePixelRatio();
 const displayPixelRatio = computed(() => normalizeDevicePixelRatio(rawDisplayPixelRatio.value));
 
@@ -510,21 +323,16 @@ const {
   recordImage: checkpoint => reportWorkspaceSessionRecord(workspaceSessionService.recordImage(checkpoint)),
   presentImageSession: session => imgContainerRef.value?.presentImageSession?.(session),
   resetDots: () => resetDots(),
-  resetZoomPreview,
+  resetZoomPreview: () => resetZoomPreview(),
   refreshCurrentAnnotations,
   clearCurrentAnnotations,
-  synchronizeQuadFocusSelection,
+  synchronizeQuadFocusSelection: options => synchronizeQuadFocusSelection(options),
 });
 const imageObj = computed(() => imageSession.value?.image ?? null);
 const imgFileName = computed(() => imageSession.value?.fileName ?? '');
 const imageAnnotationPanelRef = ref(null);
 const imageCoordinateScale = computed(() => imageSession.value?.coordinateScale ?? { x: 1, y: 1 });
 const currentImageOriginalSize = computed(() => imageSession.value?.originalSize ?? null);
-const preparingAnnotationImages = ref(false);
-const annotationImageRegions = ref([]);
-const annotationImageInputError = ref('');
-const preparedAnnotationVisualInput = ref(null);
-let annotationImageRequestId = 0;
 const selectedDataset = computed(() => workflowState.value.datasetTarget ?? { path: '', fileName: '' });
 const jsonFileName = computed(() => selectedDataset.value.fileName);
 const workflowBusy = computed(() => isWorkflowBusy(workflowState.value));
@@ -535,13 +343,24 @@ const canOperate = computed(
     imageSession.value.imageIndex >= 0 &&
     imageSession.value.imageIndex === imagePositionView.value.currentIndex,
 );
-const canPrepareAnnotationImages = computed(
-  () =>
-    canOperate.value &&
-    !imageAnnotationsBusy.value &&
-    !imageAnnotationFeedback.value &&
-    !preparingAnnotationImages.value,
-);
+const {
+  preparing: preparingAnnotationImages,
+  regions: annotationImageRegions,
+  error: annotationImageInputError,
+  canPrepare: canPrepareAnnotationImages,
+  canSubmit: canSubmitPreparedAnnotationImages,
+  prepare: prepareCurrentAnnotationImages,
+  submit: submitPreparedAnnotationImages,
+  isSnapshotCurrent: isPreparedVisualSnapshotCurrent,
+  dispose: disposeAnnotationImagePreparation,
+} = useAnnotationImagePreparation({
+  canStart: () => canOperate.value && !imageAnnotationsBusy.value && !imageAnnotationFeedback.value,
+  getImagePath: () => imageSession.value?.path ?? '',
+  getQuadSnapshot: getCurrentImageQuadSnapshot,
+  getQuadSignature: () => JSON.stringify(annotationView.value.quads),
+  prepareImages: request => ipcRenderer.invoke(IPC_CHANNELS.PREPARE_ANNOTATION_IMAGES, request),
+  submitVisual: visualInput => submitVisualImageAnnotation(visualInput),
+});
 const {
   loadedProductType,
   datasetLoadError,
@@ -629,77 +448,6 @@ function guardAnnotationUnload(event) {
     event.returnValue = '';
   }
 }
-
-function clearPreparedAnnotationImages(message = '') {
-  annotationImageRequestId++;
-  preparingAnnotationImages.value = false;
-  annotationImageRegions.value = [];
-  preparedAnnotationVisualInput.value = null;
-  annotationImageInputError.value = message;
-}
-
-async function prepareCurrentAnnotationImages() {
-  if (!canPrepareAnnotationImages.value) return;
-  const snapshot = getCurrentImageQuadSnapshot();
-  if (!snapshot.success) {
-    annotationImageInputError.value = snapshot.error;
-    annotationImageRegions.value = [];
-    return;
-  }
-
-  const requestId = ++annotationImageRequestId;
-  preparingAnnotationImages.value = true;
-  annotationImageInputError.value = '';
-  annotationImageRegions.value = [];
-  try {
-    const result = await ipcRenderer.invoke(IPC_CHANNELS.PREPARE_ANNOTATION_IMAGES, {
-      requestId,
-      imagePath: imageSession.value.path,
-      quads: snapshot.quads,
-    });
-    if (disposed || requestId !== annotationImageRequestId) return;
-    if (!result?.success || result.requestId !== requestId) {
-      annotationImageInputError.value = result?.error || '生成码区局部图失败。';
-      return;
-    }
-    annotationImageRegions.value = result.regions;
-    preparedAnnotationVisualInput.value = {
-      regions: result.regions,
-      snapshot: {
-        imagePath: imageSession.value.path,
-        quadSignature: JSON.stringify(snapshot.quads),
-        quads: snapshot.quads,
-      },
-    };
-  } catch (error) {
-    if (!disposed && requestId === annotationImageRequestId) {
-      annotationImageInputError.value = error instanceof Error ? error.message : '生成码区局部图失败。';
-    }
-  } finally {
-    if (!disposed && requestId === annotationImageRequestId) preparingAnnotationImages.value = false;
-  }
-}
-const canSubmitPreparedAnnotationImages = computed(
-  () =>
-    canPrepareAnnotationImages.value &&
-    annotationImageRegions.value.length > 0 &&
-    preparedAnnotationVisualInput.value !== null,
-);
-
-function isPreparedVisualSnapshotCurrent(snapshot) {
-  if (!snapshot || !imageSession.value) return false;
-  const currentSnapshot = getCurrentImageQuadSnapshot();
-  return (
-    currentSnapshot.success &&
-    snapshot.imagePath === imageSession.value.path &&
-    snapshot.quadSignature === JSON.stringify(currentSnapshot.quads)
-  );
-}
-
-function submitPreparedAnnotationImages() {
-  if (!canSubmitPreparedAnnotationImages.value) return;
-  return submitVisualImageAnnotation(preparedAnnotationVisualInput.value);
-}
 const {
   selectedDots,
   canUndo: canUndoPoints,
@@ -711,6 +459,17 @@ const {
   clear: clearDots,
   reset: resetDots,
 } = usePointSelectionHistory({ canEdit: canOperate });
+const {
+  update: updateZoomView,
+  reset: resetZoomPreview,
+  syncCanvasPixelRatio: syncZoomCanvasPixelRatio,
+  dispose: disposeZoomPreview,
+} = useZoomPreview({
+  getCanvas: () => quadAnnotationPanelRef.value?.getZoomCanvas?.() ?? null,
+  pixelRatio: displayPixelRatio,
+  image: imageObj,
+  points: selectedDots,
+});
 const canLoadDataset = computed(
   () => canStartOperation(workflowState.value, WORKFLOW_OPERATION.LOAD_DATASET) && !imageAnnotationsBusy.value,
 );
@@ -721,10 +480,32 @@ const canInteractWithImage = computed(
     hasCurrentImageSession.value &&
     [WORKFLOW_PHASE.READY, WORKFLOW_PHASE.DATASET_READY].includes(workflowState.value.phase),
 );
-const canFocusQuad = computed(
-  () => canInteractWithImage.value && activeQuadIndex.value >= 0 && activeQuadIndex.value < quadTotal.value,
-);
-const isQuadSelectionLocked = computed(() => quadSelectionLockIndex.value >= 0);
+const {
+  activeQuadIndex,
+  selectionLockIndex: quadSelectionLockIndex,
+  isSelectionLocked: isQuadSelectionLocked,
+  isFocusModeEnabled: isQuadFocusModeEnabled,
+  canFocus: canFocusQuad,
+  activeLabel: activeQuadLabel,
+  select: selectQuadIndex,
+  reset: resetQuadSelection,
+  lockForTranslation: lockQuadSelectionForTranslation,
+  unlockForTranslation: unlockQuadSelectionForTranslation,
+  selectAdjacent: changeJsonItemSelection,
+  synchronizeFocus: synchronizeQuadFocusSelection,
+  toggleFocusMode: toggleQuadFocusMode,
+  resetForDatasetChange: resetQuadFocusForDatasetChange,
+  dispose: disposeQuadSelection,
+} = useWorkspaceQuadSelection({
+  workflowState,
+  quadTotal,
+  canOperate: () => canOperate.value,
+  canInteract: () => canInteractWithImage.value,
+  focusQuad: quadIndex => imgContainerRef.value?.focusQuad(quadIndex),
+  cancelTranslation: reason => imgContainerRef.value?.cancelQuadTranslation?.(reason),
+  outputMessage,
+  isActive: () => !disposed,
+});
 const canCopyPreviousQuadLocation = computed(
   () =>
     canOperate.value &&
@@ -753,9 +534,6 @@ const effectiveQuadLocationPropagationCount = computed(() =>
 );
 const canSubmitQuadLocationPropagation = computed(
   () => canApplyQuadLocationForward.value && isQuadLocationPropagationCountValid.value,
-);
-const activeQuadLabel = computed(() =>
-  activeQuadIndex.value >= 0 ? `${activeQuadIndex.value + 1} / ${quadTotal.value}` : `— / ${quadTotal.value}`,
 );
 const workflowStatusText = computed(() => {
   const labels = {
@@ -811,45 +589,9 @@ const {
   closeQuadLocationPropagation,
   onAnnotationAdded: () =>
     nextTick(() => {
-      if (!disposed) jsonView.value?.scrollToBottom();
+      if (!disposed) quadAnnotationPanelRef.value?.scrollToBottom();
     }),
 });
-
-let zoomCanvasPixelRatio = null;
-let activeQuadFocusScheduled = false;
-
-function selectQuadIndex(newIndex, { forceFocus = false } = {}) {
-  if (!canChangeQuadSelection(workflowState.value)) return;
-  const normalizedIndex = normalizeQuadIndex(newIndex, quadTotal.value);
-  if (isQuadSelectionLocked.value && normalizedIndex !== quadSelectionLockIndex.value) return;
-
-  const selectionChanged = activeQuadIndex.value !== normalizedIndex;
-  activeQuadIndex.value = normalizedIndex;
-  if (selectionChanged || forceFocus) scheduleActiveQuadFocus();
-}
-
-function resetQuadSelection() {
-  if (isQuadSelectionLocked.value) imgContainerRef.value?.cancelQuadTranslation?.('selection-reset');
-  quadSelectionLockIndex.value = -1;
-  activeQuadIndex.value = -1;
-}
-
-function lockQuadSelectionForTranslation(payload) {
-  const quadIndex = payload?.quadIndex;
-  if (!canOperate.value || quadIndex !== activeQuadIndex.value) {
-    imgContainerRef.value?.cancelQuadTranslation?.('selection-mismatch');
-    return;
-  }
-  quadSelectionLockIndex.value = quadIndex;
-}
-
-function unlockQuadSelectionForTranslation(payload = null) {
-  if (disposed) return;
-  const quadIndex = payload?.quadIndex;
-  if (quadIndex === undefined || quadIndex === quadSelectionLockIndex.value) {
-    quadSelectionLockIndex.value = -1;
-  }
-}
 
 function selectInspectorPage(pageId) {
   if (!validInspectorPages.has(pageId)) return;
@@ -885,37 +627,13 @@ onUnmounted(() => {
   disposed = true;
   disposeImages();
   disposeImageAnnotations();
+  disposeAnnotationImagePreparation();
+  disposeQuadSelection();
+  disposeZoomPreview();
   window.removeEventListener('beforeunload', guardAnnotationUnload);
   window.removeEventListener('keydown', handleKeyDown);
   disposeNotifications();
 });
-
-function syncZoomCanvasPixelRatio() {
-  const nextPixelRatio = displayPixelRatio.value;
-  if (nextPixelRatio === zoomCanvasPixelRatio) return;
-
-  zoomCanvasPixelRatio = configureZoomCanvas(zoomView.value, nextPixelRatio);
-  updateZoomView();
-}
-
-watch(displayPixelRatio, syncZoomCanvasPixelRatio);
-watch(
-  () => imageSession.value?.path ?? '',
-  () => {
-    if (annotationImageRegions.value.length || preparingAnnotationImages.value) clearPreparedAnnotationImages();
-  },
-);
-watch(
-  () => JSON.stringify(annotationView.value.quads),
-  (nextSnapshot, previousSnapshot) => {
-    if (
-      nextSnapshot !== previousSnapshot &&
-      (annotationImageRegions.value.length > 0 || preparingAnnotationImages.value)
-    ) {
-      clearPreparedAnnotationImages('码区坐标已变化，请重新生成局部图。');
-    }
-  },
-);
 
 // Keyboard shortcuts
 const shortcutCommands = createWorkspaceShortcutCommands({
@@ -967,58 +685,9 @@ function handleKeyDown(e) {
 }
 
 // Child component commands
-function changeJsonItemSelection(direction) {
-  if (!canOperate.value) return;
-  selectQuadIndex(
-    getAdjacentQuadIndex({
-      activeIndex: activeQuadIndex.value,
-      quadCount: quadTotal.value,
-      direction,
-    }),
-  );
-}
-
 function resetPosition() {
   if (!canInteractWithImage.value) return;
   imgContainerRef.value?.resetPosition();
-}
-
-function scheduleActiveQuadFocus() {
-  if (activeQuadFocusScheduled || !isQuadFocusModeEnabled.value || !canFocusQuad.value) return;
-  activeQuadFocusScheduled = true;
-  void nextTick(() => {
-    activeQuadFocusScheduled = false;
-    if (!isQuadFocusModeEnabled.value || !canFocusQuad.value) return;
-
-    const result = imgContainerRef.value?.focusQuad(activeQuadIndex.value);
-    if (!result?.success) outputMessage(result?.error || '无法聚焦当前 Quad。');
-  });
-}
-
-function synchronizeQuadFocusSelection({ forceFocus = false } = {}) {
-  if (!isQuadFocusModeEnabled.value) return;
-  selectQuadIndex(
-    resolveFocusModeQuadIndex({
-      activeIndex: activeQuadIndex.value,
-      quadCount: quadTotal.value,
-    }),
-    { forceFocus },
-  );
-}
-
-function toggleQuadFocusMode() {
-  if (!isQuadFocusModeEnabled.value && !canInteractWithImage.value) {
-    outputMessage('请先加载一张可用图片。');
-    return;
-  }
-
-  viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.TOGGLE_QUAD_FOCUS);
-  if (isQuadFocusModeEnabled.value) {
-    synchronizeQuadFocusSelection({ forceFocus: true });
-    outputMessage('已进入 Quad 聚焦模式。');
-  } else {
-    outputMessage('已退出 Quad 聚焦模式。');
-  }
 }
 
 function zoomAtMouse(deltaY) {
@@ -1088,15 +757,11 @@ function openImageAnnotations(context) {
 
 function resetWorkspaceForDatasetChange() {
   clearImageAnnotations();
-  viewportMode.value = transitionViewportMode(viewportMode.value, VIEWPORT_MODE_EVENT.DATASET_CHANGED);
+  resetQuadFocusForDatasetChange();
   clearJsonHistory();
   resetImageSessionForDatasetChange();
   quadLocationPropagationCount.value = imagePositionView.value.total;
 }
-
-watch(selectedDots, () => {
-  updateZoomView();
-});
 
 watch([() => imagePositionView.value.currentIndex, activeQuadIndex], closeQuadLocationPropagation);
 watch(activeInspectorPage, page => {
@@ -1105,29 +770,6 @@ watch(activeInspectorPage, page => {
 watch(canApplyQuadLocationForward, enabled => {
   if (!enabled) closeQuadLocationPropagation();
 });
-
-// Zoom preview
-function updateZoomView(origin = null) {
-  if (origin !== null) {
-    if (!Number.isFinite(origin?.x) || !Number.isFinite(origin?.y)) return;
-    zoomSourceOrigin = { x: origin.x, y: origin.y };
-  }
-  if (!imageObj.value?.complete || zoomSourceOrigin === null) return;
-
-  try {
-    drawZoomPreview(zoomView.value, imageObj.value, zoomSourceOrigin, selectedDots);
-  } catch (error) {
-    console.error('Failed to draw the zoom preview:', error);
-  }
-}
-
-function resetZoomPreview() {
-  zoomSourceOrigin = null;
-  const context = zoomView.value?.getContext('2d');
-  if (context !== null && context !== undefined) {
-    context.clearRect(0, 0, zoomView.value.width, zoomView.value.height);
-  }
-}
 
 // Show quad
 function toggleHighlight2ShowQuads() {
@@ -1185,17 +827,6 @@ function toggleQuadInteraction() {
   background: var(--surface-app);
   color: var(--text-primary);
   font-family: var(--font-ui);
-}
-
-.action-button.direct-edit-mode-button.active {
-  border-color: #c25f0d;
-  background: #c25f0d;
-  color: #ffffff;
-}
-
-.action-button.direct-edit-mode-button.active:hover:not(:disabled) {
-  border-color: #a94e08;
-  background: #a94e08;
 }
 
 .workspace-main {
@@ -1286,15 +917,7 @@ function toggleQuadInteraction() {
   overflow-y: auto;
 }
 
-.annotation-page {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(120px, 1fr) auto auto;
-  gap: 12px;
-  overflow: hidden;
-}
-
-.panel-header,
-.section-heading {
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1316,257 +939,8 @@ function toggleQuadInteraction() {
   line-height: 1.2;
 }
 
-.section-heading {
-  color: var(--text-primary);
-  font-size: var(--font-size-body);
-  font-weight: 700;
-}
-
-.section-heading small {
-  color: var(--text-muted);
-  font-size: var(--font-size-caption);
-  font-weight: 400;
-}
-
-.section-action-button {
-  padding: 3px 5px;
-  border: 0;
-  background: transparent;
-  color: var(--accent-strong);
-  font: 600 var(--font-size-caption) / 1.2 var(--font-ui);
-  cursor: pointer;
-}
-
-.section-action-button:hover:not(:disabled) {
-  text-decoration: underline;
-}
-
-.section-action-button:disabled {
-  color: var(--text-muted);
-  cursor: not-allowed;
-}
-
-.precision-panel {
-  display: grid;
-  gap: 9px;
-  padding: 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--surface-muted);
-}
-
-.precision-content {
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 12px;
-}
-
-.zoom-view-box {
-  width: 122px;
-  height: 122px;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background-color: #f2f4f7;
-  background-image: linear-gradient(45deg, #dfe3e9 25%, transparent 25%),
-    linear-gradient(-45deg, #dfe3e9 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #dfe3e9 75%),
-    linear-gradient(-45deg, transparent 75%, #dfe3e9 75%);
-  background-position:
-    0 0,
-    0 6px,
-    6px -6px,
-    -6px 0;
-  background-size: 12px 12px;
-}
-
-.zoom-style {
-  display: block;
-  width: 120px;
-  height: 120px;
-}
-
-.point-list {
-  display: grid;
-  grid-template-rows: repeat(4, 1fr);
-  gap: 4px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.point-list li {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-  padding: 4px 6px;
-  border-radius: 5px;
-  background: var(--surface-raised);
-  color: var(--text-secondary);
-}
-
-.point-list li > span {
-  color: var(--accent);
-  font-size: var(--font-size-caption);
-  font-weight: 800;
-}
-
-.point-list li.empty > span,
-.point-list li.empty code {
-  color: var(--text-muted);
-}
-
-.point-list code {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-primary);
-  font: var(--font-size-code) / 1.2 var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.point-history-actions,
-.json-history-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
-}
-
-.history-button {
-  min-height: 40px;
-  padding: 0 7px;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--font-size-caption);
-}
-
-.annotation-list-section {
-  display: grid;
-  gap: 8px;
-  align-self: end;
-}
-
-.quad-location-propagation-panel {
-  display: grid;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--surface-muted);
-}
-
-.propagation-panel-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.propagation-panel-heading strong {
-  font-size: var(--font-size-secondary);
-}
-
-.propagation-panel-heading span {
-  color: var(--text-muted);
-  font-size: var(--font-size-caption);
-}
-
-.propagation-field {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  color: var(--text-secondary);
-  font-size: var(--font-size-secondary);
-}
-
-.propagation-field input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface-raised);
-  color: var(--text-primary);
-  font: 400 var(--font-size-secondary) / 1 var(--font-ui);
-}
-
-.propagation-count-control {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.propagation-count-control small {
-  color: var(--text-muted);
-  font-size: var(--font-size-caption);
-  white-space: nowrap;
-}
-
-.propagation-panel-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
-}
-
-.annotation-list {
-  min-height: 0;
-}
-
-.annotation-actions,
-.stacked-actions {
-  display: grid;
-  gap: 7px;
-}
-
-.annotation-actions {
-  grid-template-columns: 1fr 1fr;
-}
-
 .action-button {
   padding: 0 10px;
-}
-
-.action-button.danger {
-  border-color: #edc5c7;
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.action-button.danger:hover:not(:disabled) {
-  border-color: var(--danger);
-  background: #ffe3e3;
-}
-
-.stacked-actions {
-  grid-template-columns: 1fr;
-}
-
-.display-card {
-  display: grid;
-  gap: 14px;
-  margin: 20px 0;
-  padding: 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--surface-muted);
-}
-
-.display-card strong {
-  font-size: var(--font-size-body);
-}
-
-.display-card p,
-.panel-note {
-  margin: 5px 0 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-secondary);
-  line-height: 1.5;
 }
 
 .history-page-note {
@@ -1577,13 +951,6 @@ function toggleQuadInteraction() {
   color: var(--text-secondary);
   font-size: var(--font-size-secondary);
   line-height: 1.5;
-}
-
-.panel-note {
-  margin-top: 16px;
-  padding: 11px;
-  border-radius: 7px;
-  background: var(--surface-muted);
 }
 
 .workspace-statusbar {

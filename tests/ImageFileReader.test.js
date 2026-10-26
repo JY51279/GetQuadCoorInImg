@@ -179,7 +179,7 @@ describe('Main-process image file reader', () => {
       },
     ]);
 
-    const loaded = await loadAnnotationRegionImages(prepared.regions);
+    const loaded = await loadAnnotationRegionImages(prepared.regions, imagePath);
     expect(loaded).toEqual([
       {
         regionIndex: 0,
@@ -190,6 +190,9 @@ describe('Main-process image file reader', () => {
     ]);
     await expect(loadAnnotationRegionImages([{ ...prepared.regions[0], position: '右下' }])).rejects.toThrow(
       '区域 1 的局部图已失效或对应关系不一致',
+    );
+    await expect(loadAnnotationRegionImages(prepared.regions, path.join(directory, 'other.png'))).rejects.toThrow(
+      '区域 1 的局部图不属于当前图片记录',
     );
     const changedTime = new Date(Date.now() + 5_000);
     await fs.utimes(imagePath, changedTime, changedTime);

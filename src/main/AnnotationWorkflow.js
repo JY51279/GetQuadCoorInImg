@@ -1,5 +1,6 @@
 import { normalizeAnnotation, normalizeVisualAnnotation } from './AnnotationService.js';
 import { loadAnnotationRegionImages } from './ImageFileReader.js';
+import path from 'node:path';
 import {
   findAnnotationRecord,
   getAnnotationRecordKey,
@@ -59,16 +60,20 @@ export async function generateAndSaveAnnotation(
   };
   try {
     const snapshot = await loadAnnotations(datasetPath);
-    if (!findAnnotationRecord(snapshot, imagePath)) {
+    const record = findAnnotationRecord(snapshot, imagePath);
+    if (!record) {
       throw new Error('请求对应的图片已不在当前图集中，请重新加载图集后重试。');
     }
     stage = 'generate';
     reportStage();
     const generated = isImageInput
-      ? await normalizeVisual(await loadRegions(request.regions), {
-          appPath,
-          feedbackTurns: request.feedbackTurns,
-        })
+      ? await normalizeVisual(
+          await loadRegions(request.regions, path.resolve(path.dirname(datasetPath), record.imagePath)),
+          {
+            appPath,
+            feedbackTurns: request.feedbackTurns,
+          },
+        )
       : await normalize(text, { appPath, feedbackTurns: request.feedbackTurns });
     usage = generated.usage ?? null;
     if (!generated.success) return { ...generated, ...context, stage };
